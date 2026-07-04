@@ -1,6 +1,0 @@
-# The Elide net stack (net/) pulls reqwest with its http3/unstable features,
-# which require the `reqwest_unstable` cfg at build time (the source tree sets
-# this in its own .cargo/config.toml). The vendored `builder` crate also
-# asserts this cfg is present when any rustflags are configured.
-[build]
-rustflags = ["--cfg", "reqwest_unstable"]

@@ -1,0 +1,64 @@
+ ╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+ ║                                                                                                          ║
+ ║   ██████╗ ██████╗ ███████╗ ██████╗  ██████╗ ███╗   ██╗███████╗████████╗  durable agent execution —       ║
+ ║   ██╔══██╗██╔══██╗██╔════╝██╔════╝ ██╔════╝ ████╗  ██║██╔════╝╚══██╔══╝  the PRIVATE service layer       ║
+ ║   ██║  ██║██████╔╝█████╗  ██║  ███╗██║  ███╗██╔██╗ ██║█████╗     ██║     that RUNS the workload on       ║
+ ║   ██║  ██║██╔══██╗██╔══╝  ██║   ██║██║   ██║██║╚██╗██║██╔══╝     ██║     real metal: leased · metered ·  ║
+ ║   ██████╔╝██║  ██║███████╗╚██████╔╝╚██████╔╝██║ ╚████║███████╗   ██║     paid over dregg's open rail.    ║
+ ║   ╚═════╝ ╚═╝  ╚═╝╚══════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚══════╝   ╚═╝     ▸ open core · self-hostable     ║
+ ║   ▸ pay $DREGG or Stripe · lease durable compute · run + serve, metered · check every spend              ║
+ ║                                                                                                          ║
+ ╚══════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+  ░▒▓ SHIPPING THIS WEEK ▓▒░   the forward slate — the operated reality landing on the verified rail
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+     dregg (the public, formally-verified substrate) says what was PROMISED, PAID, and OWED — verifiably.
+     DreggNet is the private layer that actually RUNS it: durable agent compute, metered, billed in-band.
+            ▸  the substrate is the open, trustless rail  ·  the execution + infra is the moat that bills.
+     this week is the WELD: lease→exec end-to-end, staging up, the SDKs out, the devnet in sight.
+
+  ░▒▓ ① DREGGNET CLOUD · durable execution as a service ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+     an agent rents durable compute the way it rents a fly.io machine — but the bill is a verified receipt:
+
+        open ──▶ fund ──▶ run ──▶ meter ──▶ reap          a fly.io-compatible MACHINES API (over httpe)
+         │       │        │        │         │            real sandboxed native exec via polyana:
+       lease  Σδ=0     polyana   per-period  lapse →        wasm/wasmi today · native+seccomp+landlock
+       cell   Transfer  sandbox  StandingObl  container      · firecracker microVM tiers mapped next
+                                              reaped       pay with $DREGG  OR  Stripe → conserved credit
+     SELF-HOSTABLE, not a monolith: run your OWN provider against your OWN cells + machines + gateway.
+     federated providers, one open lease/meter/pay protocol between them.   docker-runnable today.
+       ‹ LIVE: the stack builds + serves, the gateway binds :8080, a local provider runs a lease end-to-end.
+         SHIPPING: staging is up on a box; the full lease→exec loop lands as the node-image deploys. ›
+
+  ░▒▓ ② HERMES ON DREGGNET · the agent-business layer ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+     an agent that EARNS, SPENDS, and RUNS real operations — on the metered, verified rail:
+        pay via Stripe ──▶ mint conserved USD-credit ──▶ open + fund an execution-lease ──▶ run a workload
+                                                              │ metered per step, charge ⟺ checkpoint
+        the pay-per-tool ToolGateway: may A call this? cap ✓ · budget ✓ · charge A⟶B Σδ=0 ✓ · else 402.
+     crash-resume is EXACTLY-ONCE: SIGKILL mid-flight, a new process replays step 1; the meter never doubles.
+       ‹ the Hermes Accelerated Business demo — Nous · NVIDIA · Stripe.  earn · spend · run, all real. ›
+
+  ░▒▓ ③ THE SDKs · pay / lease / run / invoke a service in a few lines ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+        @dregg/sdk  (TypeScript)   ·   dregg  (Python)   ·   the Rust crate   —   byte-faithful to the rail.
+        pay() · openLease() · run() · invoke(service) — the whole loop, a handful of lines.   ‹ shipped ›
+
+  ░▒▓ ④ AGENT-SERVED WEB APIs · an agent declares routes, DreggNet runs + serves them ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+        WebApp { GET /add ─▶ handler, … }  ──▶  Router matches ──▶ runs the handler on polyana ──▶ renders
+        a LeasedRouter meters each request against a funded lease; over-budget → 402 BEFORE the handler runs.
+        portable `dreggnet-serve` over std sockets · the same Router through httpe on Linux.   ‹ shipped ›
+
+  ░▒▓ ⑤ TOWARD DEVNET · semiprivate staging now → the wider devnet → the global blocklace ▓▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+        ⟦ staging ⟧ ── ember + pug ──▶  ⟦ devnet ⟧ ── wider ──▶  ⟦ the global blocklace ⟧
+        the $DREGG ↔ Solana bridge verifies a real lock-proof (Ed25519 votes · PoH · Merkle), trustless
+        modulo the anchor.   ‹ staging up NOW; devnet next; mainnet-real Solana via geyser is ahead. ›
+
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+     the honest dial — never claim deployed what's staging:
+        LIVE      ▸ the stack builds + serves · staging up on a box · the SDKs shipped · agent-served apps
+                    serve · crash-exact metering proven · Solana lock-proof verify trustless-modulo-anchor
+        SHIPPING  ▸ the full staging lease→exec loop as the node-image deploys · the devnet · the wider
+                    blocklace · firecracker/native tiers · mainnet-real Solana via geyser
+
+              ░▒▓█  the magic is that it is all real — and shipping in the open.  █▓▒░
+                    durable, metered, verifiable compute for digital minds  ·  built with Claude
+                                  🐉   https://www.dregg.net   ·   $DREGG

@@ -41,20 +41,6 @@ pub fn install_recorder() -> PrometheusHandle {
             counter!("dregg_turns_submitted_total").increment(0);
             counter!("dregg_proofs_verified_total", "result" => "valid").increment(0);
             gauge!("dregg_block_height").set(0.0);
-            // Pre-seed the gossip stream-rejection series at 0 so the federation
-            // dashboard's gossip-rejection panel renders a healthy "0" from boot
-            // (a flat green line) and lights up as a RATE spike during a gossip
-            // storm, rather than reading "No data" until the first rejection. The
-            // real, labelled emissions come from `dregg-net`'s inbound
-            // stream-rejection sites (`net/src/gossip.rs::note_gossip_stream_rejected`,
-            // peer/reason labelled) onto this same process-global recorder; the
-            // sentinel label set below is the boot floor under those series.
-            counter!(
-                "dregg_gossip_stream_rejected_total",
-                "peer" => "none",
-                "reason" => "none",
-            )
-            .increment(0);
             handle
         })
         .clone()

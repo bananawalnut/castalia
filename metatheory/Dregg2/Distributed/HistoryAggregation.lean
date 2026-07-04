@@ -6,12 +6,8 @@ sequence of finalized-turn proofs into ONE recursive proof attesting "all turns 
 correctly AND the finalized state root advanced correctly from genesis to final, in that order."
 This module is the EXECUTABLE/DECLARATIVE model that fold is supposed to attest — stated over the
 VERIFIED executor (`Exec.RecordKernel.recCexec`, the same machine `BlocklaceFinality.executeTau`
-drives) and the GENUINE per-turn commitment the deployed chain folds: the ROTATED commit `chainedCommit`
-(= `hash_many [d, iroot]`, `trace_rotated.rs`), whose first limb is the injective §8 kernel digest `d =
-`Circuit.StateCommit.recStateCommit` (the full-state root the whole-turn triangle pins —
-`whole_turn_circuit_pins_intent_fold`) and whose second limb is the receipt-log root `iroot`
-(`logRoot`), so the folded commitment BINDS the receipt log — whole-history non-omission is real, not
-just the single-step root face (`root_tooth_pins_log`, `logChained_of_verified`).
+drives) and the GENUINE per-turn state commitment (`Circuit.StateCommit.recStateCommit`, the
+injective §8 full-state root the whole-turn triangle pins — `whole_turn_circuit_pins_intent_fold`).
 
 It is the *meaning* of the chain. `RecursiveAggregation.lean` adds the SNARK recursion layer on top:
 it names the inner-proof-soundness + recursive-verifier-soundness hypotheses (the part you cannot
@@ -49,15 +45,13 @@ open Dregg2.Circuit.StateCommit (recStateCommit recStateCommit_binds recStateCom
 turn-context used to commit the genesis/empty-chain root. -/
 def zeroTurn : Dregg2.Exec.Turn := ⟨0, 0, 0, 0⟩
 
-/-! ## 0. The §8 state-commitment portal (the kernel-digest limb of the rotated per-turn commit).
+/-! ## 0. The §8 state-commitment portal (the genuine per-turn root).
 
-`recStateCommit k t` is the injective full-state KERNEL commitment from the whole-turn triangle
-(`StateCommit.lean:196`) — the FIRST limb (`d`) the deployed rotated per-turn commit `chainedCommit`
-absorbs (the prover folds the rotated commit, not this limb alone; see `chainedCommit` below). It is
+`recStateCommit k t` is the injective full-state commitment from the whole-turn triangle — the ONE
+authenticated per-turn state root the running prover folds (`StateCommit.lean:196`). It is
 parametric in the Poseidon portal functions; we carry them as section variables exactly as
-`StateCommit`/`WholeTurnTriangle` do, plus the collision-resistance carriers the binding lemmas need
-(`compressInjective cmb` for the kernel-digest split, `compressNInjective compressN` for the OUTER
-rotated sponge + the receipt-log root — both REALIZABLE Poseidon CR). -/
+`StateCommit`/`WholeTurnTriangle` do, plus the single collision-resistance carrier
+`compressInjective cmb` the binding lemma needs (REALIZABLE — Poseidon 2-to-1 CR). -/
 
 section Portal
 
@@ -67,95 +61,11 @@ variable (cmb : ℤ → ℤ → ℤ)
 variable (compress : ℤ → ℤ → ℤ)
 variable (compressN : List ℤ → ℤ)
 
-/-- **`stateRoot k t`** — the §8 KERNEL DIGEST `d`: the injective full-state commitment of kernel
-`k` under turn-context `t` (`recStateCommit` with the portal fixed). This is the FIRST limb the
-deployed rotated commit absorbs (`chainedCommit` below = `hash_many [d, iroot]`, `trace_rotated.rs`),
-NOT the whole per-turn commitment any longer — it is blind to the receipt log (that is the point of
-the §2 repair: the log is bound by the SECOND limb). It still serves as the empty-chain anchor (a
-chain with no steps has no receipts to omit) and as the kernel-faithful core the rotated commit
-refines (`recStateCommit_binds_kernel` recovers the whole kernel from this limb). -/
+/-- **`stateRoot k t`** — the genuine §8 full-state commitment of kernel `k` under the turn-context
+`t` (the prover-folded per-turn root). `recStateCommit` with the portal fixed. A turn `t` advances
+`(stateRoot k t) ↦ (stateRoot k' t')`; the chain binds these roots. -/
 def stateRoot (k : Dregg2.Exec.RecordKernelState) (t : Dregg2.Exec.Turn) : ℤ :=
   recStateCommit CH RH cmb compress compressN k t
-
-/-! ### The receipt-log root + the DEPLOYED ROTATED per-turn commitment (the §2 repair, canonical).
-
-The deployed live chained commit is NOT the kernel-only `recStateCommit` — it is the ROTATED WIDE
-commitment `state_commit = hash_many [d, iroot]` (`circuit/src/effect_vm/trace_rotated.rs`, `B_IROOT`;
-`turn/src/executor/proof_verify.rs:349` "iroot … absorbed INTO the v9 commitment, which the proof
-binds"), where `d = recStateCommit … k t` is the kernel digest and `iroot` is the receipt-index root
-over the turn's receipt log. We model it here so the per-turn commitment the IVC chain folds BINDS the
-receipt log — making whole-history non-omission REAL, not just the single-step root face.
-
-The receipt-index root is modeled as the CR sponge digest `compressN` of the receipt-felt list
-(`logRoot`). This is the faithful in-layer stand-in for the deployed Poseidon2 receipt MMR root: both
-are injective Poseidon2 commitments to the SAME receipt-felt list under the ONE CR floor
-(`compressNInjective compressN = Poseidon2SpongeCR compressN`). The MMR's succinct-RANGE-opening
-structure (`mroot`, `CommitBindsMMR`) lives DOWNSTREAM in `Lightclient/MMR` (which imports this
-module); the aggregation model needs only the BINDING (omission-resistance), which the sponge digest
-delivers identically. -/
-
-/-- A single receipt felt — the deployed per-turn receipt commitment, modeled as the CR digest of the
-turn's four fields `(actor, src, dst, amt)`. Injective in the turn (a receipt commits the whole turn,
-`turnReceipt_injective`). -/
-def turnReceipt (t : Dregg2.Exec.Turn) : ℤ :=
-  compressN [(t.actor : ℤ), (t.src : ℤ), (t.dst : ℤ), t.amt]
-
-/-- The receipt-felt list of an audit log — the append-only receipt index the deployed `iroot` is
-built over. `RecChainedState.log : List Turn` mapped to its receipt felts. -/
-def logFelts (log : List Dregg2.Exec.Turn) : List ℤ :=
-  log.map (turnReceipt compressN)
-
-/-- **`logRoot log`** — the receipt-index root the rotated commit absorbs as its second (`iroot`)
-limb: a CR sponge digest of the receipt-felt list. A node cannot drop / reorder / forge a receipt
-without moving this root (`logRoot_injective`). The model's faithful stand-in for the deployed
-receipt-index MMR root. -/
-def logRoot (log : List Dregg2.Exec.Turn) : ℤ :=
-  compressN (logFelts compressN log)
-
-/-- **`chainedCommit st t`** — THE DEPLOYED ROTATED per-turn commitment, canonical: the sponge
-`hash_many [d, iroot]` over the kernel digest `d = recStateCommit … st.kernel t` and the receipt-log
-root `iroot = logRoot … st.log`. It STRICTLY REFINES `recStateCommit`: the kernel digest `d` is the
-FIRST absorbed limb (so it still binds the WHOLE kernel via `recStateCommit_binds_kernel` — kernel
-guarantees are PRESERVED, not weakened), AND it binds the receipt log via the SECOND limb (so
-omission of any receipt at this turn moves the published commit). The roots the IVC chain folds
-(`ChainStep.oldRoot/newRoot`) are this commitment. -/
-def chainedCommit (st : RecChainedState) (t : Dregg2.Exec.Turn) : ℤ :=
-  compressN [recStateCommit CH RH cmb compress compressN st.kernel t, logRoot compressN st.log]
-
-/-! #### Injectivity of the receipt encoding (REUSING the one CR floor). -/
-
-/-- `turnReceipt` is injective: a receipt felt commits the whole turn. From `compressNInjective` (the
-list peels) + `Nat`-cast injectivity on the three `CellId` fields. -/
-theorem turnReceipt_injective (hCompressN : compressNInjective compressN)
-    {t t' : Dregg2.Exec.Turn} (h : turnReceipt compressN t = turnReceipt compressN t') : t = t' := by
-  obtain ⟨a, b, c, d⟩ := t
-  obtain ⟨a', b', c', d'⟩ := t'
-  unfold turnReceipt at h
-  have hl := hCompressN _ _ h
-  simp only [List.cons.injEq, and_true, Nat.cast_inj] at hl
-  obtain ⟨h1, h2, h3, h4⟩ := hl
-  subst h1; subst h2; subst h3; subst h4; rfl
-
-/-- `logFelts` is injective: the receipt-felt list determines the audit log (`map` of an injective
-encoder). -/
-theorem logFelts_injective (hCompressN : compressNInjective compressN) :
-    ∀ {L L' : List Dregg2.Exec.Turn}, logFelts compressN L = logFelts compressN L' → L = L'
-  | [], [], _ => rfl
-  | [], _ :: _, h => by simp [logFelts] at h
-  | _ :: _, [], h => by simp [logFelts] at h
-  | x :: xs, y :: ys, h => by
-    simp only [logFelts, List.map_cons, List.cons.injEq] at h
-    rw [turnReceipt_injective compressN hCompressN h.1,
-        logFelts_injective hCompressN (L := xs) (L' := ys) h.2]
-
-/-- **`logRoot_injective` — THE LOG ROOT BINDS THE WHOLE AUDIT LOG (the non-omission keystone).** Two
-audit logs with equal receipt-index roots are EQUAL under the one CR floor: a node cannot keep the
-published root while suppressing, forging, reordering, or truncating ANY receipt. (Sponge CR peels the
-digest, `logFelts_injective` recovers the turns.) -/
-theorem logRoot_injective (hCompressN : compressNInjective compressN)
-    {L L' : List Dregg2.Exec.Turn} (h : logRoot compressN L = logRoot compressN L') : L = L' := by
-  unfold logRoot at h
-  exact logFelts_injective compressN hCompressN (hCompressN _ _ h)
 
 /-! ## 1. One fold step — a finalized turn + the roots it advances.
 
@@ -179,13 +89,11 @@ structure ChainStep where
   /-- **The executor witness**: `recCexec pre turn = some post`. -/
   commits : recCexec pre turn = some post
 
-/-- The step's pre-state root — the DEPLOYED ROTATED commitment of the pre-state (kernel digest +
-receipt-log root). The Rust `old_root`. -/
-def ChainStep.oldRoot (s : ChainStep) : ℤ := chainedCommit CH RH cmb compress compressN s.pre s.turn
+/-- The step's pre-state root (the §8 commitment of the pre-kernel). The Rust `old_root`. -/
+def ChainStep.oldRoot (s : ChainStep) : ℤ := stateRoot CH RH cmb compress compressN s.pre.kernel s.turn
 
-/-- The step's post-state root — the DEPLOYED ROTATED commitment of the post-state (kernel digest +
-receipt-log root). The Rust `new_root`. -/
-def ChainStep.newRoot (s : ChainStep) : ℤ := chainedCommit CH RH cmb compress compressN s.post s.turn
+/-- The step's post-state root (the §8 commitment of the post-kernel). The Rust `new_root`. -/
+def ChainStep.newRoot (s : ChainStep) : ℤ := stateRoot CH RH cmb compress compressN s.post.kernel s.turn
 
 /-! ## 2. The temporal tooth — `new_root[i] == old_root[i+1]`.
 
@@ -236,14 +144,13 @@ The accumulator's final claim is "`final_root` = the genuine fold of the whole h
 (`ivc_turn_chain.rs:18`): the §8 commitment of the kernel reached by folding `recCexec` over all the
 turns. `lastStateOf g steps` IS that folded state; its commitment is the genuine final root. -/
 
-/-- **`foldedFinalRoot g steps`** — the genuine final root: the DEPLOYED ROTATED commitment
-(`chainedCommit` = kernel digest + receipt-log root) of the folded post-state (`lastStateOf`) under
-the last step's turn-context (the `NEW_COMMIT` the accumulator exposes). The empty chain commits the
-genesis kernel digest under `default` (the empty-chain anchor: no steps, hence no receipts to bind). -/
+/-- **`foldedFinalRoot g steps`** — the genuine §8 final root: commit the folded post-kernel
+(`lastStateOf`) under the last step's turn-context (the `NEW_COMMIT` the accumulator exposes; the
+empty chain commits genesis under `default`). -/
 def foldedFinalRoot (g : RecChainedState) (steps : List ChainStep) : ℤ :=
   match steps.getLast? with
   | none   => stateRoot CH RH cmb compress compressN g.kernel zeroTurn
-  | some s => chainedCommit CH RH cmb compress compressN (lastStateOf g steps) s.turn
+  | some s => stateRoot CH RH cmb compress compressN (lastStateOf g steps).kernel s.turn
 
 /-! ## 5. The CR recovery — the ROOT tooth recovers STATE continuity.
 
@@ -271,21 +178,17 @@ hash), i.e. to the WHOLE kernel (every cell binds via `cellLeafInjective`; the 1
 `RestHashIffFrame`). So a light client that sees only the matching roots GENUINELY learns the states
 chained, up to CR. This is the load-bearing fact that makes "verify the succinct aggregate"
 sufficient: the root IS the full-state commitment. -/
-theorem root_tooth_pins_state (hCmb : compressInjective cmb)
-    (hCompressN : compressNInjective compressN) (s s' : ChainStep)
+theorem root_tooth_pins_state (hCmb : compressInjective cmb) (s s' : ChainStep)
     (hturn : s.turn = s'.turn)
     (htooth : ChainStep.newRoot CH RH cmb compress compressN s
                 = ChainStep.oldRoot CH RH cmb compress compressN s') :
     cellDigest CH compress compressN s.post.kernel s'.turn
         = cellDigest CH compress compressN s'.pre.kernel s'.turn
       ∧ RH s.post.kernel = RH s'.pre.kernel := by
-  unfold ChainStep.newRoot ChainStep.oldRoot chainedCommit at htooth
+  unfold ChainStep.newRoot ChainStep.oldRoot stateRoot at htooth
   rw [hturn] at htooth
-  -- peel the OUTER rotated sponge (compressN): the kernel-digest limb agrees.
-  have hlimbs := hCompressN _ _ htooth
-  simp only [List.cons.injEq, and_true] at hlimbs
   exact recStateCommit_binds CH RH cmb compress compressN hCmb
-          s.post.kernel s'.pre.kernel s'.turn hlimbs.1
+          s.post.kernel s'.pre.kernel s'.turn htooth
 
 /-- **`root_tooth_pins_kernel` (THE STRENGTHENED CR RECOVERY — state-equality, not just commitment).**
 The critique's precise gap: `root_tooth_pins_state` recovers only `cellDigest`+`RH` EQUALITY
@@ -308,36 +211,10 @@ theorem root_tooth_pins_kernel
     (htooth : ChainStep.newRoot CH RH cmb compress compressN s
                 = ChainStep.oldRoot CH RH cmb compress compressN s') :
     s.post.kernel = s'.pre.kernel := by
-  unfold ChainStep.newRoot ChainStep.oldRoot chainedCommit at htooth
+  unfold ChainStep.newRoot ChainStep.oldRoot stateRoot at htooth
   rw [hturn] at htooth
-  -- peel the OUTER rotated sponge (compressN): the kernel-digest limb `d` agrees, then
-  -- `recStateCommit_binds_kernel` recovers the WHOLE kernel from it (REUSED unchanged — the rotated
-  -- commit absorbs the SAME kernel digest as its first limb, so kernel faithfulness is preserved).
-  have hlimbs := hCompressN _ _ htooth
-  simp only [List.cons.injEq, and_true] at hlimbs
   exact recStateCommit_binds_kernel CH RH cmb compress compressN hCmb hCompress hCompressN hLeaf hRest
-          s.post.kernel s'.pre.kernel s'.turn hwf hwf' hlimbs.1
-
-/-- **`root_tooth_pins_log` (THE NON-OMISSION KEYSTONE — the rotated commit binds the receipt log).**
-The §2 repair, now at the aggregation seam: an agreeing root tooth at a matched turn-context forces the
-adjacent RECEIPT LOGS equal (`s.post.log = s'.pre.log`), under the one CR floor. The kernel-only
-`recStateCommit` was BLIND to the log (`NonOmissionAttack.recStateCommit_admits_receipt_omission`);
-the rotated `chainedCommit` absorbs `logRoot … st.log` as its second limb, so the OUTER sponge peel
-yields the log-root agreement and `logRoot_injective` recovers the whole audit log. A light client
-seeing only the matching published roots GENUINELY learns the receipt logs coincide — no node dropped,
-forged, reordered, or truncated a receipt at this turn. This is the component the §8 kernel root did
-NOT bind, now bound (the residual named in `NonOmissionAttack` §3, closed). -/
-theorem root_tooth_pins_log (hCompressN : compressNInjective compressN) (s s' : ChainStep)
-    (hturn : s.turn = s'.turn)
-    (htooth : ChainStep.newRoot CH RH cmb compress compressN s
-                = ChainStep.oldRoot CH RH cmb compress compressN s') :
-    s.post.log = s'.pre.log := by
-  unfold ChainStep.newRoot ChainStep.oldRoot chainedCommit at htooth
-  rw [hturn] at htooth
-  have hlimbs := hCompressN _ _ htooth
-  simp only [List.cons.injEq, and_true] at hlimbs
-  -- the second limb is the receipt-log root; `logRoot_injective` recovers the audit log.
-  exact logRoot_injective compressN hCompressN hlimbs.2
+          s.post.kernel s'.pre.kernel s'.turn hwf hwf' htooth
 
 /-! ## 6. THE HEADLINE — a well-formed chain attests the WHOLE history. -/
 
@@ -507,54 +384,6 @@ theorem verified_history_conserves
     (kernelChained_of_verified CH RH cmb compress compressN hCmb hCompress hCompressN hLeaf hRest
       g steps hgen hbound hstruct)
 
-/-! ### NON-OMISSION over the WHOLE history from the VERIFIED root tooth (the §2 repair, lifted).
-
-The kernel-continuity path (`kernelChained_of_verified`) recovers KERNEL continuity from the verified
-root tooth; its RECEIPT-LOG twin recovers LOG continuity, by the EXACT same induction but riding
-`root_tooth_pins_log` (the rotated commit's second limb) instead of `root_tooth_pins_kernel`. Where the
-kernel root needed the full Poseidon CR set + `AccountsWF`, the log root needs ONLY `compressNInjective`
-(the outer sponge peel + `logRoot_injective`) — `SeamStruct`'s turn-match alone, its `AccountsWF` arm
-unused. So a light client trusting the aggregate learns the receipt log chains genuinely across EVERY
-folded step: no node dropped, forged, reordered, or truncated a receipt ANYWHERE in history. -/
-
-/-- **`LogChained g steps`** — the steps form a contiguous executor run from genesis `g` AT THE
-RECEIPT-LOG LEVEL: the first step's pre-LOG is `g`'s, and each step's post-log is the next step's
-pre-log. The log twin of `KernelChained` — exactly what the rotated commit's receipt-log root recovers
-under CR (`root_tooth_pins_log`). -/
-def LogChained (g : RecChainedState) : List ChainStep → Prop
-  | []        => True
-  | s :: rest => s.pre.log = g.log ∧ LogChained s.post rest
-
-/-- **`LogGenesisPin g steps`** — the head step's pre-LOG is genesis `g`'s (vacuous if empty). The
-honest, agreed genesis input (the published chain start), NOT the malicious surface (which is the
-inter-step continuity, derived below). -/
-def LogGenesisPin (g : RecChainedState) : List ChainStep → Prop
-  | []        => True
-  | s :: _    => s.pre.log = g.log
-
-/-- **`logChained_of_verified` (THE NON-OMISSION DERIVATION — log continuity FROM verification).** From
-the genesis log pin, the VERIFIED root tooth `ChainBound` (= `AggregateAttests.ordered`), and the
-structural envelope `SeamStruct` (only its turn-match arm is used), the whole chain is `LogChained`:
-each inter-step seam `s.post.log = s'.pre.log` is DERIVED by `root_tooth_pins_log` from the verified
-tooth. So a light client verifying the aggregate root learns the receipt log chains genuinely across
-the WHOLE history — omission impossible at every folded step — with NO `hweld`, resting on the rotated
-commit's receipt-log limb under the one CR floor. -/
-theorem logChained_of_verified (hCompressN : compressNInjective compressN) (g : RecChainedState) :
-    ∀ steps : List ChainStep,
-      LogGenesisPin g steps →
-      ChainBound CH RH cmb compress compressN steps →
-      SeamStruct steps →
-      LogChained g steps
-  | [], _, _, _ => trivial
-  | [_], hgen, _, _ => ⟨hgen, trivial⟩
-  | s :: s' :: rest, hgen, hbound, hstruct => by
-    obtain ⟨htooth, hboundrest⟩ := hbound
-    obtain ⟨⟨hturn, _, _⟩, hstructrest⟩ := hstruct
-    have hseam : s.post.log = s'.pre.log :=
-      root_tooth_pins_log CH RH cmb compress compressN hCompressN s s' hturn htooth
-    exact ⟨hgen, logChained_of_verified hCompressN s.post (s' :: rest)
-      hseam.symm hboundrest hstructrest⟩
-
 /-- **`chainBound_of_stateChained`.** State-level continuity entails the root-level temporal
 tooth at every seam WHERE THE TURN-CONTEXTS AGREE. We state the per-seam fact directly via
 `seam_roots_chain`; whole-list `ChainBound` follows when each seam's turn-contexts agree (the
@@ -587,7 +416,7 @@ theorem wellformed_attests_whole_history (g : RecChainedState) (steps : List Cha
       ∧ foldedFinalRoot CH RH cmb compress compressN g steps
           = match steps.getLast? with
             | none   => stateRoot CH RH cmb compress compressN g.kernel zeroTurn
-            | some s => chainedCommit CH RH cmb compress compressN (lastStateOf g steps) s.turn :=
+            | some s => stateRoot CH RH cmb compress compressN (lastStateOf g steps).kernel s.turn :=
   ⟨every_turn_executed_correctly steps, hwf.bound,
    wellformed_is_run g steps hwf.chained, rfl⟩
 
@@ -663,11 +492,6 @@ end Portal
 
 #assert_axioms Dregg2.Distributed.HistoryAggregation.root_tooth_pins_state
 #assert_axioms Dregg2.Distributed.HistoryAggregation.root_tooth_pins_kernel
--- the rotated commit BINDS the receipt log (non-omission, the §2 repair welded into the model):
-#assert_axioms Dregg2.Distributed.HistoryAggregation.turnReceipt_injective
-#assert_axioms Dregg2.Distributed.HistoryAggregation.logFelts_injective
-#assert_axioms Dregg2.Distributed.HistoryAggregation.logRoot_injective
-#assert_axioms Dregg2.Distributed.HistoryAggregation.root_tooth_pins_log
 #assert_axioms Dregg2.Distributed.HistoryAggregation.wellformed_is_run
 #assert_axioms Dregg2.Distributed.HistoryAggregation.wellformed_history_conserves
 #assert_axioms Dregg2.Distributed.HistoryAggregation.wellformed_attests_whole_history
@@ -679,8 +503,6 @@ end Portal
 #assert_axioms Dregg2.Distributed.HistoryAggregation.kernelChained_conserves
 #assert_axioms Dregg2.Distributed.HistoryAggregation.kernelChained_of_verified
 #assert_axioms Dregg2.Distributed.HistoryAggregation.verified_history_conserves
--- non-omission over the WHOLE history, DERIVED from the verified root tooth (no hweld):
-#assert_axioms Dregg2.Distributed.HistoryAggregation.logChained_of_verified
 -- non-vacuity of the kernel-continuity conservation path (witnessed on a real executor run):
 #assert_axioms Dregg2.Distributed.HistoryAggregation.honest_chain_kernelChained
 #assert_axioms Dregg2.Distributed.HistoryAggregation.honest_kernelChained_conserves

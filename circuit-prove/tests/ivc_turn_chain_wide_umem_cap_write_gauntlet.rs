@@ -359,7 +359,6 @@ fn cap_write_forged_post_commit_refused() {
         proof,
         descriptor,
         mut public_inputs,
-        carrier_witness: _,
     } = rotated;
     let last = public_inputs.len() - 1;
     public_inputs[last] = public_inputs[last] + BabyBear::ONE;
@@ -367,7 +366,6 @@ fn cap_write_forged_post_commit_refused() {
         proof,
         descriptor,
         public_inputs,
-        carrier_witness: None,
     }));
     let turns = [t0, forged];
     match fold_wide_welded_umem_turn_chain_staged(&turns) {

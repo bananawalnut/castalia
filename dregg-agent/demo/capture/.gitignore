@@ -1,5 +1,0 @@
-# Playwright + build deps (regenerate with `npm install`).
-node_modules/
-package-lock.json
-# captured media + intermediate render segments (regenerate with run-capture.sh + stitch.sh).
-out/

@@ -66,25 +66,11 @@
 //! image of that rung; [`tests::invariant_matches_lean_rung`] mirrors the Lean
 //! witnesses so the Rust rejection is tied to the proven statement.
 //!
-//! The DEEPER weld — making the `Attested` forever-crown REAL for a pure light
-//! client (not just a re-executing validator) — is the per-turn FOLD over a
-//! re-proved CONTRACT-ATTESTATION leaf
-//! (`dregg_circuit_prove::hatchery_leaf_adapter::prove_hatchery_leaf`), connected
-//! to the mint leg's claimed `contract_hash` teeth by
-//! `prove_hatchery_binding_node_segmented`. This binds the `(contract_hash,
-//! invariant_digest)` tuple IN the deployed recursion tree the light client folds,
-//! so a mint whose `contract_hash` is backed by no verifying attestation is UNSAT —
-//! the same fold-binding shape the sovereign / custom / membership carriers ride.
-//! The adversarial refutation it answers is
-//! `metatheory/Dregg2/Circuit/HatcheryBackingAttack.lean`
-//! (`deployed_admits_unbacked_hatchery`); the fold tooth bites in
-//! `hatchery_leaf_adapter::tests::forged_contract_hash_is_rejected_by_the_fold`.
-//! Two named seams remain (NOT vacuity): the deployed mint leg must DUAL-EXPOSE its
-//! `contract_hash` teeth (a descriptor PI-exposure change — the VK-affecting
-//! "big-bang" piece this node consumes,
-//! `metatheory/docs/HOUSE-CAPACITIES-WELD-PLAN.md`, hatchery row), and full in-AIR
-//! re-verification that the `contract_hash` resolves to a verifying `CellContract`
-//! proof term stays the named off-AIR digest-of-attestation cost.
+//! The DEEPER weld — binding the kind's invariant into the EffectVM circuit so a
+//! light client (not just a re-executing validator) witnesses it as part of the
+//! proven kernel transition — is VK-affecting and is the named per-capacity
+//! follow-up (`metatheory/docs/HOUSE-CAPACITIES-WELD-PLAN.md`, hatchery row), the
+//! same lane the cap-root reshape drives.
 
 use dregg_cell::factory::{FactoryDescriptor, canonical_program_vk};
 use dregg_cell::program::{TransitionCase, TransitionGuard, TransitionMeta};
@@ -168,17 +154,11 @@ pub enum HpresProof {
     Pending,
     /// The kind is bound to a proved `Dregg2.Verify.Contract.CellContract` whose
     /// `step_ob` discharges this invariant, identified by the content hash of the
-    /// Lean artifact / `#assert_axioms`-pinned theorem name. The binding is REAL at
-    /// two layers: (executor/Lean) `metatheory/Dregg2/Deos/Hatchery.lean`'s
-    /// `Attested` cannot be constructed without the contract (hence a real
-    /// `step_ob`), and `attested_enforces_forever` cashes it out into the unbounded
-    /// "holds forever" carry; (light-client) the `contract_hash` is bound into the
-    /// per-turn recursion FOLD a pure light client verifies, by
-    /// `dregg_circuit_prove::hatchery_leaf_adapter` — a `contract_hash` no
-    /// attestation leaf backs is UNSAT in the aggregate (the
-    /// `HatcheryBackingAttack.deployed_admits_unbacked_hatchery` forgery answered).
-    /// An attestation for a *different* invariant is rejected
-    /// (`forged_attestation_rejected`).
+    /// Lean artifact / `#assert_axioms`-pinned theorem name. The binding is REAL:
+    /// `metatheory/Dregg2/Deos/Hatchery.lean`'s `Attested` cannot be constructed
+    /// without the contract (hence a real `step_ob`), and `attested_enforces_forever`
+    /// cashes it out into the unbounded "holds forever" carry. An attestation for a
+    /// *different* invariant is rejected (`forged_attestation_rejected`).
     Attested { contract_hash: [u8; 32] },
 }
 
@@ -187,17 +167,6 @@ impl HpresProof {
     /// the runtime gate alone).
     pub fn is_attested(&self) -> bool {
         matches!(self, HpresProof::Attested { .. })
-    }
-
-    /// The attested content hash the v12 rotated CARRIER MATERIAL publishes on the AFTER
-    /// commitment's `contract_hash8` octet (limbs 96..103) at a hatchery-mint proof site —
-    /// `Some` iff a machine-checked forever-crown (`Attested`) is bound, `None` (→ zero octet)
-    /// while the crown is merely `Pending`.
-    pub fn contract_hash(&self) -> Option<[u8; 32]> {
-        match self {
-            HpresProof::Attested { contract_hash } => Some(*contract_hash),
-            HpresProof::Pending => None,
-        }
     }
 }
 
@@ -292,19 +261,6 @@ impl MintedKind {
     pub fn attest_hpres(mut self, contract_hash: [u8; 32]) -> Self {
         self.hpres = HpresProof::Attested { contract_hash };
         self
-    }
-
-    /// The v12 rotated CARRIER MATERIAL a hatchery-mint proof site threads into the AFTER
-    /// commitment (STEP-2.5): the `contract_hash8` octet (limbs 96..103) carries this kind's
-    /// Hatchery `Attested` content hash, so the honest mint's `state_commit` is NON-ZERO on that
-    /// octet — the SAT foundation the STEP-3 `contract_hash8` PI pin publishes. A `Pending` crown
-    /// yields the `Default` (zero octet). `child_vk` stays `None` (the factory child-VK octet is a
-    /// separate carrier, filled at the factory proof site).
-    pub fn carrier_material(&self) -> dregg_cell::commitment::RotationCarrierMaterial {
-        dregg_cell::commitment::RotationCarrierMaterial {
-            child_vk: None,
-            contract_hash: self.hpres.contract_hash(),
-        }
     }
 
     /// Enforce the kind's invariant on a single transition — the GENUINE check.
@@ -634,34 +590,6 @@ mod tests {
                 contract_hash: [0xCC; 32]
             }
         );
-    }
-
-    /// STEP-2.5: the hatchery-mint CARRIER MATERIAL — an attested kind threads its forever-crown
-    /// content hash into the rotated `contract_hash8` octet (NON-ZERO), a `Pending` kind threads the
-    /// `Default` (zero octet). The value published is exactly `HpresProof::Attested{contract_hash}`.
-    #[test]
-    fn attested_kind_carries_the_contract_hash_material() {
-        let pending = balance_kind();
-        assert_eq!(pending.hpres, HpresProof::Pending);
-        let pending_mat = pending.carrier_material();
-        assert_eq!(
-            pending_mat.contract_hash, None,
-            "a Pending crown → zero octet"
-        );
-        assert_eq!(pending_mat.child_vk, None);
-
-        let attested = balance_kind().attest_hpres([0xC7; 32]);
-        let mat = attested.carrier_material();
-        assert_eq!(
-            mat.contract_hash,
-            Some([0xC7; 32]),
-            "the attested contract hash rides the carrier material (non-zero octet 96..103)"
-        );
-        assert_eq!(
-            mat.child_vk, None,
-            "the hatchery carrier does not fill the factory child-VK octet"
-        );
-        assert_eq!(attested.hpres.contract_hash(), Some([0xC7; 32]));
     }
 
     /// The Lean rung: the abstraction-mint invariant is PROVEN, not just

@@ -48,39 +48,19 @@
 //! 8. [`surface`] — a documented, ready-to-mount `CockpitSurface` sketch for the
 //!    confined-Hermes agent dock (does NOT depend on starbridge-v2).
 //!
-//! ## The brain — a real closed loop, not a fixed script
-//!
-//! 9. [`brain`] — the agent BRAIN that the scripted stand-in is replaced by. An
-//!    [`brain::LlmBrain`] decides the next step from the running
-//!    [`brain::AgentConvo`], OBSERVES each gate verdict, and decides again — a
-//!    closed `decide → gate → observe` loop. Two ship: [`brain::LocalBrain`] (a
-//!    deterministic, reactive ON-BOX brain — reads the prompt, adapts to refusals)
-//!    and [`brain::HttpLlm`] (the live BYO-key LLM path over [`brain::LlmHttpCaller`]).
-//!    The operator's [`brain::LlmKeys`] reach the provider and NOWHERE the agent's
-//!    reach travels (redacted Debug; never in a tool-call / receipt / wire).
-//! 10. [`agent_peer`] — [`agent_peer::HermesAgentPeer`]: the [`acp_client::AcpPeer`]
-//!    that runs the brain loop over the SAME `acp_adapter` wire shapes the mock
-//!    replays, so the UNCHANGED [`AcpClient`] drives a real confined agent.
-//!
-//! ## What is REAL vs. the remaining seam (honest)
+//! ## What is REAL vs. MOCK (honest)
 //!
 //! REAL: the [`ToolGateway`](dregg_sdk::ToolGateway) path — `admit` + `invoke`
 //! run on the verified executor and yield a genuine [`dregg_turn::TurnReceipt`];
 //! the ACP TRANSPORT — real ndjson JSON-RPC framing + a live-capable subprocess
-//! spawner; the riding effects; the per-tool grants; the inspector; AND the agent
-//! BRAIN itself — a real closed reactive loop ([`brain::LocalBrain`]) or a real
-//! BYO-key LLM ([`brain::HttpLlm`], proven over a mock provider, live against a
-//! real endpoint). The brain decides + adapts; it is no longer a pre-written list.
-//! THE REMAINING SEAM: a live model-provider credential (the BYO key), and
-//! compiling the brain's provider client into the exec-denied [`confined`] jail
-//! body (it runs `execve`-free, so [`brain::LocalBrain`] already fits) in place of
-//! [`confined::stand_in_acp_peer`]. The Nous-Research `hermes-acp` venv subprocess
-//! ([`AcpTransport::spawn_hermes`]) is the other live brain path (env-broken here).
+//! spawner; the riding effects; the per-tool grants; the inspector.
+//! MOCK: the Hermes PEER in the tested end-to-end loop — a faithful replay of
+//! `acp_adapter`'s message shapes, because the live `hermes-acp` install in this
+//! environment is broken and a working one needs model credentials. The seam is
+//! exercised identically over either peer.
 
 pub mod acp;
 pub mod acp_client;
-pub mod agent_peer;
-pub mod brain;
 pub mod bridge;
 #[cfg(feature = "js-agent")]
 pub mod card_authoring;
@@ -98,7 +78,6 @@ pub mod live_js;
 pub mod mandate;
 pub mod mcp_server;
 pub mod mock_peer;
-pub mod resident;
 #[cfg(feature = "js-agent")]
 pub mod run_js;
 #[cfg(feature = "screenshot")]
@@ -110,17 +89,12 @@ pub use acp::{PermissionOutcome, ToolCallRequest, ToolKind};
 pub use acp_client::{
     AcpClient, AcpError, AcpPeer, AcpTransport, JsRunRecord, PromptRun, RunJsHook, StreamEvent,
 };
-pub use agent_peer::HermesAgentPeer;
-pub use brain::{
-    AgentConvo, BrainStep, HttpLlm, LlmBrain, LlmHttpCaller, LlmKeys, LocalBrain, MoonshotCaller,
-    OpenAICompatCaller, ToolObservation,
-};
 pub use bridge::{HermesGateway, ToolMarket};
 #[cfg(unix)]
-pub use egress::{EgressGrant, EgressNetGrant, EgressPolicy, provider_host_port};
+pub use egress::{EgressGrant, EgressPolicy};
 pub use grant_registry::{GrantRegistry, MandateKey};
 #[cfg(unix)]
-pub use host::{DreggHost, HostedAgentReport, HostedToolVerdict};
+pub use host::{DreggHost, HostedAgentReport};
 pub use mcp_server::{ConfinedToolResult, DREGG_TOOL_NAMES, McpServer, McpToolHost};
 
 // Re-export the grounding SDK types a HOST needs to construct a confined gateway
@@ -135,7 +109,6 @@ pub use dregg_sdk::{AgentCipherclerk, AgentRuntime, HeldToken, ToolGrant};
 pub use live_js::{LiveAuthoringHands, LiveComposeHands, LiveJsHands, script_of_call};
 pub use mandate::{Mandate, MandateRow};
 pub use mock_peer::{MockHermesPeer, ScriptedCall};
-pub use resident::{AnthropicCaller, ResidentBrain, resident_brain_from_env};
 #[cfg(feature = "js-agent")]
 pub use run_js::{
     RunJsAuthorOutcome, RunJsAuthoringTool, RunJsComposeOutcome, RunJsComposeTool, RunJsError,

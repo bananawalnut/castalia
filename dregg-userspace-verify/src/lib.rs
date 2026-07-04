@@ -163,12 +163,6 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// The passing verdict (also the serde default for optional verdict fields
-    /// like [`Assurance::exposure`], so older JSON that predates the field still
-    /// deserializes as a clean pass).
-    pub fn pass() -> Self {
-        Verdict::Pass
-    }
     /// `true` iff the verdict is [`Verdict::Pass`].
     pub fn is_pass(&self) -> bool {
         matches!(self, Verdict::Pass)
@@ -198,14 +192,6 @@ pub struct Assurance {
     pub no_amplification: Verdict,
     pub wellformed: Verdict,
     pub ring_balance: Verdict,
-    /// The `≤` exposure ceiling — `Σ provisional-exposure ≤ reserve`
-    /// ([`app::check_exposure_bound`]). Like [`Self::ring_balance`], this needs
-    /// a schema (which reserve slot on which cell) it cannot infer from the bare
-    /// forest, so [`analyze`] leaves it `Pass` (vacuously — no reserve to
-    /// exceed); the FFI's `exposure` sub-request (or a direct
-    /// `check_exposure_bound` call) populates it with the real verdict.
-    #[serde(default = "Verdict::pass")]
-    pub exposure: Verdict,
 }
 
 impl Assurance {
@@ -215,7 +201,6 @@ impl Assurance {
             && self.no_amplification.is_pass()
             && self.wellformed.is_pass()
             && self.ring_balance.is_pass()
-            && self.exposure.is_pass()
     }
     /// All findings across all checks, flattened.
     pub fn all_findings(&self) -> Vec<Finding> {
@@ -225,7 +210,6 @@ impl Assurance {
             &self.no_amplification,
             &self.wellformed,
             &self.ring_balance,
-            &self.exposure,
         ] {
             v.extend(verdict.findings().iter().cloned());
         }
@@ -685,10 +669,6 @@ pub fn extract_ring_legs(forest: &CallForest) -> Vec<RingLeg> {
 /// the legs [`extract_ring_legs`] pulls from the forest (for
 /// `Intent::RingSettlement` artifacts). For an ordinary turn, ring balance is
 /// `Pass` (vacuously — no ring legs to imbalance) unless you opt in.
-///
-/// The [`Assurance::exposure`] ceiling is likewise `Pass` here — it needs a
-/// reserve schema this entry does not take; run [`app::check_exposure_bound`]
-/// (or the FFI `exposure` sub-request) to populate it.
 pub fn analyze(forest: &CallForest, treat_as_ring: bool) -> Assurance {
     // One FUSED pre-order pass produces the conservation, no-amplification, and
     // well-formedness verdicts together — each with its own accumulator, so the
@@ -705,11 +685,6 @@ pub fn analyze(forest: &CallForest, treat_as_ring: bool) -> Assurance {
         no_amplification: fused.no_amplification,
         wellformed: fused.wellformed,
         ring_balance,
-        // The exposure ceiling needs a reserve schema `analyze` does not carry
-        // (which slot on which cell holds `R`); it is `Pass` here (vacuously —
-        // no reserve to exceed) and populated by the FFI `exposure` sub-request
-        // or a direct `app::check_exposure_bound` call. Mirrors `ring_balance`.
-        exposure: Verdict::Pass,
     }
 }
 

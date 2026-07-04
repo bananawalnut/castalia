@@ -49,9 +49,11 @@
 //!   `cells_root` and `iroot` are the same for every effect row of the turn.
 
 use crate::action::Effect;
-use dregg_cell::commitment::compute_authority_digest_8;
+use dregg_cell::commitment::{
+    compute_authority_digest_felt, compute_canonical_capability_root_felt,
+};
 use dregg_cell::{Cell, Ledger, lifecycle::CellLifecycle};
-use dregg_circuit::effect_vm::split_u64;
+use dregg_circuit::effect_vm::{fold_bytes32_to_bb, split_u64};
 use dregg_circuit::field::BabyBear;
 use dregg_circuit::heap_root::{compute_heap_root_entries, empty_heap_root};
 use dregg_circuit::poseidon2::{hash_bytes, hash_many};
@@ -64,7 +66,7 @@ pub const NUM_REGISTERS: usize = 24;
 /// perms_digest · vk_digest · mode · fields_root). Matches Lean `preLimbsAt_length = 37` at R = 24,
 /// after the WAVE-3 mode/fields-root flag-day widening (NUM_PRE_LIMBS 35→37 — the committed mode byte +
 /// fields_root digest sub-limbs, the NEW LAST pre-iroot limbs).
-pub const NUM_PRE_LIMBS: usize = 1 + NUM_REGISTERS + 4 + 3 + 5 + 75 + 57; // v13: 112 + 57 = 169 (+56 fields[0..7] completion lanes 112..=167 + 1 pad limb 168 — the faithful fields-octet grow)
+pub const NUM_PRE_LIMBS: usize = 1 + NUM_REGISTERS + 4 + 3 + 5; // 1 + 24 + 4 + 3 + 5 = 37
 
 /// The collection id under which a present-cell existence leaf is keyed in the cells tree.
 const CELLS_COLLECTION: u32 = 0;
@@ -321,13 +323,13 @@ pub fn wire_commit(pre_limbs: &[BabyBear], iroot: BabyBear) -> BabyBear {
 ///
 /// ADDITIVE: the live `wire_commit` is the 1-felt chain until the trace/PI/executor flag-day cuts
 /// the proof-bound `STATE_COMMIT` to all 8 felts.
-pub fn wire_commit_8(pre_limbs: &[BabyBear], iroot: BabyBear) -> dregg_circuit::Faithful8 {
+pub fn wire_commit_8(pre_limbs: &[BabyBear], iroot: BabyBear) -> [BabyBear; 8] {
     assert_eq!(
         pre_limbs.len(),
         NUM_PRE_LIMBS,
         "wire_commit_8: {NUM_PRE_LIMBS} pre-iroot limbs at R={NUM_REGISTERS}"
     );
-    dregg_circuit::Faithful8::from_wire_commit(pre_limbs, iroot)
+    dregg_circuit::poseidon2::wire_commit_8(pre_limbs, iroot)
 }
 
 /// The full witness producer for one cell's before/after state in a real turn.
@@ -343,7 +345,6 @@ pub fn produce(
     nullifier_root: &[u8; 32],
     commitments_root: &[u8; 32],
     receipt_hashes: &[[u8; 32]],
-    material: &dregg_cell::commitment::RotationCarrierMaterial,
 ) -> RotationWitness {
     let mut pre_limbs = vec![BabyBear::ZERO; NUM_PRE_LIMBS];
     // limb 0: cells_root (turn-level).
@@ -352,59 +353,28 @@ pub fn produce(
     pre_limbs[1] = balance_lo_felt(cell.state.balance()); // r0
     pre_limbs[2] = nonce_felt(cell.state.nonce()); // r1
     pre_limbs[3] = balance_hi_felt(cell.state.balance()); // r2
-    // r3..r10 ↔ fields[0..7] lane 0 (limbs 4..=11) ‖ the 56 fields COMPLETION lanes 112..=167
-    // (fields[i] lanes 1..7 → `112 + 7·i .. +6`). THE v13 FAITHFUL FIELDS OCTET (producer twin of
-    // `cell::commitment::compute_rotated_pre_limbs`): each field's 32 bytes ride a full
-    // `field_limbs8` 8-lane split (lane 0 = the u64-lane lo32, the faithful ~124-bit binding),
-    // REPLACING the eight ~31-bit `fold_bytes32_to_bb` Horner folds that rode one
-    // `from_lossy_31bit_DANGER` octet. This CLOSES the last degraded-felt residual. The setField
-    // value8 weld FORCES the written slot's 8 lanes to the declared params; the completion freezes
-    // pin every non-written field's 7 lanes on a value turn (the fields GENTIAN law).
     for i in 0..8 {
-        let base = 112 + 7 * i;
-        dregg_circuit::Faithful8::from_field_limbs8(&cell.state.fields[i]).write_lanes(
-            &mut pre_limbs,
-            [
-                4 + i,
-                base,
-                base + 1,
-                base + 2,
-                base + 3,
-                base + 4,
-                base + 5,
-                base + 6,
-            ],
-        );
+        // r3..r10 ↔ fields[0..7]: the 32-byte record field packed into the field limb the
+        // v1 circuit state block carries (`fold_bytes32_to_bb`, the same Horner packing).
+        pre_limbs[4 + i] = fold_bytes32_to_bb(&cell.state.fields[i]);
     }
-    // r11..r17 (limbs 12..=18) + r23 (limb 24): THE FAITHFUL 8-FELT AUTHORITY DIGEST (H1) — the
-    // ~124-bit blake3-rooted commitment folding ALL authority-bearing cell state that no other
-    // rotated limb carries (permissions/VK/delegate/delegation/program/mode/token_id +
-    // visibility/commitments/proved/side-table roots + fields[8..16]). limb 24 = limb-0 (historical
-    // position + v1 cross-anchor); the 7 previously-zero headroom limbs 12..=18 carry limb-1..7.
-    // Byte-identical to the cell-side `commitment::compute_rotated_pre_limbs` so the three-way
-    // agreement holds; the chained `wireCommitR` binds all 8, the record-pin / continuity freezes
-    // WELD them (GENTIAN law). r18..r22 (limbs 19..=23): remaining headroom — zero for this turn.
-    compute_authority_digest_8(cell).write_lanes(&mut pre_limbs, [24, 12, 13, 14, 15, 16, 17, 18]);
-    // limb 25: cap_root lane-0 (welded) ‖ extras 51..=57: the SEVEN cap-root completion felts
-    // (lanes 1..7) — THE FAITHFUL 8-FELT CAP ROOT the circuit's 8-felt `cap_root` column GROUP
-    // carries (`EffectVmEmitRotationV3.capRootGroupCol`: lane 0 = limb 25, lanes 1..7 = limbs
-    // 51..57). Cell and circuit fold through the SAME impl (the A2 / GENTIAN differentials guard
-    // it), so the `cap_root ↔ cap_root` weld holds lane-for-lane by construction. Byte-identical
-    // to `commitment::compute_rotated_pre_limbs`.
-    dregg_cell::commitment::compute_canonical_capability_root_8(&cell.capabilities)
-        .write_lanes(&mut pre_limbs, [25, 51, 52, 53, 54, 55, 56, 57]);
+    // r11..r22 (limbs 12..=23): app-register headroom — zero for this kernel turn.
+    // r23 (limb 24): THE AUTHORITY DIGEST — folds ALL authority-bearing cell state that no
+    // other rotated limb carries (permissions/VK/delegate/delegation/program/mode/token_id +
+    // visibility/commitments/proved/side-table roots + fields[8..16]). Byte-identical to the
+    // cell-side `commitment::compute_rotated_pre_limbs` so the three-way agreement holds; the
+    // commitment binds it (the Lean welds leave r23 free, the anti-ghost keystone binds it).
+    pre_limbs[24] = compute_authority_digest_felt(cell);
+    // limb 25: cap_root (welded) — the SAME openable sorted-Poseidon2 felt the circuit's
+    // `cap_root` column carries (cell and circuit compute it through the SAME impl, the A2
+    // differential guards it), so the `cap_root ↔ cap_root` weld holds by construction.
+    pre_limbs[25] = compute_canonical_capability_root_felt(&cell.capabilities);
     // limb 26: nullifier_root (the noteSpend shielded-set root).
     pre_limbs[26] = root_felt(nullifier_root);
     // limb 27: commitments_root (the noteCreate shielded-set root — the flag-day new limb).
     pre_limbs[27] = root_felt(commitments_root);
-    // limb 28: heap_root lane-0 (welded) ‖ extras 58..=64: the SEVEN heap-root completion felts
-    // (Phase H-HEAP-8). The faithful native-`heap_node8` (arity-16) 8-felt sorted-Merkle root over
-    // the cell's heap map — cell and circuit fold through the SAME impl (`compute_canonical_heap_root_8`),
-    // so the `heap_root ↔ heap_root` weld holds lane-for-lane by construction (the heap GENTIAN tooth
-    // guards it). Byte-identical to `commitment::compute_rotated_pre_limbs`. This REPLACES the lossy
-    // 1-felt `root_felt(&cell.state.heap_root)` — the degraded-felt gate is satisfied for heap_root.
-    dregg_cell::state::compute_canonical_heap_root_8(&cell.state.heap_map)
-        .write_lanes(&mut pre_limbs, [28, 58, 59, 60, 61, 62, 63, 64]);
+    // limb 28: heap_root.
+    pre_limbs[28] = root_felt(&cell.state.heap_root);
     // limbs 29,30,31: lifecycle (opaque felt), epoch, committed_height.
     pre_limbs[29] = lifecycle_felt(&cell.lifecycle);
     pre_limbs[30] = epoch_felt(cell.state.delegation_epoch());
@@ -413,48 +383,14 @@ pub fn produce(
     // limb).
     pre_limbs[32] = lifecycle_disc_felt(&cell.lifecycle);
     // limbs 33,34: perms_digest, vk_digest (the WAVE-2 flag-day committed authority sub-limbs — the
-    // setPerms / setVK welds force these to the declared param). limb-0 stays here (historical); the
-    // v10 weld lands the seven completion felts at extras 37..=43 (perms) / 44..=50 (vk).
-    // v10 perms/vk faithful 8-felt completion (byte-identical to `commitment::compute_rotated_pre_limbs`).
-    dregg_cell::commitment::perms_digest_8(&cell.permissions)
-        .write_lanes(&mut pre_limbs, [33, 37, 38, 39, 40, 41, 42, 43]);
-    dregg_cell::commitment::vk_digest_8(&cell.verification_key)
-        .write_lanes(&mut pre_limbs, [34, 44, 45, 46, 47, 48, 49, 50]);
+    // setPerms / setVK welds force these to the declared param).
+    pre_limbs[33] = perms_digest_felt(&cell.permissions);
+    pre_limbs[34] = vk_digest_felt(&cell.verification_key);
     // limbs 35,36: mode, fields_root (the WAVE-3 flag-day committed authority sub-limbs — the
     // makeSovereign mode CONSTANT-force limb and the setFieldDyn / refusal fields-root weld limb, the
     // NEW LAST pre-iroot limbs).
     pre_limbs[35] = mode_felt(&cell.mode);
-    // limb 36: fields_root lane-0 (welded) ‖ extras 65,66,19,20,21,22,23: the SEVEN fields-root
-    // completion felts (Phase H-FIELDS-8). The faithful native-`node8` (arity-16) 8-felt sorted-Merkle
-    // root over the cell's user-field map — cell and circuit fold through the SAME impl
-    // (`compute_canonical_fields_root_8`), so the `fields_root ↔ fields_root` weld holds lane-for-lane by
-    // construction (the fields GENTIAN tooth guards it). Byte-identical to
-    // `commitment::compute_rotated_pre_limbs`. This REPLACES the lossy 1-felt
-    // `fields_root_felt(&cell.state.fields_root)` — the degraded-felt gate is satisfied for fields_root.
-    dregg_cell::state::compute_canonical_fields_root_8(&cell.state.fields_map)
-        .write_lanes(&mut pre_limbs, [36, 65, 66, 19, 20, 21, 22, 23]);
-
-    // v12 CARRIER-MATERIAL octets (limbs 88..=111) — the SAT foundation. Byte-identical to the
-    // cell-side twin `commitment::compute_rotated_pre_limbs`; the trace generator (`fill_block`)
-    // carries them by copy. Absent material → ZERO (the vector is ZERO-initialised).
-    use dregg_circuit::effect_vm::trace_rotated::{
-        B_CHILD_VK_OCTET, B_CONTRACT_HASH_OCTET, B_PUBKEY_OCTET,
-    };
-    // 88..=95: child_vk8 iff the block's effect is `CreateCellFromFactory`, else ZERO.
-    if let Some(child_vk) = material.child_vk {
-        dregg_circuit::Faithful8::from_bytes32(&child_vk)
-            .write_octet(&mut pre_limbs, B_CHILD_VK_OCTET);
-    }
-    // 96..=103: contract_hash8 iff the block's effect is the hatchery mint, else ZERO.
-    if let Some(contract_hash) = material.contract_hash {
-        dregg_circuit::Faithful8::from_bytes32(&contract_hash)
-            .write_octet(&mut pre_limbs, B_CONTRACT_HASH_OCTET);
-    }
-    // 104..=111: pubkey8 UNCONDITIONALLY — the operated cell's owner key, the 30-bit canonical form
-    // that matches the executor's KEY_COMMIT teeth (byte-identical to the cell twin's
-    // `canonical_to_babybear_pi`).
-    let pk8 = dregg_commit::typed::canonical_32_to_felts_8(cell.public_key());
-    dregg_circuit::Faithful8::from_canonical_key(pk8).write_octet(&mut pre_limbs, B_PUBKEY_OCTET);
+    pre_limbs[36] = fields_root_felt(&cell.state.fields_root);
 
     let iroot_val = iroot(receipt_hashes);
     let state_commit = wire_commit(&pre_limbs, iroot_val);
@@ -491,20 +427,6 @@ pub fn produce(
 /// aggregator's shared-turn-id projection) — pass it for joint-turn participants that must agree
 /// on a shared id; pass `None` for whole-chain turns (the carried hash from the witness stands).
 ///
-/// ## The post-regen registry TAIL (v12 exposure regen)
-///
-/// The committed wide registry row a member proves against may demand MORE PIs (and trace
-/// columns) than the per-family wide producer emits: the v12 big-bang regen made the committed
-/// transfer row the membership-teeth member (`CarrierComposed.transferV3MembershipWide` — 2
-/// `(sender_leaf, authorized_root)` claim PIs spliced AHEAD of the 16 wide anchors, 2 teeth
-/// columns past the carriers). The tail derivation is SHARED: it lives IN the wide dispatcher
-/// (`generate_rotated_effect_vm_descriptor_and_trace_wide` — derived from the descriptor, never
-/// a hardcoded count, fail-closed on a tail it has no producer fill for), so every route emits
-/// the committed shape. This recipe's contribution is the producer-honest teeth VALUES from the
-/// BEFORE cell (`sender_membership_teeth` — `compress_member` over the cell's owner key + the
-/// declared `SenderAuthorized { PublicRoot }` root slot; a cell declaring no such caveat passes
-/// the ZERO form, exactly the no-caveat sentinel the fold's membership arm refuses to bind).
-///
 /// Fails closed if the turn's effect is not a single rotated R=24 cohort member (the generator
 /// rejects a non-cohort / empty / heterogeneous slice).
 #[cfg(feature = "prover")]
@@ -519,15 +441,7 @@ pub fn mint_rotated_participant_leg(
     receipt_log: &[[u8; 32]],
     turn_id: Option<BabyBear>,
 ) -> Result<dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg, String> {
-    use dregg_circuit::descriptor_ir2::{
-        UMemBoundaryWitness, prove_vm_descriptor2_for_config, verify_vm_descriptor2_with_config,
-    };
-    use dregg_circuit::effect_vm::pi;
-    use dregg_circuit::effect_vm::trace_rotated::{
-        RotatedBlockWitness, empty_caveat_manifest,
-        generate_rotated_effect_vm_descriptor_and_trace_wide, transfer_caveat_manifest,
-    };
-    use dregg_circuit_prove::ivc_turn_chain::ir2_leaf_wrap_config;
+    use dregg_circuit::effect_vm::trace_rotated::RotatedBlockWitness;
     use dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg;
 
     // The turn-context ledger snapshot: a single-cell ledger holding the after-cell (the
@@ -543,9 +457,6 @@ pub fn mint_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let after_w = produce(
         after_cell,
@@ -553,197 +464,18 @@ pub fn mint_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
         RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot)
             .map_err(|e| format!("mint_rotated_participant_leg: rotated block witness: {e}"))
     };
 
-    if effects.is_empty() {
-        return Err("mint_rotated_participant_leg: empty effect slice".to_string());
-    }
-    let caveat = match effects {
-        [dregg_circuit::effect_vm::Effect::Transfer { .. }] => transfer_caveat_manifest(),
-        _ => empty_caveat_manifest(),
-    };
-    // The SAME full-cohort wide dispatch the live SDK wide prover runs. The value/field/create
-    // cohort rides the bare wide producer with NO special witnesses (`None` for the note-spend
-    // grow-gate nullifiers / refusal fields / cap-write tree) — an effect that needs one routes
-    // through its dedicated minter and fails closed here. The dispatcher owns the post-regen
-    // registry TAIL (derived from the committed descriptor, fail-closed on an unknown member);
-    // this recipe threads the producer-honest membership-teeth pair from the BEFORE cell.
-    let (desc, trace, mut dpis, map_heaps, mem_boundary) =
-        generate_rotated_effect_vm_descriptor_and_trace_wide(
-            initial_state,
-            effects,
-            &bridge(&before_w)?,
-            &bridge(&after_w)?,
-            &caveat,
-            None,
-            None,
-            None,
-            Some(sender_membership_teeth(before_cell)),
-        )
-        .map_err(|e| format!("mint_rotated_participant_leg: wide producer dispatch failed: {e}"))?;
-    debug_assert_eq!(dpis.len(), desc.public_input_count);
-
-    // Optional shared-turn-id override (joint participants). The EffectVm AIRs do not constrain
-    // TURN_HASH (it is an executor-trusted shared PI), so overriding the carried prefix slot and
-    // proving against the edited PI yields a still-valid proof binding the chosen id.
-    if let Some(tid) = turn_id {
-        dpis[pi::TURN_HASH_BASE] = tid;
-    }
-
-    let wrap_config = ir2_leaf_wrap_config();
-    let umem_boundary = UMemBoundaryWitness::default();
-    let proof = prove_vm_descriptor2_for_config(
-        &desc,
-        &trace,
-        &dpis,
-        &mem_boundary,
-        &map_heaps,
-        &umem_boundary,
-        &wrap_config,
-    )
-    .map_err(|e| format!("mint_rotated_participant_leg: wide IR-v2 batch prove failed: {e}"))?;
-    verify_vm_descriptor2_with_config(&desc, &proof, &dpis, &wrap_config).map_err(|e| {
-        format!("mint_rotated_participant_leg: minted wide proof self-verify failed: {e}")
-    })?;
-
-    Ok(RotatedParticipantLeg {
-        proof,
-        descriptor: desc,
-        public_inputs: dpis,
-        carrier_witness: None,
-    })
-}
-
-/// **THE PRODUCER-SIDE MEMBERSHIP-TEETH FILL** — the honest `(sender_leaf, authorized_root)`
-/// values the committed transfer row's teeth columns carry, derived from the BEFORE cell the leg
-/// mints from (the recipe twin of the SDK attach lane's `retain_sender_membership`, which pins
-/// the SAME pair for the fold's membership bundle):
-///
-/// * `sender_leaf` = [`dregg_commit::typed::compress_member`] over the cell's owner key — the
-///   canonical chip-native membership compress (the in-AIR keystone's leaf domain). The generic
-///   recipe's actor IS the cell owner (the leg is minted from the cell's own turn).
-/// * `authorized_root` = the root felt read from the cell's `fields[set_root_index]` slot in the
-///   executor verifier's canonical form (`membership_verifier::root_felt_from_slot` — the felt's
-///   4-byte little-endian low bytes), where `set_root_index` is the slot the cell's program
-///   declares via `SenderAuthorized { AuthorizedSet::PublicRoot { .. } }`.
-///
-/// A cell whose program declares NO such caveat fills the ZERO pair — the committed row's teeth
-/// columns are producer-filled claim carriers (the in-AIR compress/fields-read welds are the
-/// named `MembershipAuthRootEdge` seams), and the zero form is the no-caveat sentinel: the fold's
-/// membership arm only binds these PIs when a membership bundle is attached, and a bundle claim
-/// never equals the zero pair for a real member.
-///
-/// `pub(crate)` + un-gated: the executor's rotated verifier (`verify_one_cohort_run`) is the
-/// TRUSTED twin — it reconstructs the SAME pair from the trusted before-cell to anchor the two
-/// published teeth PIs, so a proof whose bound teeth columns disagree is UNSAT (executor-derived,
-/// never prover-supplied).
-pub(crate) fn sender_membership_teeth(before_cell: &Cell) -> (BabyBear, BabyBear) {
-    use dregg_cell::program::AuthorizedSet;
-    use dregg_cell::{CellProgram, StateConstraint};
-
-    let scan = |cs: &[StateConstraint]| {
-        cs.iter().find_map(|c| match c {
-            StateConstraint::SenderAuthorized {
-                set: AuthorizedSet::PublicRoot { set_root_index },
-            } => Some(*set_root_index),
-            _ => None,
-        })
-    };
-    let slot_index = match &before_cell.program {
-        CellProgram::Predicate(cs) => scan(cs),
-        CellProgram::Cases(cases) => cases.iter().find_map(|case| scan(&case.constraints)),
-        _ => None,
-    };
-    match slot_index.and_then(|i| before_cell.state.fields.get(i as usize)) {
-        Some(slot) => (
-            dregg_commit::typed::compress_member(before_cell.public_key()),
-            // The verifier's `root_felt_from_slot`: the root is ALREADY a felt, published in the
-            // slot as its canonical 4-byte little-endian form — read, don't compress.
-            BabyBear::new(u32::from_le_bytes([slot[0], slot[1], slot[2], slot[3]])),
-        ),
-        None => (BabyBear::ZERO, BabyBear::ZERO),
-    }
-}
-
-/// **THE CUSTOM-WIDE LEG MINTING RECIPE — the production custom-binding fold plug.** Build a
-/// [`RotatedParticipantLeg`](dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg) for
-/// an [`Effect::Custom`](dregg_circuit::effect_vm::Effect::Custom) turn from the real before/after
-/// actor `Cell`s, routing through the WIDE custom mint
-/// ([`RotatedParticipantLeg::mint_custom_wide_from_block_witnesses`](dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg::mint_custom_wide_from_block_witnesses))
-/// — the `customVmDescriptor2R24` leg that publishes the claimed `custom_proof_commitment` at PI
-/// 46..49 — and ATTACHING the prover-side re-provable [`CustomWitnessBundle`](dregg_circuit_prove::joint_turn_aggregation::CustomWitnessBundle).
-///
-/// This is the path that makes the custom binding REAL-FOLDED in production: the chain prover folds
-/// the attached witness's sub-proof leaf into the recursion tree a PURE LIGHT CLIENT verifies, so a
-/// forged `custom_proof_commitment` (one no verifying sub-proof of the bundle's PIs backs) is UNSAT
-/// — rejected without any off-AIR re-execution. Build `bundle` via
-/// [`CustomWitnessBundle::from_bound_custom_proof`](dregg_circuit_prove::joint_turn_aggregation::CustomWitnessBundle::from_bound_custom_proof)
-/// over the SAME `BoundCustomProof` whose `proof_commitment()` was threaded into the
-/// `Effect::Custom`'s `proof_commitment` field at turn-build.
-///
-/// Fails closed if the lead effect is not `Effect::Custom`, or if the bound proof carried no
-/// retained witness (a wire-reconstructed proof — `from_bound_custom_proof` returns `None`).
-#[cfg(feature = "prover")]
-#[allow(clippy::too_many_arguments)]
-pub fn mint_custom_wide_rotated_participant_leg(
-    initial_state: &dregg_circuit::effect_vm::CellState,
-    effects: &[dregg_circuit::effect_vm::Effect],
-    before_cell: &Cell,
-    after_cell: &Cell,
-    nullifier_root: &[u8; 32],
-    commitments_root: &[u8; 32],
-    receipt_log: &[[u8; 32]],
-    turn_id: Option<BabyBear>,
-    bundle: dregg_circuit_prove::joint_turn_aggregation::CustomWitnessBundle,
-) -> Result<dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg, String> {
-    use dregg_circuit::effect_vm::trace_rotated::RotatedBlockWitness;
-    use dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg;
-
-    let mut ledger = Ledger::new();
-    ledger.insert_cell(after_cell.clone()).map_err(|e| {
-        format!("mint_custom_wide_rotated_participant_leg: ledger seed failed: {e:?}")
-    })?;
-
-    let before_w = produce(
-        before_cell,
-        &ledger,
-        nullifier_root,
-        commitments_root,
-        receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
-    );
-    let after_w = produce(
-        after_cell,
-        &ledger,
-        nullifier_root,
-        commitments_root,
-        receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
-    );
-    let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
-        RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot).map_err(|e| {
-            format!("mint_custom_wide_rotated_participant_leg: rotated block witness: {e}")
-        })
-    };
-
-    RotatedParticipantLeg::mint_custom_wide_from_block_witnesses(
+    RotatedParticipantLeg::mint_from_block_witnesses(
         initial_state,
         effects,
         &bridge(&before_w)?,
         &bridge(&after_w)?,
         turn_id,
-        bundle,
     )
 }
 
@@ -789,9 +521,6 @@ pub fn mint_welded_umem_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let after_w = produce(
         after_cell,
@@ -799,9 +528,6 @@ pub fn mint_welded_umem_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
         RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot)
@@ -877,9 +603,6 @@ pub fn mint_welded_wide_umem_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let after_w = produce(
         after_cell,
@@ -887,9 +610,6 @@ pub fn mint_welded_wide_umem_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
         RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot)
@@ -962,9 +682,6 @@ pub fn mint_welded_wide_umem_cap_write_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let after_w = produce(
         after_cell,
@@ -972,9 +689,6 @@ pub fn mint_welded_wide_umem_cap_write_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
         RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot)
@@ -1052,9 +766,6 @@ pub fn mint_welded_wide_umem_multidomain_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let after_w = produce(
         after_cell,
@@ -1062,9 +773,6 @@ pub fn mint_welded_wide_umem_multidomain_rotated_participant_leg(
         nullifier_root,
         commitments_root,
         receipt_log,
-        // recipe path: no effective_vk / contract_hash in hand (the faithful capture is at the
-        // executor's `effective_vk` / hatchery site) — ZERO carrier material.
-        &dregg_cell::commitment::RotationCarrierMaterial::default(),
     );
     let bridge = |w: &RotationWitness| -> Result<RotatedBlockWitness, String> {
         RotatedBlockWitness::new(w.pre_limbs.clone(), w.iroot)
@@ -1249,13 +957,10 @@ mod tests {
     }
 
     #[test]
-    fn pre_limb_count_is_112_at_r24() {
+    fn pre_limb_count_is_37_at_r24() {
         // 1 cells_root + 24 registers + 4 (cap/nullifier/commitments/heap) + 3 (lifecycle/epoch/
-        // committed_height) + 5 (disc + perms + vk + mode + fields_root, the WAVE-2/3 flag-days)
-        // + 51 accumulator-8-felt completion limbs (37..87, v10+v11 lanes 1..7)
-        // + 24 v12 carrier-material octets (88..111: child_vk8·contract_hash8·pubkey8, ZERO until gate-welded)
-        // + 56 v13 fields[0..7] completion lanes (112..167) + 1 pad limb (168).
-        assert_eq!(NUM_PRE_LIMBS, 169);
+        // committed_height) + 5 (disc + perms + vk + mode + fields_root, the WAVE-2/3 flag-days).
+        assert_eq!(NUM_PRE_LIMBS, 37);
     }
 
     /// THE iroot NON-OMISSION TOOTH (Lean `mroot_injective`): tamper / truncate / extend /
@@ -1361,7 +1066,7 @@ mod tests {
         use dregg_cell::lifecycle::{ArchivalAttestation, DeathCertificate, DeathReason};
         let base = Cell::with_balance([3u8; 32], [0u8; 32], 100);
         let id = base.id();
-        let rd = |c: &Cell| dregg_cell::commitment::compute_authority_digest_felt(c);
+        let rd = |c: &Cell| compute_authority_digest_felt(c);
         let lf = |c: &Cell| lifecycle_felt_cell(c);
 
         // setVK → record-digest: MOVES (anchored — the anchor bites).
@@ -1536,7 +1241,6 @@ mod tests {
             nullifier_root: [0u8; 32],
             commitments_root: [0u8; 32],
             iroot: BabyBear::new(7),
-            material: Default::default(),
         };
         // a permission flip — folded into the authority-digest limb (r23), a HIGH limb.
         let mut flipped = base.clone();

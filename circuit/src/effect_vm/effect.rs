@@ -33,8 +33,7 @@ pub struct AttenuateWitness {
     /// The GRANTED (post-attenuation, narrowed) leaf.
     pub granted: crate::cap_root::CapLeaf,
     /// Sibling digests along the leaf→root path (bottom-up, len `CAP_TREE_DEPTH`).
-    /// Native 8-felt (Phase H-CAP-8): each sibling is a full `cap_node8` digest.
-    pub siblings: Vec<[BabyBear; crate::cap_root::CAP_DIGEST_W]>,
+    pub siblings: Vec<BabyBear>,
     /// Direction bits along the path (0 = current is left child, 1 = right).
     pub directions: Vec<u8>,
     /// The held tier ordinal (None=0…Custom=5) — the lattice ordinal distinct
@@ -64,8 +63,7 @@ pub struct RevokeWitness {
     /// the old `cap_root` by [`Self::siblings`] / [`Self::directions`].
     pub held: crate::cap_root::CapLeaf,
     /// Sibling digests along the leaf→root path (bottom-up, len `CAP_TREE_DEPTH`).
-    /// Native 8-felt (Phase H-CAP-8): each sibling is a full `cap_node8` digest.
-    pub siblings: Vec<[BabyBear; crate::cap_root::CAP_DIGEST_W]>,
+    pub siblings: Vec<BabyBear>,
     /// Direction bits along the path (0 = current is left child, 1 = right).
     pub directions: Vec<u8>,
 }
@@ -278,14 +276,8 @@ pub enum Effect {
     ///
     /// State flows through normally (continuity enforced by the Effect VM).
     /// Domain-specific constraints are proven in a separate proof identified by
-    /// `custom_proof_commitment`. The Effect VM AIR does not verify the external
-    /// sub-proof with a row-local gate; instead the rotated Custom descriptor
-    /// PUBLISHES `custom_proof_commitment` / `custom_program_vk_hash` as public
-    /// inputs (Lean `EffectVmEmitRotationV3.customPiExposure`), and the per-turn
-    /// FOLD connects those PIs to the custom sub-proof leaf (the `custom_proof_bind`
-    /// recursion / `EngineBinding` carrier) — so a pure light client verifying the
-    /// aggregate witnesses the binding. The remaining wire step is connecting the
-    /// custom leaf's 4-felt PI-commitment to these PI slots in the joint-turn fold.
+    /// `custom_proof_commitment`. The verifier checks that the external proof is
+    /// valid and that its hash matches this commitment.
     Custom {
         /// VK hash identifying the custom program.
         ///

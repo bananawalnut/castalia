@@ -21,17 +21,17 @@ carried — it is DERIVED from the open. The double-spend hole closes IN-CIRCUIT
 ## The binding (the faithful nullifier-tree encoding)
 
 The kernel's `nullifiers : List Nat` is committed as a sorted-Merkle nullifier tree (the deployed
-nullifier accumulator). `NullifierTreeEncodes S8 root pre` says: the tree at `root` commits a key set
+nullifier accumulator). `NullifierTreeEncodes S root pre` says: the tree at `root` commits a key set
 that EQUALS the kernel nullifier set under the injective key map (`nfKey = noteLeaf = Nat ↪ ℤ`). Then
-`keysOf S8 root = nfKey '' pre.nullifiers` (the committed keys are exactly the nullifier keys), so a key
+`keysOf S root = nfKey '' pre.nullifiers` (the committed keys are exactly the nullifier keys), so a key
 absent from `keysOf` is a nullifier absent from `pre.nullifiers`. This is the SAME faithful-encoding
 discipline `DeployedFaithful` carries for the cap-tree, here for the nullifier set.
 
 ## The both-polarity TOOTH (the security crux)
 
 `noteSpendFresh_rejects_double` — a DOUBLE-SPEND (`nf ∈ pre.nullifiers`) makes the non-membership open
-UNSAT: the open would prove `nfKey nf ∉ keysOf S8 root`, but the faithful encoding puts `nfKey nf` IN
-`keysOf S8 root` (since `nf ∈ pre.nullifiers`) — contradiction. The freshness gate now BITES IN-CIRCUIT
+UNSAT: the open would prove `nfKey nf ∉ keysOf S root`, but the faithful encoding puts `nfKey nf` IN
+`keysOf S root` (since `nf ∈ pre.nullifiers`) — contradiction. The freshness gate now BITES IN-CIRCUIT
 (on the FORCED open, not a carried field) — the no-double-spend security crux, closed.
 
 ## Axiom hygiene
@@ -50,7 +50,7 @@ open Dregg2.Circuit
 open Dregg2.Circuit.SortedTreeNonMembership
   (keyOf keysOf SpineCommits GapOpen nonMembership_sound
    NonMemberRowInner nonMemberRowInner_sound)
-open Dregg2.Circuit.DeployedCapTree (CapLeaf CapHashScheme Cap8Scheme Digest8)
+open Dregg2.Circuit.DeployedCapTree (CapLeaf CapHashScheme)
 open Dregg2.Circuit.RotatedKernelRefinementNotes (noteLeaf noteLeaf_injective)
 open Dregg2.Circuit.StateCommit (compressNInjective)
 open Dregg2.Circuit.Spec.NoteNullifier (NoteSpendSpec noteSpendReceipt)
@@ -75,21 +75,21 @@ def nfKey (nf : Nat) : ℤ := noteLeaf nf
 theorem nfKey_injective : Function.Injective nfKey := by
   intro a b h; exact noteLeaf_injective h
 
-/-- **`NullifierTreeEncodes S8 root nulls`** — the (named, realizable) faithful encoding: the committed
+/-- **`NullifierTreeEncodes S root nulls`** — the (named, realizable) faithful encoding: the committed
 nullifier tree at `root` commits a key set EQUAL to the kernel nullifier keys. Concretely: a key `k`
-is in the committed tree (`k ∈ keysOf S8 root`) IFF `k = nfKey nf` for some `nf ∈ nulls`. The SAME
+is in the committed tree (`k ∈ keysOf S root`) IFF `k = nfKey nf` for some `nf ∈ nulls`. The SAME
 faithful-encoding discipline `DeployedFaithful` carries for the cap-tree; a HYPOTHESIS (the deployed
 nullifier-accumulator commitment), never an axiom. -/
-def NullifierTreeEncodes (S8 : Cap8Scheme) (root : Digest8) (nulls : List Nat) : Prop :=
-  ∀ k : ℤ, k ∈ keysOf S8 root ↔ ∃ nf, nf ∈ nulls ∧ nfKey nf = k
+def NullifierTreeEncodes {State : Type} (S : CapHashScheme State) (root : ℤ) (nulls : List Nat) : Prop :=
+  ∀ k : ℤ, k ∈ keysOf S root ↔ ∃ nf, nf ∈ nulls ∧ nfKey nf = k
 
 /-- **`absent_key_absent_nullifier`** — the bridge from tree-absence to nullifier-absence: under the
 faithful encoding, if `nfKey nf` is absent from the committed tree, then `nf` is absent from the kernel
 nullifier set. The freshness `nf ∉ nulls` DERIVED from a non-membership open (not carried). -/
-theorem absent_key_absent_nullifier (S8 : Cap8Scheme) (root : Digest8)
+theorem absent_key_absent_nullifier {State : Type} (S : CapHashScheme State) (root : ℤ)
     (nulls : List Nat) (nf : Nat)
-    (henc : NullifierTreeEncodes S8 root nulls)
-    (habsent : nfKey nf ∉ keysOf S8 root) :
+    (henc : NullifierTreeEncodes S root nulls)
+    (habsent : nfKey nf ∉ keysOf S root) :
     nf ∉ nulls := by
   intro hmem
   exact habsent ((henc (nfKey nf)).mpr ⟨nf, hmem, rfl⟩)
@@ -104,15 +104,15 @@ nullifier-absence. The freshness is no longer carried — it is the OUTPUT of th
 nullifier-tree encoding, the spine↔root binding, and a `GapOpen` for `nfKey nf` valid against the
 committed spine, the nullifier `nf` is FRESH (`nf ∉ nulls`). This replaces the carried `freshness`
 field of `noteSpendGenuineEncodes`. -/
-theorem freshness_forced (S8 : Cap8Scheme) (root : Digest8)
+theorem freshness_forced {State : Type} (S : CapHashScheme State) (root : ℤ)
     (nulls : List Nat) (nf : Nat) (spine : List ℤ)
-    (henc : NullifierTreeEncodes S8 root nulls)
-    (hc : SpineCommits S8 root spine)
-    (g : GapOpen S8 root (nfKey nf)) (hv : g.coversSpine spine) :
+    (henc : NullifierTreeEncodes S root nulls)
+    (hc : SpineCommits S root spine)
+    (g : GapOpen S root (nfKey nf)) (hv : g.coversSpine spine) :
     nf ∉ nulls := by
-  have habsent : nfKey nf ∉ keysOf S8 root :=
-    nonMembership_sound S8 root (nfKey nf) spine hc g hv
-  exact absent_key_absent_nullifier S8 root nulls nf henc habsent
+  have habsent : nfKey nf ∉ keysOf S root :=
+    nonMembership_sound S root (nfKey nf) spine hc g hv
+  exact absent_key_absent_nullifier S root nulls nf henc habsent
 
 /-! ## §2 — the STRENGTHENED noteSpend encode: freshness FORCED, not carried.
 
@@ -124,7 +124,7 @@ inherited from the base `noteSpendGenuineEncodes` minus freshness. -/
 /-- The phase-D strengthened noteSpend decode: carries the base set-insert encode WITHOUT freshness,
 plus the non-membership open ingredients that FORCE freshness. The freshness is DERIVED
 (`derivedFresh`), not a field. -/
-structure noteSpendFreshEncodes (S8 : Cap8Scheme)
+structure noteSpendFreshEncodes {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool) : Type where
   -- the committed nullifiers-root columns + their decode (the set-insert leg).
@@ -136,11 +136,11 @@ structure noteSpendFreshEncodes (S8 : Cap8Scheme)
   gate : RotatedKernelRefinementNotes.gNoteGrow compressN pre.kernel.nullifiers nf postRoot
   -- ⚑ THE PHASE-D OPEN (replaces the carried freshness): the faithful nullifier tree + the spine
   -- binding + a non-membership open of `nfKey nf` against the committed nullifier tree at `nfTreeRoot`.
-  nfTreeRoot : Digest8
+  nfTreeRoot : ℤ
   spine : List ℤ
-  treeEnc : NullifierTreeEncodes S8 nfTreeRoot pre.kernel.nullifiers
-  spineCommits : SpineCommits S8 nfTreeRoot spine
-  gapOpen : GapOpen S8 nfTreeRoot (nfKey nf)
+  treeEnc : NullifierTreeEncodes S nfTreeRoot pre.kernel.nullifiers
+  spineCommits : SpineCommits S nfTreeRoot spine
+  gapOpen : GapOpen S nfTreeRoot (nfKey nf)
   gapValid : gapOpen.coversSpine spine
   -- the §8 spending proof gate (the theorem-layer portal, still carried — orthogonal to freshness).
   proof : spendProof = true
@@ -166,27 +166,27 @@ structure noteSpendFreshEncodes (S8 : Cap8Scheme)
 /-- **`noteSpendFresh_freshness` — the freshness is FORCED (not carried).** On the strengthened decode,
 the non-membership open FORCES `nf ∉ pre.nullifiers` (via `freshness_forced`). This is exactly the
 phase-D residual the base file CARRIED, now DERIVED. -/
-theorem noteSpendFresh_freshness (S8 : Cap8Scheme)
+theorem noteSpendFresh_freshness {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool)
-    (henc : noteSpendFreshEncodes S8 compressN pre post nf actor spendProof) :
+    (henc : noteSpendFreshEncodes S compressN pre post nf actor spendProof) :
     nf ∉ pre.kernel.nullifiers :=
-  freshness_forced S8 henc.nfTreeRoot pre.kernel.nullifiers nf henc.spine
+  freshness_forced S henc.nfTreeRoot pre.kernel.nullifiers nf henc.spine
     henc.treeEnc henc.spineCommits henc.gapOpen henc.gapValid
 
 /-- **`noteSpendFresh_to_base` — the strengthened decode REBUILDS the base decode** (with the FORCED
 freshness in the freshness slot). So everything the base `noteSpend_descriptorRefines` proves carries
 over — but now the freshness is in-circuit-forced, not assumed. -/
-def noteSpendFresh_to_base (S8 : Cap8Scheme)
+def noteSpendFresh_to_base {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool)
-    (henc : noteSpendFreshEncodes S8 compressN pre post nf actor spendProof) :
+    (henc : noteSpendFreshEncodes S compressN pre post nf actor spendProof) :
     RotatedKernelRefinementNotes.noteSpendGenuineEncodes compressN pre post nf actor spendProof where
   preRoot := henc.preRoot
   postRoot := henc.postRoot
   hroots := henc.hroots
   gate := henc.gate
-  freshness := noteSpendFresh_freshness S8 compressN pre post nf actor spendProof henc
+  freshness := noteSpendFresh_freshness S compressN pre post nf actor spendProof henc
   proof := henc.proof
   logAdv := henc.logAdv
   frAccounts := henc.frAccounts
@@ -210,24 +210,24 @@ A satisfying STRENGTHENED noteSpend descriptor witness forces the KERNEL's spend
 pre nf actor spendProof post` — with the no-double-spend freshness `nf ∉ pre.nullifiers` now FORCED by
 the in-circuit non-membership open (`freshness_forced`), NOT carried. The VALUE_PARTIAL residual the
 base file named is CLOSED: this is VALUE-COMPLETE up to the §8 proof gate (orthogonal, theorem-layer). -/
-theorem noteSpendFresh_descriptorRefines (S8 : Cap8Scheme)
+theorem noteSpendFresh_descriptorRefines {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (hN : compressNInjective compressN)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool)
-    (henc : noteSpendFreshEncodes S8 compressN pre post nf actor spendProof) :
+    (henc : noteSpendFreshEncodes S compressN pre post nf actor spendProof) :
     NoteSpendSpec pre nf actor spendProof post :=
   RotatedKernelRefinementNotes.noteSpend_descriptorRefines compressN hN pre post nf actor spendProof
-    (noteSpendFresh_to_base S8 compressN pre post nf actor spendProof henc)
+    (noteSpendFresh_to_base S compressN pre post nf actor spendProof henc)
 
 /-- **The phase-D refinement, against `execFullA` directly.** -/
-theorem noteSpendFresh_descriptorRefines_execFullA (S8 : Cap8Scheme)
+theorem noteSpendFresh_descriptorRefines_execFullA {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (hN : compressNInjective compressN)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool)
-    (henc : noteSpendFreshEncodes S8 compressN pre post nf actor spendProof) :
+    (henc : noteSpendFreshEncodes S compressN pre post nf actor spendProof) :
     execFullA pre (.noteSpendA nf actor spendProof) = some post :=
   RotatedKernelRefinementNotes.noteSpend_descriptorRefines_execFullA compressN hN pre post nf actor
-    spendProof (noteSpendFresh_to_base S8 compressN pre post nf actor spendProof henc)
+    spendProof (noteSpendFresh_to_base S compressN pre post nf actor spendProof henc)
 
 /-! ## §3 — the both-polarity TOOTH: a DOUBLE-SPEND makes the open UNSAT (the security crux). -/
 
@@ -237,26 +237,26 @@ non-membership open FORCES `nf ∉ pre.nullifiers` (via `noteSpendFresh_freshnes
 double-spend. Unlike the base `noteSpend_descriptorRefines_rejects_double` (which bit on the CARRIED
 freshness), this bites on the FORCED open — the no-double-spend gate is now an IN-CIRCUIT gate. The
 double-spend hole is closed. -/
-theorem noteSpendFresh_rejects_double (S8 : Cap8Scheme)
+theorem noteSpendFresh_rejects_double {State : Type} (S : CapHashScheme State)
     (compressN : List RotatedKernelRefinementNotes.FieldElem → RotatedKernelRefinementNotes.FieldElem)
     (pre post : RecChainedState) (nf : Nat) (actor : CellId) (spendProof : Bool)
-    (henc : noteSpendFreshEncodes S8 compressN pre post nf actor spendProof)
+    (henc : noteSpendFreshEncodes S compressN pre post nf actor spendProof)
     (hdouble : nf ∈ pre.kernel.nullifiers) :
     False :=
-  (noteSpendFresh_freshness S8 compressN pre post nf actor spendProof henc) hdouble
+  (noteSpendFresh_freshness S compressN pre post nf actor spendProof henc) hdouble
 
 /-- **`noteSpendFresh_gapOpen_unsat_on_double` (the open ITSELF is unsatisfiable on a double-spend).**
 Stated at the gadget level: a faithful nullifier tree containing `nf` (because `nf ∈ pre.nullifiers`)
 admits NO valid non-membership open of `nfKey nf` — the security crux at the open's own boundary. This
 is what the deployed circuit cannot reject without the non-membership gadget. -/
-theorem noteSpendFresh_gapOpen_unsat_on_double (S8 : Cap8Scheme)
-    (root : Digest8) (nulls : List Nat) (nf : Nat) (spine : List ℤ)
-    (henc : NullifierTreeEncodes S8 root nulls)
-    (hc : SpineCommits S8 root spine)
+theorem noteSpendFresh_gapOpen_unsat_on_double {State : Type} (S : CapHashScheme State)
+    (root : ℤ) (nulls : List Nat) (nf : Nat) (spine : List ℤ)
+    (henc : NullifierTreeEncodes S root nulls)
+    (hc : SpineCommits S root spine)
     (hdouble : nf ∈ nulls)
-    (g : GapOpen S8 root (nfKey nf)) (hv : g.coversSpine spine) :
+    (g : GapOpen S root (nfKey nf)) (hv : g.coversSpine spine) :
     False :=
-  (freshness_forced S8 root nulls nf spine henc hc g hv) hdouble
+  (freshness_forced S root nulls nf spine henc hc g hv) hdouble
 
 /-! ## §4 — Axiom hygiene. -/
 

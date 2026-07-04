@@ -23,30 +23,20 @@ use p3_field::PrimeCharacteristicRing;
 // Aggregation AIR
 // ============================================================================
 
-/// A CONTINUITY-ONLY aggregation scaffold (test/smoke AIR).
+/// AIR for proof aggregation via a Poseidon2 hash chain.
 ///
 /// Trace layout (width = 4):
-/// - col 0: accumulator_in (chain state before this step)
+/// - col 0: accumulator_in (hash chain state before this step)
 /// - col 1: leaf_hash (public input from inner proof i)
 /// - col 2: root_hash (public input from inner proof i)
-/// - col 3: accumulator_out — the prover is EXPECTED to fill this as
-///   `hash_4_to_1([acc_in, leaf, root, step_index])`, but `eval` below does NOT
-///   constrain it to that hash; it is an unconstrained witness here.
+/// - col 3: accumulator_out = hash_4_to_1([acc_in, leaf, root, step_index])
 ///
 /// Public inputs: [initial_accumulator (= 0), final_accumulator]
 ///
-/// Constraints actually enforced (and ONLY these):
-/// 1. First row: acc_in = initial_accumulator (public input 0)
-/// 2. Last row: acc_out = final_accumulator (public input 1)
+/// Constraints:
+/// 1. First row: acc_in = 0 (initial state)
+/// 2. Last row: acc_out = final_accumulator (public input)
 /// 3. Chain continuity: acc_out[i] = acc_in[i+1] (on transitions)
-///
-/// NOTE: this AIR does NOT bind the accumulator to a genuine Poseidon2 fold —
-/// cols 1/2 (leaf/root) and the per-row hash are unconstrained, so a satisfying
-/// trace proves only endpoint continuity, not history integrity. The deployed,
-/// hash-bound whole-chain aggregation rides the `emberian/plonky3-recursion`
-/// fork via `circuit-prove`'s `ivc_turn_chain` / `joint_turn_recursive` (whose
-/// soundness is `Dregg2.Circuit.{AggAirSound,AggregationAirSound}` in Lean).
-/// Keep this as a continuity smoke scaffold; do not treat it as history-binding.
 pub struct AggregationAir;
 
 impl<F: PrimeCharacteristicRing + Sync> BaseAir<F> for AggregationAir {

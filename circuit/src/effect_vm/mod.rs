@@ -172,13 +172,11 @@ mod air;
 pub mod authority_digest_weld;
 pub mod carrier_floor_weld;
 mod cell_state;
-pub mod discharge_weld;
 mod effect;
 mod helpers;
 pub mod satisfaction_weld;
 mod trace;
 pub mod trace_rotated;
-pub mod vault_weld;
 mod verify;
 
 // (The v1 per-action proof granularity module + the large v1 hand-AIR test module
@@ -197,8 +195,8 @@ pub use effect::{AttenuateWitness, Effect, RevokeWitness};
 
 // ---- Re-export helpers ----
 pub use helpers::{
-    bytes32_to_8_limbs, compute_effects_hash, compute_effects_hash_4, field_limbs8,
-    fold_bytes32_to_bb, refusal_reason_bytes, split_u64, u64_from_4_limbs_16, u64_to_4_limbs_16,
+    bytes32_to_8_limbs, compute_effects_hash, compute_effects_hash_4, fold_bytes32_to_bb,
+    refusal_reason_bytes, split_u64, u64_from_4_limbs_16, u64_to_4_limbs_16,
 };
 // Re-export so sibling modules can write `use super::fill_reserved_bits`
 // (mirrors the pre-decomp module-level visibility).

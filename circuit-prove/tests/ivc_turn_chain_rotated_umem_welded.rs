@@ -76,10 +76,8 @@ fn make_welded_turn(balance: u64, nonce: u32, amount: u64) -> (FinalizedTurn, Ba
         None,
     )
     .expect("welded rotated+umem transfer leg mints + self-verifies");
-    // H0 DEPLOYED-WIDE: the welded leg is WIDE-anchored too — the single-felt rotated roots are
-    // RETIRED to zero, so report the HEAD felt (lane 0) of the GENUINE 8-felt wide anchors.
-    let old_root = leg.wide_old_root8().expect("welded leg is wide-anchored")[0];
-    let new_root = leg.wide_new_root8().expect("welded leg is wide-anchored")[0];
+    let old_root = leg.old_root();
+    let new_root = leg.new_root();
     (
         FinalizedTurn::new(DescriptorParticipant::rotated(leg)),
         old_root,
@@ -130,24 +128,8 @@ fn welded_umem_chain_folds_host() {
     let summary = fold_welded_umem_turn_chain_staged(&turns)
         .expect("a continuous 3-turn welded rotated+umem history must fold (host)");
     assert_eq!(summary.num_turns, 3);
-    // H0 DEPLOYED-WIDE: the genuine 8-felt wide anchors off the first/last welded legs.
-    let genesis8 = turns[0]
-        .participant
-        .rotated
-        .wide_old_root8()
-        .expect("first welded leg is wide-anchored");
-    let final8 = turns[turns.len() - 1]
-        .participant
-        .rotated
-        .wide_new_root8()
-        .expect("last welded leg is wide-anchored");
-    assert_eq!(summary.genesis_root, genesis8);
-    assert_eq!(summary.final_root, final8);
-    assert_eq!(
-        summary.genesis_root[0], genesis,
-        "the head felt matches make_welded_chain's scalar"
-    );
-    assert_eq!(summary.final_root[0], final_root);
+    assert_eq!(summary.genesis_root, [genesis; 8]);
+    assert_eq!(summary.final_root, [final_root; 8]);
     assert!(
         summary.chain_digest.iter().any(|&x| x != BabyBear::ZERO),
         "the ordered-history digest is a real Poseidon2 commitment"
@@ -160,12 +142,7 @@ fn welded_umem_chain_folds_host() {
 fn welded_umem_broken_order_rejected() {
     let (mut turns, _g, _f) = make_welded_chain(1000, 0, 7, 3);
     let (foreign, foreign_old, _foreign_new) = make_welded_turn(500, 50, 3);
-    // H0 DEPLOYED-WIDE: continuity binds the GENUINE 8-felt wide anchor; compare its head felt.
-    let prev_new = turns[0]
-        .participant
-        .rotated
-        .wide_new_root8()
-        .expect("welded leg is wide-anchored")[0];
+    let prev_new = turns[0].new_root();
     assert_ne!(
         foreign_old, prev_new,
         "the foreign welded turn must NOT continue the chain"
@@ -193,6 +170,7 @@ fn welded_umem_broken_order_rejected() {
 /// weaken the rotated post-commit binding.
 #[test]
 fn welded_umem_forged_post_commit_refused() {
+    use dregg_circuit::effect_vm::trace_rotated::V1_PI_COUNT;
     use dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg;
 
     let (t0, _o0, n0) = make_welded_turn(1000, 0, 7);
@@ -200,25 +178,21 @@ fn welded_umem_forged_post_commit_refused() {
     let (t1, o1, n1) = make_welded_turn(993, 1, 7);
     assert_eq!(o1, n0, "honest welded turns chain by construction");
 
-    // FORGE the rotated NEW commitment on the LAST welded leg (so continuity still holds — the
-    // forgery is purely the claimed chain head, exactly the lie that would advance the chain to a
-    // state that never happened). H0 DEPLOYED-WIDE: the single-felt rotated NEW-commit PI is RETIRED;
-    // the genuine bound carrier is the 8-felt wide AFTER-commit at the PI tail `[n-8 .. n)` — forge
-    // its HEAD lane.
+    // FORGE the rotated NEW commitment (PI 35) on the LAST welded leg (so continuity still holds —
+    // the forgery is purely the claimed chain head, exactly the lie that would advance the chain to
+    // a state that never happened).
+    const PI_ROTATED_NEW: usize = V1_PI_COUNT + 1;
     let DescriptorParticipant { rotated } = t1.participant;
     let RotatedParticipantLeg {
         proof,
         descriptor,
         mut public_inputs,
-        carrier_witness,
     } = rotated;
-    let pi_wide_new = public_inputs.len() - 8; // head lane of the AFTER 8-felt wide commit
-    public_inputs[pi_wide_new] = n1 + BabyBear::ONE;
+    public_inputs[PI_ROTATED_NEW] = n1 + BabyBear::ONE;
     let forged_leg = RotatedParticipantLeg {
         proof,
         descriptor,
         public_inputs,
-        carrier_witness,
     };
     let t1_forged = FinalizedTurn::new(DescriptorParticipant::rotated(forged_leg));
     let turns = [t0, t1_forged];
@@ -241,24 +215,8 @@ fn welded_umem_chain_folds_recursive() {
     let whole = prove_welded_umem_turn_chain_recursive_staged(&turns)
         .expect("a continuous 3-turn welded history must fold recursively");
     assert_eq!(whole.num_turns, 3);
-    // H0 DEPLOYED-WIDE: the genuine 8-felt wide anchors off the first/last welded legs.
-    let genesis8 = turns[0]
-        .participant
-        .rotated
-        .wide_old_root8()
-        .expect("first welded leg is wide-anchored");
-    let final8 = turns[turns.len() - 1]
-        .participant
-        .rotated
-        .wide_new_root8()
-        .expect("last welded leg is wide-anchored");
-    assert_eq!(whole.genesis_root, genesis8);
-    assert_eq!(whole.final_root, final8);
-    assert_eq!(
-        whole.genesis_root[0], genesis,
-        "the head felt matches make_welded_chain's scalar"
-    );
-    assert_eq!(whole.final_root[0], final_root);
+    assert_eq!(whole.genesis_root, [genesis; 8]);
+    assert_eq!(whole.final_root, [final_root; 8]);
     let vk = whole.root_vk_fingerprint();
     verify_turn_chain_recursive(&whole, &vk)
         .expect("the welded whole-chain root proof must verify under its honest anchor");

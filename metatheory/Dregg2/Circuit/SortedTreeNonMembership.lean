@@ -5,7 +5,7 @@
 ## Why this file exists (the freshness / non-amplification gadget)
 
 `DeployedCapOpen.lean` builds the in-circuit MEMBERSHIP open: a `Satisfied` row over the IR-v2
-Poseidon2 chip witnesses `MembersAt8 S8 cap_root leaf` (the depth-16 binary-Merkle recompose up a
+Poseidon2 chip witnesses `MembersAt S cap_root leaf` (the depth-16 binary-Merkle recompose up a
 sibling path). That is the "a leaf IS in the tree" half. This file builds the COMPLEMENTARY half: a
 constraint set whose satisfaction proves a key `k` is NOT in the committed sorted set — the
 **non-membership open**.
@@ -22,7 +22,7 @@ top, it does NOT redo any chip binding.
 
 ## The reusable interface (what the capability family + spawn + attenuate-exact will consume)
 
-  * `GapOpen S8 root spine` — the four covering-gap shapes (`inner`/`below`/`above`/`empty`), each
+  * `GapOpen S root spine` — the four covering-gap shapes (`inner`/`below`/`above`/`empty`), each
     carrying the DEPLOYED `MembersAt` openings of its bracketing neighbor leaves;
   * `GapOpen.excludes` — THE KEYSTONE: a valid gap covering `k` proves `k ∉ spine` (via
     `sorted_gap_excludes`); composed with `SpineCommits` (the root binds the spine) ⇒
@@ -33,7 +33,7 @@ top, it does NOT redo any chip binding.
 
 ## The crypto residue (named precisely, HONEST)
 
-Exactly ONE carrier beyond the deployed `CapHashScheme` already in play: `SpineCommits S8 root spine`
+Exactly ONE carrier beyond the deployed `CapHashScheme` already in play: `SpineCommits S root spine`
 — "the sorted key spine `spine` is what `root` commits to" (the genuine sorted-list↔root binding,
 the SAME residue `Crypto.NonMembership.NonMember` carries as a field, and `AttestedQuery` carries as
 the `iroot`/CR floor). It is realizable (the deployed `compute_canonical_capability_root_felt`
@@ -55,11 +55,11 @@ import Dregg2.Crypto.NonMembership
 
 namespace Dregg2.Circuit.SortedTreeNonMembership
 
-open Dregg2.Circuit.DescriptorIR2 (TraceFamily ChipTableSound ChipTableSoundN)
+open Dregg2.Circuit.DescriptorIR2 (TraceFamily ChipTableSound)
 open Dregg2.Circuit.Emit.EffectVmEmit (VmRowEnv)
-open Dregg2.Circuit.DeployedCapTree (CapLeaf CapHashScheme Cap8Scheme Digest8)
-open Dregg2.Circuit.DeployedCapTree.Cap8Scheme (MembersAt8)
-open Dregg2.Circuit.DeployedCapOpen (CapOpenCols leafOf Satisfied MembershipCore capPermOut groupVal capOpen_membership8)
+open Dregg2.Circuit.DeployedCapTree (CapLeaf CapHashScheme)
+open Dregg2.Circuit.DeployedCapTree.CapHashScheme (capLeafDigest nodeOf recomposeUp MembersAt)
+open Dregg2.Circuit.DeployedCapOpen (CapOpenCols leafOf Satisfied capOpen_membership)
 open Dregg2.Crypto.NonMembership (Sorted Adjacent sorted_gap_excludes head_lt_of_sorted)
 
 set_option autoImplicit false
@@ -75,7 +75,7 @@ leaf `slot_hash` keys in sorted order. The non-membership argument is over THIS 
 the leaf-position sort key of the binary-Merkle fold). -/
 def keyOf (l : CapLeaf) : ℤ := l.slot_hash
 
-/-- **`SpineCommits S8 root spine`** — the (named, realizable) binding: the sorted key spine `spine`
+/-- **`SpineCommits S root spine`** — the (named, realizable) binding: the sorted key spine `spine`
 is what `root` commits to. Concretely: `spine` is the sorted list of `slot_hash` keys of the leaf set
 whose depth-16 binary-Merkle fold (`recomposeUp`/`MembersAt`) is `root`, AND every present leaf opens
 at a key in `spine` while every key in `spine` is opened by a present leaf. This is the deployed
@@ -87,22 +87,22 @@ We capture exactly the two facts the soundness chain needs:
   * `sorted` — the spine is strictly increasing (the tree is sorted-by-key);
   * `present_iff` — a `MembersAt` opening of a leaf exists at key `k` IFF `k ∈ spine` (the root binds
     the spine: you cannot open a leaf whose key is off-spine, and every on-spine key is openable). -/
-structure SpineCommits (S8 : Cap8Scheme) (root : Digest8) (spine : List ℤ) : Prop where
+structure SpineCommits {State : Type} (S : CapHashScheme State) (root : ℤ) (spine : List ℤ) : Prop where
   /-- The committed key spine is strictly increasing (sorted-by-`slot_hash`). -/
   sorted : Sorted spine
   /-- The root binds the spine: a leaf opens at key `k` IFF `k` is a spine key. The `→` is the crypto
   binding (no off-spine leaf opens — `Compress1CR` via the fold); the `←` is honest-prover totality
   (every present key is openable). -/
-  present_iff : ∀ k : ℤ, (∃ leaf : CapLeaf, keyOf leaf = k ∧ MembersAt8 S8 root leaf) ↔ k ∈ spine
+  present_iff : ∀ k : ℤ, (∃ leaf : CapLeaf, keyOf leaf = k ∧ MembersAt S root leaf) ↔ k ∈ spine
 
-/-- **`keysOf S8 root`** — the committed key set of the tree at `root`: the keys at which a leaf opens.
-The non-membership target (`k ∉ keysOf S8 root` is "the key is absent from the committed tree"). -/
-def keysOf (S8 : Cap8Scheme) (root : Digest8) : Set ℤ :=
-  { k | ∃ leaf : CapLeaf, keyOf leaf = k ∧ MembersAt8 S8 root leaf }
+/-- **`keysOf S root`** — the committed key set of the tree at `root`: the keys at which a leaf opens.
+The non-membership target (`k ∉ keysOf S root` is "the key is absent from the committed tree"). -/
+def keysOf {State : Type} (S : CapHashScheme State) (root : ℤ) : Set ℤ :=
+  { k | ∃ leaf : CapLeaf, keyOf leaf = k ∧ MembersAt S root leaf }
 
 /-- Under `SpineCommits`, the abstract committed key set IS the spine (membership coincide). -/
-theorem keysOf_eq_spine (S8 : Cap8Scheme) (root : Digest8) (spine : List ℤ)
-    (hc : SpineCommits S8 root spine) : ∀ k, k ∈ keysOf S8 root ↔ k ∈ spine :=
+theorem keysOf_eq_spine {State : Type} (S : CapHashScheme State) (root : ℤ) (spine : List ℤ)
+    (hc : SpineCommits S root spine) : ∀ k, k ∈ keysOf S root ↔ k ∈ spine :=
   fun k => hc.present_iff k
 
 /-! ## §1 — the covering-gap open (the four non-membership shapes, over DEPLOYED openings).
@@ -112,31 +112,31 @@ DEPLOYED `MembersAt` opening (a `DeployedCapOpen` chip row, soundness already pr
 carries the two adjacent neighbor LEAVES (whose keys bracket `k`); the boundary forms carry the single
 head/last neighbor leaf. -/
 
-/-- **`GapOpen S8 root k`** — a non-membership covering-gap open for key `k` against the tree at `root`.
+/-- **`GapOpen S root k`** — a non-membership covering-gap open for key `k` against the tree at `root`.
 Each present-neighbor is a DEPLOYED `MembersAt` opening; the gap shape says where `k` sits relative to
 the present neighbors. The witness a `Satisfied` non-membership row produces. -/
-inductive GapOpen (S8 : Cap8Scheme) (root : Digest8) (k : ℤ) where
+inductive GapOpen {State : Type} (S : CapHashScheme State) (root k : ℤ) where
   /-- The tree is EMPTY (the spine is `[]`): everything is absent. -/
   | empty
   /-- `k` is BELOW the minimum present key: the head leaf `b` opens with `k < keyOf b`. -/
-  | below (b : CapLeaf) (hopen : MembersAt8 S8 root b) (hlt : k < keyOf b)
+  | below (b : CapLeaf) (hopen : MembersAt S root b) (hlt : k < keyOf b)
   /-- `k` is strictly BETWEEN two ADJACENT present neighbors `a`, `b`: both open, and
   `keyOf a < k < keyOf b` (the `inner` bracketing — the cap/nullifier non-membership heart). -/
-  | inner (a b : CapLeaf) (hoa : MembersAt8 S8 root a) (hob : MembersAt8 S8 root b)
+  | inner (a b : CapLeaf) (hoa : MembersAt S root a) (hob : MembersAt S root b)
       (hlo : keyOf a < k) (hhi : k < keyOf b)
   /-- `k` is ABOVE the maximum present key: the last leaf `a` opens with `keyOf a < k`. -/
-  | above (a : CapLeaf) (hopen : MembersAt8 S8 root a) (hgt : keyOf a < k)
+  | above (a : CapLeaf) (hopen : MembersAt S root a) (hgt : keyOf a < k)
 
 namespace GapOpen
 
-variable {S8 : Cap8Scheme} {root : Digest8} {k : ℤ}
+variable {State : Type} {S : CapHashScheme State} {root k : ℤ}
 
 /-- **`coversSpine g spine`** — the gap's claim is VALID against the committed key spine: its present
 neighbors occupy the claimed head/last/adjacent positions, and `k` sits in the claimed interval. For
 `empty` the spine is `[]`; for `below b` the head key is `keyOf b`; for `inner a b` the keys are
 adjacent; for `above a` the last key is `keyOf a`. This is exactly `AttestedQuery.Gap.Valid` ∧
 `covers`, here READ OFF the opened neighbor leaves' keys. -/
-def coversSpine : GapOpen S8 root k → List ℤ → Prop
+def coversSpine : GapOpen S root k → List ℤ → Prop
   | .empty, spine => spine = []
   | .below b _ _, spine => spine.head? = some (keyOf b)
   | .inner a b _ _ _ _, spine => Adjacent spine (keyOf a) (keyOf b)
@@ -146,7 +146,7 @@ def coversSpine : GapOpen S8 root k → List ℤ → Prop
 spine proves `k ∉ spine`: the `inner` case is LITERALLY `sorted_gap_excludes`; the boundary cases ride
 the same strict order. UNCONDITIONAL — no crypto (the openings only pin the neighbor KEYS to the
 spine, which `coversSpine` already records). -/
-theorem excludesSpine (g : GapOpen S8 root k) {spine : List ℤ}
+theorem excludesSpine (g : GapOpen S root k) {spine : List ℤ}
     (hs : Sorted spine) (hv : g.coversSpine spine) : k ∉ spine := by
   cases g with
   | empty =>
@@ -185,16 +185,16 @@ sorted-Merkle non-membership soundness — the analog of `attenuate`'s non-ampli
 
 /-- **`nonMembership_sound` — THE KEYSTONE.** Given the (realizable) spine↔root binding `SpineCommits`
 and a gap open VALID against that spine (its present neighbors really occupy the claimed positions),
-the queried key `k` is ABSENT from the committed tree (`k ∉ keysOf S8 root`). The bracketing is
+the queried key `k` is ABSENT from the committed tree (`k ∉ keysOf S root`). The bracketing is
 `excludesSpine` (unconditional); `SpineCommits` is the only crypto residue, and it enters ONLY at the
 spine↔root step. -/
-theorem nonMembership_sound (S8 : Cap8Scheme) (root : Digest8) (k : ℤ)
-    (spine : List ℤ) (hc : SpineCommits S8 root spine)
-    (g : GapOpen S8 root k) (hv : g.coversSpine spine) :
-    k ∉ keysOf S8 root := by
+theorem nonMembership_sound {State : Type} (S : CapHashScheme State) (root k : ℤ)
+    (spine : List ℤ) (hc : SpineCommits S root spine)
+    (g : GapOpen S root k) (hv : g.coversSpine spine) :
+    k ∉ keysOf S root := by
   have habsent : k ∉ spine := g.excludesSpine hc.sorted hv
   intro hmem
-  exact habsent ((keysOf_eq_spine S8 root spine hc k).mp hmem)
+  exact habsent ((keysOf_eq_spine S root spine hc k).mp hmem)
 
 /-! ## §3 — the in-circuit non-membership ROW (riding two DEPLOYED `DeployedCapOpen.Satisfied` rows).
 
@@ -217,7 +217,7 @@ structure NonMemberRowInner (sponge : List ℤ → ℤ) (tf : TraceFamily)
   /-- The `hi` neighbor cap-open sub-row is satisfied (a DEPLOYED membership row). -/
   hiSat : Satisfied sponge tf hiRow env
   /-- BOTH sub-rows open against the SAME committed `cap_root` column value `root`. -/
-  rootShared : groupVal env loRow.capRoot = groupVal env hiRow.capRoot
+  rootShared : env.loc loRow.capRoot = env.loc hiRow.capRoot
   /-- The two neighbor keys are ADJACENT in the committed sorted spine (the structural side condition;
   at the wire, the positions the two Merkle openings certify). -/
   adjacent : Adjacent spine (keyOf (leafOf loRow env)) (keyOf (leafOf hiRow env))
@@ -230,31 +230,31 @@ structure NonMemberRowInner (sponge : List ℤ → ℤ) (tf : TraceFamily)
 `GapOpen` against the committed spine: the two sub-rows' chip soundness (`capOpen_membership`) supply
 the two `MembersAt` openings, and the gap gates supply the bracketing. The bridge from the in-circuit
 row to the abstract gap open. -/
-theorem nonMemberRowInner_to_gapOpen (S8 : Cap8Scheme) (sponge : List ℤ → ℤ)
+theorem nonMemberRowInner_to_gapOpen {State : Type} (S : CapHashScheme State)
     (tf : TraceFamily) (loRow hiRow : CapOpenCols) (kCol : Nat) (spine : List ℤ) (env : VmRowEnv)
-    (hChip : ChipTableSoundN (capPermOut S8) (tf .poseidon2))
-    (hrow : NonMemberRowInner sponge tf loRow hiRow kCol spine env) :
-    ∃ g : GapOpen S8 (groupVal env loRow.capRoot) (env.loc kCol), g.coversSpine spine := by
-  -- the two DEPLOYED 8-felt membership openings (proven WIDE chip soundness).
-  have hmemLo : MembersAt8 S8 (groupVal env loRow.capRoot) (leafOf loRow env) :=
-    capOpen_membership8 S8 sponge tf loRow env hChip hrow.loSat.toCore
-  have hmemHi : MembersAt8 S8 (groupVal env loRow.capRoot) (leafOf hiRow env) := by
-    rw [hrow.rootShared]; exact capOpen_membership8 S8 sponge tf hiRow env hChip hrow.hiSat.toCore
+    (hChip : ChipTableSound S.chipAbsorb (tf .poseidon2))
+    (hrow : NonMemberRowInner S.chipAbsorb tf loRow hiRow kCol spine env) :
+    ∃ g : GapOpen S (env.loc loRow.capRoot) (env.loc kCol), g.coversSpine spine := by
+  -- the two DEPLOYED membership openings (proven chip soundness).
+  have hmemLo : MembersAt S (env.loc loRow.capRoot) (leafOf loRow env) :=
+    capOpen_membership S tf loRow env hChip hrow.loSat
+  have hmemHi : MembersAt S (env.loc loRow.capRoot) (leafOf hiRow env) := by
+    rw [hrow.rootShared]; exact capOpen_membership S tf hiRow env hChip hrow.hiSat
   exact ⟨.inner (leafOf loRow env) (leafOf hiRow env) hmemLo hmemHi hrow.loLt hrow.hiLt,
     hrow.adjacent⟩
 
 /-- **`nonMemberRowInner_sound` — THE IN-CIRCUIT NON-MEMBERSHIP KEYSTONE.** An `inner` non-membership
 row, against a committed spine (the realizable `SpineCommits`), forces the queried key ABSENT from the
-committed tree (`env.loc kCol ∉ keysOf S8 (groupVal env loRow.capRoot)`). The two neighbor openings ride the
+committed tree (`env.loc kCol ∉ keysOf S (env.loc loRow.capRoot)`). The two neighbor openings ride the
 PROVEN cap-open chip soundness; the bracketing is unconditional; `SpineCommits` is the only residue. -/
-theorem nonMemberRowInner_sound (S8 : Cap8Scheme) (sponge : List ℤ → ℤ)
+theorem nonMemberRowInner_sound {State : Type} (S : CapHashScheme State)
     (tf : TraceFamily) (loRow hiRow : CapOpenCols) (kCol : Nat) (spine : List ℤ) (env : VmRowEnv)
-    (hChip : ChipTableSoundN (capPermOut S8) (tf .poseidon2))
-    (hc : SpineCommits S8 (groupVal env loRow.capRoot) spine)
-    (hrow : NonMemberRowInner sponge tf loRow hiRow kCol spine env) :
-    env.loc kCol ∉ keysOf S8 (groupVal env loRow.capRoot) := by
-  obtain ⟨g, hv⟩ := nonMemberRowInner_to_gapOpen S8 sponge tf loRow hiRow kCol spine env hChip hrow
-  exact nonMembership_sound S8 (groupVal env loRow.capRoot) (env.loc kCol) spine hc g hv
+    (hChip : ChipTableSound S.chipAbsorb (tf .poseidon2))
+    (hc : SpineCommits S (env.loc loRow.capRoot) spine)
+    (hrow : NonMemberRowInner S.chipAbsorb tf loRow hiRow kCol spine env) :
+    env.loc kCol ∉ keysOf S (env.loc loRow.capRoot) := by
+  obtain ⟨g, hv⟩ := nonMemberRowInner_to_gapOpen S tf loRow hiRow kCol spine env hChip hrow
+  exact nonMembership_sound S (env.loc loRow.capRoot) (env.loc kCol) spine hc g hv
 
 /-! ## §4 — Axiom hygiene (the keystone gadget). -/
 
@@ -269,7 +269,7 @@ theorem nonMemberRowInner_sound (S8 : Cap8Scheme) (sponge : List ℤ → ℤ)
 The gadget the capability family / spawn handoff / noteSpend-insert consumes NEXT: given the OLD root
 binds the sorted spine `spine`, a NON-MEMBERSHIP of `k` (so `k ∉ spine`), and the new root binds the
 INSERTED spine `sortedInsert k spine`, the new root is exactly the root of `insert k spine`. We state
-it as the binding fact (`SpineCommits S8 newRoot (sortedInsert k spine)`), which is what the downstream
+it as the binding fact (`SpineCommits S newRoot (sortedInsert k spine)`), which is what the downstream
 consumers need; the per-row recompute (the sibling-path edit on the `MembersAt` fold) is the realizing
 witness, the SAME chip rows the membership open already realizes.
 
@@ -328,29 +328,29 @@ theorem sortedInsert_sorted (k : ℤ) (xs : List ℤ) (hs : Sorted xs) (hfresh :
       · exact hxt y hyt
 
 /-- **`update_sound` — THE IN-ROW UPDATE KEYSTONE.** Given:
-  * the OLD root binds the sorted spine (`SpineCommits S8 oldRoot spine`),
+  * the OLD root binds the sorted spine (`SpineCommits S oldRoot spine`),
   * `k` is FRESH (non-membership of `k`, the output of `nonMembership_sound` over `oldRoot`),
-  * the NEW root binds the inserted spine (`SpineCommits S8 newRoot (sortedInsert k spine)` — the
+  * the NEW root binds the inserted spine (`SpineCommits S newRoot (sortedInsert k spine)` — the
     realizing chip recompute, the SAME fold the membership open already realizes),
-then the new committed key set is EXACTLY the old set plus `k` (`keysOf S8 newRoot = insert k (keysOf
+then the new committed key set is EXACTLY the old set plus `k` (`keysOf S newRoot = insert k (keysOf
 S oldRoot)`). The insert is FAITHFUL: it grows the set by exactly the fresh key, in sorted order. THE
 gadget the capability family / spawn handoff / noteSpend-insert consumes next. -/
-theorem update_sound (S8 : Cap8Scheme) (oldRoot newRoot : Digest8) (k : ℤ)
+theorem update_sound {State : Type} (S : CapHashScheme State) (oldRoot newRoot k : ℤ)
     (spine : List ℤ)
-    (hold : SpineCommits S8 oldRoot spine)
-    (hfresh : k ∉ keysOf S8 oldRoot)
-    (hnew : SpineCommits S8 newRoot (sortedInsert k spine)) :
-    ∀ y, y ∈ keysOf S8 newRoot ↔ (y = k ∨ y ∈ keysOf S8 oldRoot) := by
+    (hold : SpineCommits S oldRoot spine)
+    (hfresh : k ∉ keysOf S oldRoot)
+    (hnew : SpineCommits S newRoot (sortedInsert k spine)) :
+    ∀ y, y ∈ keysOf S newRoot ↔ (y = k ∨ y ∈ keysOf S oldRoot) := by
   intro y
-  rw [keysOf_eq_spine S8 newRoot _ hnew, keysOf_eq_spine S8 oldRoot spine hold,
+  rw [keysOf_eq_spine S newRoot _ hnew, keysOf_eq_spine S oldRoot spine hold,
       mem_sortedInsert]
 
 /-- **`update_preserves_sorted`** — corollary: the new spine the update commits to is itself sorted
 (so the tree stays a sorted-Merkle tree the next open/insert can ride). The fresh-key insert keeps the
 sorted invariant. -/
-theorem update_preserves_sorted (S8 : Cap8Scheme) (oldRoot : Digest8) (k : ℤ)
+theorem update_preserves_sorted {State : Type} (S : CapHashScheme State) (oldRoot k : ℤ)
     (spine : List ℤ)
-    (hold : SpineCommits S8 oldRoot spine) (hfresh : k ∉ spine) :
+    (hold : SpineCommits S oldRoot spine) (hfresh : k ∉ spine) :
     Sorted (sortedInsert k spine) :=
   sortedInsert_sorted k spine hold.sorted hfresh
 

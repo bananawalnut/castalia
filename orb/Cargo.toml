@@ -1,3 +1,0 @@
-[workspace]
-members = ["crates/ring-twin", "crates/wake-twin", "crates/aes-fallback", "crates/dataplane"]
-resolver = "3"

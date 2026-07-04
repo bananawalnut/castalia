@@ -93,10 +93,9 @@ fn make_turn(balance: u64, nonce: u32, amount: u64) -> (FinalizedTurn, BabyBear,
         None,
     )
     .expect("rotated transfer leg mints + self-verifies");
-    // H0 DEPLOYED-WIDE: the deployed leg is WIDE-anchored — the single-felt rotated roots are RETIRED
-    // to zero, so report the HEAD felt (lane 0) of the GENUINE 8-felt wide anchors.
-    let old_root = leg.wide_old_root8().expect("deployed leg is wide-anchored")[0];
-    let new_root = leg.wide_new_root8().expect("deployed leg is wide-anchored")[0];
+    // Read the ROTATED chain roots off the leg BEFORE it moves into the participant.
+    let old_root = leg.old_root();
+    let new_root = leg.new_root();
     (
         FinalizedTurn::new(DescriptorParticipant::rotated(leg)),
         old_root,

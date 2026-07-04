@@ -20,18 +20,6 @@ ring = "0.17"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand = "0.9"
-# Observability facade. The gossip layer emits the
-# `dregg_gossip_stream_rejected_total{peer,reason}` counter at the inbound
-# stream-rejection sites (the edge-storm path) so a rejection RATE is a graph
-# spike, not only a log flood. Emissions land on the process-global recorder the
-# node installs (`node/src/metrics.rs::install_recorder`); MUST stay the same
-# semver as the node's `metrics` dep so they share one recorder.
-metrics = "0.24"
-
-[dev-dependencies]
-# A capturing recorder for the gossip-rejection emission test (asserts the
-# Prometheus counter + its peer/reason labels are emitted at the reject sites).
-metrics-util = "0.19"
 
 [[bin]]
 name = "dregg-p2p-demo"

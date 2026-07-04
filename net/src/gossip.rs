@@ -145,34 +145,6 @@ const MAX_SEND_BUDGET_ENTRIES: usize = 256;
 /// regression is observable (and asserted in tests) rather than only a log flood.
 static REJECTED_STREAMS: AtomicU64 = AtomicU64::new(0);
 
-/// Record one rejected/dropped inbound gossip stream for observability.
-///
-/// Bumps the process-wide [`REJECTED_STREAMS`] counter (the in-process accessor
-/// [`GossipNetwork::rejected_stream_count`]) AND emits the Prometheus counter
-/// `dregg_gossip_stream_rejected_total{peer,reason}` so an operator sees the edge
-/// gossip storm as a rejection-RATE graph spike, not only a log flood. The
-/// emission lands on the process-global recorder the node installs
-/// (`node/src/metrics.rs::install_recorder`, where the series is pre-registered
-/// at 0 so the panel renders a healthy 0 from boot).
-///
-/// `reason` is a small bounded set (`conn_limit` / `read_timeout` /
-/// `unknown_sender` / `bad_signature` / `decode_failed`). `peer` is the remote
-/// IP (the port is collapsed so a peer's many ephemeral source ports do not blow
-/// up label cardinality, and a committee mesh stays bounded by its member count).
-/// The pre-handshake connection-limit refusal uses the aggregate sentinel `"*"`:
-/// its source address is attacker-controlled and unbounded (QUIC has not yet
-/// validated it), so labeling it per-peer would be a cardinality bomb during the
-/// exact storm we want to observe.
-fn note_gossip_stream_rejected(peer: &str, reason: &'static str) {
-    REJECTED_STREAMS.fetch_add(1, Ordering::Relaxed);
-    metrics::counter!(
-        "dregg_gossip_stream_rejected_total",
-        "peer" => peer.to_string(),
-        "reason" => reason,
-    )
-    .increment(1);
-}
-
 // ─── Dandelion++ constants ─────────────────────────────────────────────────
 
 /// Base probability of continuing stem phase at each hop.
@@ -2004,10 +1976,6 @@ impl GossipNetwork {
                         max_connections,
                         incoming.remote_address()
                     );
-                    // Pre-handshake: the source address is not yet QUIC-validated
-                    // (attacker-controllable / unbounded), so attribute to the
-                    // aggregate sentinel rather than exploding peer cardinality.
-                    note_gossip_stream_rejected("*", "conn_limit");
                     incoming.refuse();
                     continue;
                 }
@@ -2105,7 +2073,7 @@ impl GossipNetwork {
                     Ok(Ok(signed)) => signed,
                     Ok(Err(_)) => return,
                     Err(_) => {
-                        note_gossip_stream_rejected(&remote_addr.ip().to_string(), "read_timeout");
+                        REJECTED_STREAMS.fetch_add(1, Ordering::Relaxed);
                         let _ = recv.stop(0u32.into());
                         return;
                     }
@@ -2125,10 +2093,6 @@ impl GossipNetwork {
                                 remote_addr,
                                 &signed.sender[..4]
                             );
-                            note_gossip_stream_rejected(
-                                &remote_addr.ip().to_string(),
-                                "unknown_sender",
-                            );
                             state
                                 .write()
                                 .await
@@ -2144,7 +2108,6 @@ impl GossipNetwork {
                             "Rejecting gossip envelope from {} — invalid Ed25519 signature",
                             remote_addr
                         );
-                        note_gossip_stream_rejected(&remote_addr.ip().to_string(), "bad_signature");
                         state
                             .write()
                             .await
@@ -2158,7 +2121,6 @@ impl GossipNetwork {
                             "Rejecting gossip envelope from {} — decode failed",
                             remote_addr
                         );
-                        note_gossip_stream_rejected(&remote_addr.ip().to_string(), "decode_failed");
                         return;
                     };
 
@@ -2959,72 +2921,6 @@ pub fn topic_id_from_name(name: &str) -> TopicId {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// The gossip-rejection observability emit: `note_gossip_stream_rejected`
-    /// MUST both advance the in-process accessor (`rejected_stream_count`) AND
-    /// emit `dregg_gossip_stream_rejected_total{peer,reason}` so the edge gossip
-    /// storm is a graph spike, not only a log flood. Captured with a local
-    /// recorder so the global node recorder is untouched.
-    #[test]
-    fn gossip_rejection_emits_labeled_counter_and_advances_accessor() {
-        use metrics_util::debugging::{DebugValue, DebuggingRecorder};
-
-        let recorder = DebuggingRecorder::new();
-        let snapshotter = recorder.snapshotter();
-
-        let before = GossipNetwork::rejected_stream_count();
-        metrics::with_local_recorder(&recorder, || {
-            // The post-handshake, count-bounded peer rejections carry the peer IP.
-            note_gossip_stream_rejected("10.0.0.7", "bad_signature");
-            note_gossip_stream_rejected("10.0.0.7", "read_timeout");
-            // The pre-handshake connection-limit refusal uses the aggregate
-            // sentinel so an unbounded attacker source cannot bomb cardinality.
-            note_gossip_stream_rejected("*", "conn_limit");
-        });
-        let after = GossipNetwork::rejected_stream_count();
-        assert_eq!(
-            after - before,
-            3,
-            "the in-process accessor must advance by 3"
-        );
-
-        // The Prometheus counter is emitted, per-reason, with the peer label.
-        let rows = snapshotter.snapshot().into_vec();
-        let mut by_reason: std::collections::HashMap<(String, String), u64> = Default::default();
-        for (ck, _unit, _desc, val) in rows {
-            let key = ck.key();
-            if key.name() != "dregg_gossip_stream_rejected_total" {
-                continue;
-            }
-            let mut peer = String::new();
-            let mut reason = String::new();
-            for l in key.labels() {
-                match l.key() {
-                    "peer" => peer = l.value().to_string(),
-                    "reason" => reason = l.value().to_string(),
-                    _ => {}
-                }
-            }
-            if let DebugValue::Counter(c) = val {
-                by_reason.insert((peer, reason), c);
-            }
-        }
-        assert_eq!(
-            by_reason.get(&("10.0.0.7".into(), "bad_signature".into())),
-            Some(&1),
-            "a bad-signature rejection is attributed to its peer IP"
-        );
-        assert_eq!(
-            by_reason.get(&("10.0.0.7".into(), "read_timeout".into())),
-            Some(&1),
-            "a slow-loris read-timeout rejection is attributed to its peer IP"
-        );
-        assert_eq!(
-            by_reason.get(&("*".into(), "conn_limit".into())),
-            Some(&1),
-            "the pre-handshake conn-limit refusal is the aggregate sentinel"
-        );
-    }
 
     #[test]
     fn topic_id_deterministic() {

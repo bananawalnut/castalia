@@ -337,15 +337,6 @@ impl TurnExecutor {
             intro_lifetime: self.max_introduction_lifetime,
             current_timestamp: self.current_timestamp as u64,
             federation_id: self.local_federation_id,
-            // THE EPOCH §5 fee-distribution targets — the host policy `distribute_fee_shares`
-            // applies (proposer fee/2, treasury fee*3/10, fee_well the remainder). The verified
-            // kernel runs `distributeFee` against fixed PLACEHOLDER cells (`admCtxOfHost`'s
-            // 0xF00/0xF01) + burns the residue, so the producer's reconstituted ledger carries no
-            // real fee-well credit; threading the real targets lets the producer apply the IDENTICAL
-            // distribution to the reconstituted ledger so a fee-bearing turn agrees on `.root()`.
-            proposer_cell: self.proposer_cell,
-            treasury_cell: self.treasury_cell,
-            fee_well_cell: self.fee_well_cell,
         }
     }
 
@@ -1395,14 +1386,6 @@ impl TurnExecutor {
         // P0-3: record the new chain-head for this agent.
         self.record_receipt_hash(turn.agent, receipt.receipt_hash());
 
-        // THE WRITE-SET (CORE-AUDIT.md finding 1): capture this turn's EXACT
-        // mutated cells from the journal, so a durable consumer reconstructs
-        // post-state from a COMPLETE change-set. The journal names every cell it
-        // touched (incl. the cells an effect resolves at runtime — a burn's well,
-        // a create's newborn, a factory birth — that a syntactic input-turn walk
-        // misses). Overwrites the prior turn's set; read via `last_write_set()`.
-        *self.last_write_set.lock().unwrap() = journal.touched_cells();
-
         if prof {
             super::turn_profile::accum(super::turn_profile::Phase::receipt, _pt_receipt);
         }
@@ -1475,19 +1458,6 @@ impl TurnExecutor {
         let agent_cell = ledger
             .get(&turn.agent)
             .ok_or(TurnError::CellNotFound { id: turn.agent })?;
-
-        // Gate 3 — agent lifecycle (`cellLifecycleCanAuthor`). A TERMINAL agent
-        // (Destroyed or Migrated) cannot author a turn. This mirrors the gate in
-        // `execute_without_shadow` and the verified `Dregg2.Exec.Admission.admissible`
-        // agent-lifecycle leg. Without it, `validate_without_apply` (the
-        // admit-without-applying entry — pre-checks, mempool, fee estimation) admits
-        // a Destroyed/Migrated agent the executor would then reject, a validate↔execute
-        // divergence in the dangerous direction (validate accepts what apply refuses).
-        if agent_cell.lifecycle.is_terminal() {
-            return Err(TurnError::AdmissionRefused {
-                reason: crate::AdmissionReason::DeadAgent,
-            });
-        }
 
         if agent_cell.state.nonce() != turn.nonce {
             return Err(TurnError::NonceReplay {

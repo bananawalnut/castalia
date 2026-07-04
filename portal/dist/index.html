@@ -3,124 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DreggNet — verify it yourself</title>
-<meta name="description" content="A recursive-STARK light client runs in your browser and verifies every sovereign cell's whole committed history end-to-end. Don't trust the server — verify it yourself.">
+<title>DreggNet — the live network</title>
 <link rel="stylesheet" href="./styles.css">
 </head>
-<body>
-
-<header class="topbar">
-  <div class="wrap topbar-inner">
-    <a class="brand" href="./"><span class="glyph">d</span>DreggNet <small>live network</small></a>
-    <span class="topbar-spacer"></span>
-    <div class="trustchip" id="trustchip"><span class="led"></span><span id="trustchip-text">light client · idle</span></div>
-    <a class="topbar-link hide-sm" href="#network">network</a>
-    <a class="topbar-link" href="./drive.html">drive &rsaquo;</a>
-  </div>
+<body class="portal-body">
+<main class="portal">
+<header class="portal-head">
+<h1>DreggNet</h1>
+<p>The live network of sovereign cells. Every card you open verifies the cell&rsquo;s committed history <em>in your own browser</em> with a recursive-STARK light client &mdash; don&rsquo;t trust the server, verify it.</p>
+<div class="portal-status" id="portal-status">connecting to the edge node&hellip;</div>
+<div class="portal-nav"><a class="portal-cta" href="./drive.html">Drive the network &rsaquo; connect &amp; act</a></div>
 </header>
-
-<main>
-<section class="hero wrap">
-  <div class="hero-grid">
-    <div class="hero-copy">
-      <span class="hero-eyebrow">recursive-STARK light client · in this tab</span>
-      <h1><span class="strike">Don&rsquo;t trust the&nbsp;server.</span><br><span class="em">Verify it yourself.</span></h1>
-      <p class="hero-lede">Every sovereign cell on DreggNet carries a proof that its <b>entire committed history</b> was authorized, conservative, and correctly committed. A light client checks that proof <b>here, in your browser</b> &mdash; re-running nothing, trusting no server.</p>
-      <div class="hero-actions">
-        <button class="btn btn-primary" id="hero-verify">Run the light client now</button>
-        <a class="btn btn-ghost" href="#network">See the living network &darr;</a>
-      </div>
-    </div>
-
-    <!-- THE LIVE PROOF ENGINE — loads the wasm light client and verifies a real
-         finalized history on the spot. The hero IS the killer feature. -->
-    <aside class="engine" id="engine">
-      <div class="engine-head">
-        <span class="dotrow"><i></i><i></i><i></i></span>
-        <b>dregg_wasm</b> · recursive-STARK verifier
-      </div>
-      <div class="engine-body" id="engine-body">
-        <div class="engine-verdict">
-          <div class="engine-shield" id="engine-shield">&#9679;</div>
-          <div>
-            <div class="engine-state" id="engine-state">Proof engine idle</div>
-            <div class="engine-sub" id="engine-sub">a verifier, not a viewer &mdash; press run</div>
-          </div>
-        </div>
-        <div id="engine-detail"></div>
-        <div class="engine-cta"><button class="btn btn-primary" id="engine-run" style="width:100%;justify-content:center">Verify a history in my browser &rarr;</button></div>
-      </div>
-    </aside>
-  </div>
+<section class="portal-section">
+<div class="portal-section-title">cell graph &mdash; the custodial hub and its cells</div>
+<div class="portal-graph" id="portal-graph"><svg id="portal-graph-svg" viewBox="0 0 600 360" preserveAspectRatio="xMidYMid meet"></svg></div>
 </section>
-
-<section class="section wrap" id="network">
-  <div class="section-head">
-    <div>
-      <div class="kicker">the living network</div>
-      <h2>Sovereign cells, proving themselves</h2>
-    </div>
-    <p class="lede">The custodial hub and its cells, read live from the edge node. When the light client runs, the verification sweeps the network &mdash; each cell lights up as it&rsquo;s checked against the cryptographic floor.</p>
-  </div>
-
-  <div class="net">
-    <div class="net-bar">
-      <span class="net-counter" id="net-counter">network idle</span>
-      <span class="net-meter"><i id="net-meter-fill"></i></span>
-      <span class="grow"></span>
-      <div class="trustchip" id="net-live"><span class="led"></span><span id="net-live-text">connecting to the edge&hellip;</span></div>
-    </div>
-    <div class="net-stage"><svg id="net-svg" viewBox="0 0 760 440" preserveAspectRatio="xMidYMid meet" role="img" aria-label="cell network graph"></svg></div>
-    <div class="net-foot" id="net-foot">The light client runs in <b>your</b> tab. Open any cell to watch its committed history fold and verify against the cryptographic floor &mdash; per-field heap openings included.</div>
-  </div>
-
-  <div class="cells" id="portal-cells">
-    <div class="skel"><div class="bar w60"></div><div class="bar w40"></div><div class="bar w80"></div></div>
-    <div class="skel"><div class="bar w40"></div><div class="bar w80"></div><div class="bar w60"></div></div>
-    <div class="skel"><div class="bar w80"></div><div class="bar w60"></div><div class="bar w40"></div></div>
-  </div>
+<section class="portal-section">
+<div class="portal-section-title">cells on the network</div>
+<div class="portal-cells" id="portal-cells">loading cells&hellip;</div>
 </section>
-
-<section class="section wrap">
-  <div class="section-head">
-    <div>
-      <div class="kicker">what you&rsquo;re looking at</div>
-      <h2>A turn, a token, a receipt</h2>
-    </div>
-    <p class="lede">dregg has four words. A <b>cell</b> is the unit of state and identity. A <b>capability</b> is an attenuable, proof-carrying token of authority. A <b>turn</b> is one authorized step over owned state. A <b>receipt</b> is its verifiable witness.</p>
-  </div>
-  <div class="how">
-    <div class="how-card">
-      <div class="n">01 — the token</div>
-      <h3>Authority is production, not possession</h3>
-      <p>You hold a capability iff you can <i>produce</i> a witness the kernel accepts &mdash; never merely be named in a table. Sharing is attenuation: a strictly weaker token, provably so.</p>
-    </div>
-    <div class="how-card">
-      <div class="n">02 — the turn</div>
-      <h3>Every step is a verifiable fact</h3>
-      <p>A turn is a forest of cap-gated actions, committed all-or-nothing. Tampering a field the effect didn&rsquo;t legitimately write makes the turn <code>unprovable</code> &mdash; the anti-ghost property.</p>
-    </div>
-    <div class="how-card">
-      <div class="n">03 — the proof</div>
-      <h3>One root knows the whole history</h3>
-      <p>Each turn carries a STARK; the recursion folds them into one root. A light client holding that root learns every transition was genuine &mdash; <code>re-executing nothing</code>.</p>
-    </div>
-  </div>
-</section>
+<footer class="portal-foot">the live cells + per-cell trustless verify. <a href="./drive.html">Drive the network</a> to connect an identity and fire real cap-gated turns &mdash; publish a minisite, open a lease, transfer.</footer>
 </main>
-
-<footer class="foot">
-  <div class="wrap foot-grid">
-    <div>
-      <a class="brand" href="./"><span class="glyph">d</span>DreggNet</a>
-      <p>The read-only trustless network view plus the interactive drive layer. The verification you see runs entirely client-side; the server is never trusted, only checked.</p>
-    </div>
-    <div>
-      <p><a href="./drive.html">Drive the network &rsaquo;</a> &mdash; connect an identity and fire real cap-gated turns: publish a minisite, open a metered lease, fire a transfer. Then verify the resulting cell trustlessly, in-tab.</p>
-    </div>
-  </div>
-</footer>
-
 <script src="./portal.js"></script>
 </body>
 </html>

@@ -701,36 +701,18 @@ impl TurnExecutor {
             TurnError::InvalidExecutionProof(format!("rotated descriptor parse: {e}"))
         })?;
 
-        // WELDED-AWARE RESOLUTION (the umem VK EPOCH — G4, the welded form is the DEPLOYED DEFAULT).
-        // The welded registry (WIDE_UMEM_WELD_REGISTRY_TSV) is a member-for-member 57/57 cover of the
-        // bare wide registry (the parity tooth in `effect_vm_descriptors.rs`), so EVERY cohort key now
-        // resolves a welded twin here. The weld is PI-COUNT-PRESERVING (`welded.public_input_count ==
-        // bare.public_input_count`), so the SAME reconstructed `dpis` (the 8-felt before/after anchors +
-        // fee/record pins below) bind BOTH forms BYTE-IDENTICALLY; only the descriptor target differs.
-        //
-        // THE FLIP: when a welded twin is present we REQUIRE it — the bare wide member is DROPPED from
-        // the accept set (`require_welded` below), so a single-cohort sovereign turn commits ONLY with a
-        // welded leg and a pure light client witnesses the universal-memory boundary BESIDE the 8-felt
-        // commit. The deployed sovereign producer (`cipherclerk::prove_sovereign_turn_rotated`) mints
-        // the welded form by default (`umem_weld_staged_enabled`), so this is fail-closed, not a new
-        // gate. Two carve-outs keep their BARE wide form (the producer cannot mint a single welded leg
-        // for them, so requiring welded would red an honest turn):
-        //   * MULTI-COHORT CHAIN LEGS (`is_chain_leg`): the chained producer (`prove_cohort_run_chain`)
-        //     welds ONLY a single-run turn (`umem_weld = umem_witness.filter(|_| n_runs == 1)`) — a
-        //     whole-turn umem diff does not split per leg — so every chain leg is bare by construction.
-        //   * THE 3 PRODUCER-BARE WIDE MEMBERS (heapWrite / supplyMint / transferCapOpenTB): their genuine
-        //     before→after projection is multi-domain (heap+registers / value+supply) or turn-bound, which
-        //     the single-domain cohort weld refuses, so the producer keeps them on the bare wide leg even
-        //     with the witness armed. They DO have welded twins in the registry (57/57), but no deployed
-        //     producer emits them, so the verifier still admits their bare form. (transferCapOpenTB is
-        //     cap-open-routed: it never surfaces as `name`, and its bare/welded cap-open members ride the
-        //     additive `cap_open_descs` set below — listed here for intent.)
-        // This mirrors the SDK wire verifier's `bound.extend(collect_bound(WIDE_UMEM_WELD_REGISTRY_TSV))`.
-        const LIVE_ONLY_BARE_KEYS: [&str; 3] = [
-            "heapWriteVmDescriptor2R24",
-            "supplyMintVmDescriptor2R24",
-            "transferCapOpenTBVmDescriptor2R24",
-        ];
+        // WELDED-AWARE RESOLUTION (the umem-flip staged verifier leg, VK-RISK-FREE — the flip's HARD
+        // BLOCKER closed). A cohort key with a welded twin in WIDE_UMEM_WELD_REGISTRY_TSV admits BOTH
+        // the welded proof (`prove_wide_umem_welded_staged`, resolve the welded descriptor) AND the
+        // bare wide proof. The weld is PI-COUNT-PRESERVING (`welded.public_input_count ==
+        // bare.public_input_count` — the parity tooth in `effect_vm_descriptors.rs`), so the SAME
+        // reconstructed `dpis` (the 8-felt before/after anchors + fee/record pins below) bind BOTH
+        // forms BYTE-IDENTICALLY; only the descriptor target differs. The 12 live-only members
+        // (heapWrite/supplyMint/transferCapOpenTB/exerciseCapOpen/spawnCapOpen + the 7 WriteCapOpen)
+        // have NO welded twin, so `welded_desc` is None and they FALL BACK to the bare wide member
+        // alone. STAGED: this only ADMITS the welded form on the wire — the deployed default prover
+        // stays bare and `umem_witness_enabled` is untouched (the gated VK epoch does the flip). This
+        // mirrors the SDK wire verifier's `bound.extend(collect_bound(WIDE_UMEM_WELD_REGISTRY_TSV))`.
         let welded_desc = WIDE_UMEM_WELD_REGISTRY_TSV
             .lines()
             .find_map(|line| {
@@ -751,23 +733,10 @@ impl TurnExecutor {
 
         // 5. The caveat manifest the producer used (transfer exercises both domains;
         //    everything else uses the empty manifest).
-        let mut caveat = match vm_effects {
+        let caveat = match vm_effects {
             [dregg_circuit::effect_vm::Effect::Transfer { .. }] => transfer_caveat_manifest(),
             _ => empty_caveat_manifest(),
         };
-        // THE DSL rc ANCHOR (the dsl rc-EMIT verifier half). Every deployed cohort descriptor
-        // publishes the caveat-region DFA route-commitment carrier as its LAST 4 member PIs
-        // (`withDfaRcPins`); the generators below read the carrier from THIS manifest, so seeding
-        // it here IS the trusted anchor: the executor independently recomputes
-        // `dfa_route_commitment(DfaProofWire.public_inputs)` from the turn's OWN witnessed Dfa
-        // predicates (the same blobs `authorize`/preconditions verified off-AIR) — never from a
-        // prover-supplied value. A turn with NO Dfa predicate anchors the ZERO sentinel; a proof
-        // whose bound rc columns disagree (a forged / omitted route commitment) diverges the
-        // transcript ⇒ `InvalidPowWitness` ⇒ reject. Fail-closed: >1 distinct Dfa rc refuses the
-        // rotated leg (the carrier holds ONE rc, mirroring the single-nullifier note-spend shape).
-        if let Some(rc) = Self::turn_dfa_route_commitment(turn)? {
-            caveat.dfa_rc = rc;
-        }
 
         // 6. Reconstruct the 38-PI vector. PLACEHOLDER block witnesses reproduce the
         //    witness-INDEPENDENT PIs (0..33 + 37) exactly; the commit/height PIs (34/35/36)
@@ -838,20 +807,6 @@ impl TurnExecutor {
                 &placeholder,
                 &caveat,
             )
-        } else if matches!(lead, dregg_circuit::effect_vm::Effect::BridgeMint { .. }) {
-            // BridgeMint carries the FELT mint-hash pin at PI ROT_PI_COUNT (46) — the STEP-2/3
-            // bridge-carrier exposure (51-PI base). The reconstructed PI 46 is EXECUTOR-DERIVED:
-            // `vm_effects` came from `convert_turn_effects_to_vm` over the turn's OWN
-            // `PortableNoteProof` (the same material `apply_bridge_mint` verified the note-spend
-            // STARK against), so the published mint identity is anchored to what the executor
-            // enforces — never a prover-supplied free PI.
-            dregg_circuit::effect_vm::trace_rotated::generate_rotated_bridge_mint_wide(
-                &initial_vm_state,
-                &vm_effects,
-                &placeholder,
-                &placeholder,
-                &caveat,
-            )
         } else {
             generate_rotated_transfer_shape_wide(
                 &initial_vm_state,
@@ -862,33 +817,6 @@ impl TurnExecutor {
             )
         }
         .map_err(|e| TurnError::InvalidExecutionProof(format!("rotated PI reconstruction: {e}")))?;
-        // THE POST-REGEN REGISTRY TAIL (the VERIFIER half — executor-derived, never
-        // prover-supplied). The committed rows the v12 exposure regen advanced carry claim PIs
-        // PAST the per-family base shape, spliced ahead of the 16 wide anchors; the producer
-        // (the wide dispatcher's registry-tail block / the record-pin KEY_COMMIT rider) fills
-        // them from the committed trace, and HERE the executor reconstructs the SAME values from
-        // the TRUSTED before-cell — so a proof whose bound teeth columns disagree with the
-        // trusted cell makes the anchored PIs diverge ⇒ UNSAT ⇒ reject:
-        //   * the committed transfer row (`transferV3MembershipWide`, 68): the membership-teeth
-        //     pair from `sender_membership_teeth` (the trusted cell's owner-key compress + its
-        //     declared `SenderAuthorized { PublicRoot }` slot felt; ZERO pair when no caveat);
-        //   * the committed makeSovereign row (`makeSovereignV3DeployedWide`, 78): the 4
-        //     KEY_COMMIT teeth = `pubkey_to_witness_key_commit` of the trusted cell's owner key
-        //     (the in-AIR chip gate welds them to the committed pubkey octet — the third edge).
-        // The fee-transfer member (`transferFeeVmDescriptor2R24`, 67) carries no teeth tail.
-        if !is_fee_transfer && matches!(lead, dregg_circuit::effect_vm::Effect::Transfer { .. }) {
-            let (sender_leaf, authorized_root) =
-                crate::rotation_witness::sender_membership_teeth(record_pin_cell);
-            let insert_at = dpis.len() - 16; // ahead of the 16 wide anchor PIs
-            dpis.insert(insert_at, authorized_root);
-            dpis.insert(insert_at, sender_leaf);
-        } else if matches!(lead, dregg_circuit::effect_vm::Effect::MakeSovereign) {
-            let kc = Self::pubkey_to_witness_key_commit(record_pin_cell.public_key());
-            let insert_at = dpis.len() - 16; // the committed SOVEREIGN_KEY_COMMIT_PI_LO (58)
-            for (k, v) in kc.iter().enumerate() {
-                dpis.insert(insert_at + k, *v);
-            }
-        }
         if dpis.len() != desc.public_input_count {
             return Err(TurnError::InvalidExecutionProof(format!(
                 "rotated verify: reconstructed {} PIs but descriptor wants {}",
@@ -1036,28 +964,10 @@ impl TurnExecutor {
         // WIDE: the record-pin family ships at 63 PIs (47 base + 16 wide). The record/lifecycle
         // pin still rides PI ROT_PI_COUNT (46) (a base PI, BEFORE the 16 wide commit PIs at indices 39..54), so the
         // anchor index is unchanged — only the descriptor-PI-count gate widens 47 → 63.
-        // WIDE record-pin family: the base rotated record-pin vector plus the 16 wide commit PIs.
-        // The base is either the SINGLE record/lifecycle pin (`ROT_PI_COUNT + 1`, the lifecycle movers)
-        // OR — H1 — the 8 authority record-pins (`ROT_PI_COUNT + 8`, the record-digest movers
-        // setPerms/setVK/makeSovereign/refusal, `withRecordPin8Headroom2`). The verifier re-derives the
-        // trace with PLACEHOLDER cells (above), so the record-pin PIs MUST be anchored here from the
-        // trusted post-cell — for the record-digest movers that means ALL 8 limbs, else the un-anchored
-        // headroom PIs stay at placeholder values and the proof's transcript diverges (InvalidPowWitness).
-        // (+ the 4 dsl rc PIs every wrapped cohort member carries between its extras and the wide 16.)
-        let wide_record_pin_count_1 =
-            ROT_PI_COUNT + 1 + dregg_circuit::effect_vm::trace_rotated::DFA_RC_LEN + 16; // lifecycle movers (67)
-        let wide_record_pin_count_8 =
-            ROT_PI_COUNT + 8 + dregg_circuit::effect_vm::trace_rotated::DFA_RC_LEN + 16; // H1 record-digest movers (74)
-        // The KEYED sovereign member (`makeSovereignV3DeployedWide`): the record-digest-mover base
-        // PLUS the 4 KEY_COMMIT teeth claim PIs spliced ahead of the 16 wide anchors (78). The
-        // record-pin anchor indices below are BASE-prefix slots (`ROT_PI_COUNT..+8`), untouched by
-        // the tail splice, so the same anchor applies.
-        let wide_record_pin_count_8_keyed = wide_record_pin_count_8 + 4; // makeSovereign (78)
-        if (desc.public_input_count == wide_record_pin_count_1
-            || desc.public_input_count == wide_record_pin_count_8
-            || desc.public_input_count == wide_record_pin_count_8_keyed)
-            && dpis.len() == desc.public_input_count
-        {
+        // WIDE record-pin family: the base rotated record-pin vector (`ROT_PI_COUNT + 1`, the four
+        // commit pins + the fifth record/lifecycle pin) plus the 16 wide commit PIs.
+        let wide_record_pin_count = ROT_PI_COUNT + 1 + 16;
+        if desc.public_input_count == wide_record_pin_count && dpis.len() == wide_record_pin_count {
             use dregg_circuit::effect_vm::Effect as VmEffect;
             // The forced-limb anchor flavor for this lead: record-digest (Class-1) vs lifecycle (Class-2).
             enum Anchor {
@@ -1105,25 +1015,12 @@ impl TurnExecutor {
                         self.block_height,
                     );
                     // The record/lifecycle pin is the fifth appended PI at slot `ROT_PI_COUNT`.
-                    match anchor {
+                    dpis[ROT_PI_COUNT] = match anchor {
                         Anchor::RecordDigest => {
-                            // H1: the record-digest movers now pin ALL 8 faithful authority limbs
-                            // (`withRecordPin8Headroom2`): limb-0 at `ROT_PI_COUNT` (PI 46) + the 7
-                            // headroom limbs at `ROT_PI_COUNT+1 .. ROT_PI_COUNT+7` (PI 47..53). Anchor
-                            // every one to the trusted post-cell's `compute_authority_digest_8`, so a
-                            // mover that forges a 31-bit-colliding wide-open authority into ANY limb is
-                            // UNSAT (the GENTIAN close for movers — no wider-but-unwelded limb).
-                            let auth8 = dregg_cell::compute_authority_digest_8(&post_cell);
-                            dpis[ROT_PI_COUNT] = auth8[0];
-                            for i in 0..7 {
-                                if ROT_PI_COUNT + 1 + i < dpis.len() {
-                                    dpis[ROT_PI_COUNT + 1 + i] = auth8[1 + i];
-                                }
-                            }
+                            dregg_cell::compute_authority_digest_felt(&post_cell)
                         }
                         Anchor::Lifecycle => {
-                            dpis[ROT_PI_COUNT] =
-                                crate::rotation_witness::lifecycle_felt_cell(&post_cell);
+                            crate::rotation_witness::lifecycle_felt_cell(&post_cell)
                         }
                         Anchor::None => unreachable!(),
                     };
@@ -1132,17 +1029,15 @@ impl TurnExecutor {
         }
 
         // 7. Verify through the multi-table batch verifier (the hand-AIR leg is gone). WELDED-AWARE
-        //    (the umem VK EPOCH — G4): the welded twin is the REQUIRED form for a single-cohort
-        //    sovereign turn (`require_welded` above drops the bare member), so a welded leg is the
-        //    SOLE accepted form and a pure light client witnesses the universal-memory boundary. A
-        //    welded proof verifies ONLY against the welded member (its extra umemOp / +7 trace
-        //    columns cannot satisfy the bare member) and a bare proof verifies ONLY against the bare
-        //    member, so the 8-felt ~124-bit anchors stay bound and the ambiguity tooth (mirrored from
-        //    the SDK wire verifier's unique-accept) still holds. A post-state forgery surfaces as NO
-        //    accept: the anchored after-commit PIs disagree with the trace's after-block STATE_COMMIT
-        //    carrier (the wide descriptor's carrier-12 pi_bindings). Multi-cohort chain legs and the 3
-        //    producer-bare wide members (heapWrite/supplyMint/transferCapOpenTB — no deployed welded
-        //    producer) keep the bare member admitted.
+        //    (the umem-flip staged verifier leg): try the welded twin (when present) AND the bare
+        //    wide member, requiring a UNIQUE accept. A welded proof verifies ONLY against the welded
+        //    member (its extra umemOp / +7 trace columns cannot satisfy the bare member) and a bare
+        //    proof verifies ONLY against the bare member, so the 8-felt ~124-bit anchors stay bound
+        //    and the ambiguity tooth (mirrored from the SDK wire verifier's unique-accept) still
+        //    holds. A post-state forgery surfaces as NO accept: the anchored after-commit PIs
+        //    disagree with the trace's after-block STATE_COMMIT carrier (the wide descriptor's
+        //    carrier-12 pi_bindings). The 12 live-only members (no welded twin) verify against the
+        //    bare member alone.
         // CAP-OPEN ROUTE (the executor twin of the SDK wire verifier's cap-open routing — the
         // domain-2 executor-commit gap CLOSED). A capability effect's authority is
         // light-client-verifiable ONLY under its cap-open descriptor (the in-circuit depth-16
@@ -1160,34 +1055,8 @@ impl TurnExecutor {
         // proof commits through the executor — its cap-effect verify surface now AGREES with the
         // wire's (both cap-open + the membership crown, both admit the welded twin). STAGED: purely
         // additive descriptor resolution; the deployed default prover (plain) and `umem_witness_enabled`
-        // are untouched. The dpis-length guard (`public_input_count == cap_open_dpis.len()`) admits only
-        // the wide members the reconstructed cap-open vector can bind; absent / wrong-width keys are
-        // skipped.
-        //
-        // THE CAP-OPEN dpis (post-rc-emit): the cap-open family was NEVER rc-wrapped in the Lean
-        // emit (every committed `*CapOpen*` member carries the UNWRAPPED base — 46/47 + 16; the
-        // producer `build_effect_vm_cap_open_leg` strips the rc), and the cap-open transfer member
-        // carries NO membership-teeth tail. So the cap-open candidates bind the reconstructed
-        // `dpis` MINUS the plain member's tail extras — the rc quad (+ the transfer teeth pair),
-        // which ride contiguously just ahead of the 16 wide anchors.
-        let cap_open_dpis: Vec<BabyBear> = {
-            let extras = dregg_circuit::effect_vm::trace_rotated::DFA_RC_LEN
-                + if !is_fee_transfer
-                    && matches!(lead, dregg_circuit::effect_vm::Effect::Transfer { .. })
-                {
-                    2 // the spliced membership-teeth pair (transfer only)
-                } else {
-                    0
-                };
-            if dpis.len() >= 16 + extras {
-                let cut = dpis.len() - 16 - extras;
-                let mut v = dpis[..cut].to_vec();
-                v.extend_from_slice(&dpis[dpis.len() - 16..]);
-                v
-            } else {
-                dpis.clone()
-            }
-        };
+        // are untouched. The dpis-length guard (`public_input_count == dpis.len()`) admits only the 62-PI
+        // wide members the reconstructed `dpis` can bind; absent / wrong-width keys are skipped.
         let mut cap_open_descs: Vec<dregg_circuit::descriptor_ir2::EffectVmDescriptor2> =
             Vec::new();
         for key in cap_open_candidate_keys(lead) {
@@ -1203,7 +1072,7 @@ impl TurnExecutor {
                 });
                 if let Some(json) = json {
                     if let Ok(d) = parse_vm_descriptor2(json) {
-                        if d.public_input_count == cap_open_dpis.len() {
+                        if d.public_input_count == dpis.len() {
                             cap_open_descs.push(d);
                         }
                     }
@@ -1211,60 +1080,39 @@ impl TurnExecutor {
             }
         }
 
-        // THE FLIP (G4): require the welded twin when one is present and this is neither a multi-cohort
-        // chain leg nor one of the 3 producer-bare wide members. In that case the bare wide member
-        // `desc` is DROPPED from the accept set, so a welded leg is the SOLE accepted form and the bare
-        // wide proof is rejected fail-closed. For a chain leg / live-only key (no deployed welded
-        // producer) the bare `desc` stays admitted.
-        let require_welded =
-            welded_desc.is_some() && !is_chain_leg && !LIVE_ONLY_BARE_KEYS.contains(&name);
-
-        // The verify candidate set: the welded twin (when present), the plain bare wide member (UNLESS
-        // the flip requires welded), and the cap-open bare + welded members. A SOUND rotated proof binds
-        // exactly ONE descriptor — a cap-open proof's membership-crown trace cannot satisfy a plain
-        // (narrower) member and a plain proof's narrower trace cannot satisfy a cap-open member — so
-        // requiring a UNIQUE accept preserves the ambiguity tooth. A post-state forgery surfaces as NO
-        // accept (the anchored after-commit PIs disagree with the trace's after-block STATE_COMMIT
-        // carrier). Admitting the cap-open members is STRICTLY STRONGER (more in-circuit constraints),
-        // never a widening of the plain path.
-        // Each candidate pairs the descriptor with the PI vector it binds: the plain/welded
-        // members bind the full reconstructed `dpis` (rc + teeth + anchors); the cap-open members
-        // bind the UNWRAPPED `cap_open_dpis` (the cap-open family was never rc-wrapped).
-        let mut candidates: Vec<(
-            &dregg_circuit::descriptor_ir2::EffectVmDescriptor2,
-            &Vec<BabyBear>,
-        )> = Vec::new();
+        // The verify candidate set: the plain welded twin (when present), the plain bare wide member,
+        // and the cap-open bare + welded members. A SOUND rotated proof binds exactly ONE descriptor —
+        // a cap-open proof's membership-crown trace cannot satisfy a plain (narrower) member and a
+        // plain proof's narrower trace cannot satisfy a cap-open member — so requiring a UNIQUE accept
+        // preserves the ambiguity tooth. A post-state forgery surfaces as NO accept (the anchored
+        // after-commit PIs disagree with the trace's after-block STATE_COMMIT carrier). Admitting the
+        // cap-open members is STRICTLY STRONGER (more in-circuit constraints), never a widening of the
+        // plain path.
+        let mut candidates: Vec<&dregg_circuit::descriptor_ir2::EffectVmDescriptor2> = Vec::new();
         if let Some(welded) = welded_desc.as_ref() {
-            candidates.push((welded, &dpis));
+            candidates.push(welded);
         }
-        if !require_welded {
-            candidates.push((&desc, &dpis));
-        }
+        candidates.push(&desc);
         for d in &cap_open_descs {
-            candidates.push((d, &cap_open_dpis));
+            candidates.push(d);
         }
 
         let mut accepted = 0usize;
         let mut last_err: Option<String> = None;
-        for (d, cand_dpis) in &candidates {
-            match verify_vm_descriptor2(d, ir2_proof, cand_dpis) {
+        for d in &candidates {
+            match verify_vm_descriptor2(d, ir2_proof, &dpis) {
                 Ok(()) => accepted += 1,
                 Err(e) => last_err = Some(format!("{}: {e}", d.name)),
             }
         }
         match accepted {
             0 => Err(TurnError::ProofVerificationFailed(format!(
-                "rotated effect-vm verify: proof bound NO descriptor (welded twin {}, bare wide {}, \
-                 {} cap-open member(s)): {}",
+                "rotated effect-vm verify: proof bound NO descriptor (plain welded twin {}, {} \
+                 cap-open member(s)): {}",
                 if welded_desc.is_some() {
                     "present"
                 } else {
                     "absent"
-                },
-                if require_welded {
-                    "DROPPED (welded required — G4 flip)"
-                } else {
-                    "admitted"
                 },
                 cap_open_descs.len(),
                 last_err.unwrap_or_default()
@@ -1800,91 +1648,6 @@ impl TurnExecutor {
         }
 
         Ok(())
-    }
-
-    /// **The turn's DFA ROUTE COMMITMENT (the dsl rc-EMIT scan).** Walk the call forest for
-    /// action-visible `WitnessedPredicateKind::Dfa` predicates — `Preconditions::witnessed`
-    /// entries and `Authorization::Custom { predicate }` — decode each one's `DfaProofWire`
-    /// blob (`action.witness_blobs[proof_witness_index]`, the SAME bytes the off-AIR
-    /// `DslCircuitDfaVerifier` verified), and fold its public inputs through
-    /// [`dregg_circuit::effect_vm::trace_rotated::dfa_route_commitment`].
-    ///
-    /// * `Ok(None)` — no Dfa predicate on the turn: the rotated leg anchors the ZERO sentinel.
-    /// * `Ok(Some(rc))` — exactly one distinct rc: the rotated leg anchors it (the light-client
-    ///   FOLD can then `connect` the re-proven DSL leaf to the published slots).
-    /// * `Err` — more than one DISTINCT rc, or an unreadable blob: the rotated leg fails closed
-    ///   (the carrier holds ONE rc — the single-nullifier note-spend discipline).
-    ///
-    /// NAMED RESIDUAL (staged): a Dfa predicate riding a `CapabilityCaveat::Witnessed` on an
-    /// exercised cap (resolved from CELL STATE, not the action) and a Dfa candidate inside a
-    /// disjunctive authorization are NOT scanned yet — those turns anchor ZERO exactly as they
-    /// did before the rc emit (the predicate stays executor-verified; the fold just does not
-    /// witness it). Their thread rides the exercise-site plumbing, not this scan.
-    pub(super) fn turn_dfa_route_commitment(
-        turn: &Turn,
-    ) -> Result<Option<[dregg_circuit::field::BabyBear; 4]>, TurnError> {
-        use dregg_cell::WitnessedPredicateKind;
-        use dregg_circuit::effect_vm::trace_rotated::dfa_route_commitment;
-
-        fn scan(
-            tree: &CallTree,
-            found: &mut Vec<[dregg_circuit::field::BabyBear; 4]>,
-        ) -> Result<(), TurnError> {
-            let action = &tree.action;
-            let mut preds: Vec<&dregg_cell::WitnessedPredicate> = action
-                .preconditions
-                .witnessed
-                .iter()
-                .filter(|p| p.kind == WitnessedPredicateKind::Dfa)
-                .collect();
-            if let crate::Authorization::Custom { predicate } = &action.authorization {
-                if predicate.kind == WitnessedPredicateKind::Dfa {
-                    preds.push(predicate);
-                }
-            }
-            for p in preds {
-                let blob = action
-                    .witness_blobs
-                    .get(p.proof_witness_index)
-                    .ok_or_else(|| {
-                        TurnError::InvalidExecutionProof(format!(
-                            "dsl rc anchor: Dfa predicate proof_witness_index {} out of bounds \
-                         ({} witness blobs)",
-                            p.proof_witness_index,
-                            action.witness_blobs.len()
-                        ))
-                    })?;
-                let pis = super::membership_verifier::dfa_wire_public_inputs(&blob.bytes).map_err(
-                    |e| {
-                        TurnError::InvalidExecutionProof(format!(
-                            "dsl rc anchor: Dfa proof blob did not decode: {e}"
-                        ))
-                    },
-                )?;
-                let rc = dfa_route_commitment(&pis);
-                if !found.contains(&rc) {
-                    found.push(rc);
-                }
-            }
-            for child in &tree.children {
-                scan(child, found)?;
-            }
-            Ok(())
-        }
-
-        let mut found = Vec::new();
-        for root in &turn.call_forest.roots {
-            scan(root, &mut found)?;
-        }
-        match found.len() {
-            0 => Ok(None),
-            1 => Ok(Some(found[0])),
-            n => Err(TurnError::InvalidExecutionProof(format!(
-                "dsl rc anchor: the turn carries {n} DISTINCT Dfa route commitments; the rotated \
-                 caveat region carries ONE rc carrier — the rotated leg fails closed (use the v1 \
-                 leg for multi-Dfa turns)"
-            ))),
-        }
     }
 
     /// Collect every Effect in the turn's call_forest in the canonical

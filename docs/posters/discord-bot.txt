@@ -1,0 +1,68 @@
+ ╔══════════════════════════════════════════════════════════════════════════════════════════════════════════╗
+ ║                                                                                                        ░░║
+ ║  ██████╗ ██████╗  █████╗  ██████╗  ██████╗ ███╗   ██╗ the DreggNet Discord bot — live on the 2-node     ░║
+ ║  ██╔══██╗██╔══██╗██╔══██╗██╔════╝ ██╔═══██╗████╗  ██║ devnet federation as "Dragon’s Egg".              ░║
+ ║  ██║  ██║██████╔╝███████║██║  ███╗██║   ██║██╔██╗ ██║ your channel·your agent·your key·your ledger.     ░║
+ ║  ██║  ██║██╔══██╗██╔══██║██║   ██║██║   ██║██║╚██╗██║ every message → a cap-gated, metered,             ░║
+ ║  ██████╔╝██║  ██║██║  ██║╚██████╔╝╚██████╔╝██║ ╚████║ RECEIPTED dregg turn. bring your own LLM key;     ░║
+ ║  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝ watch your own agent civilization grow.           ░║
+ ║   ▸ your Discord channel → your dregg cell → your confined Hermes → the live federated ledger          ░░║
+ ║                                                                                                        ░░║
+ ╚══════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+  ░▒▓ THE FRONT DOOR ▓▒░   you don't install a chain. you open a Discord channel.
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+     the bot is the doorway to a VERIFIED AGENT CIVILIZATION. claim a channel and you get a real
+     dregg cell, a confined agent, a metered key-slot, and a ledger a stranger can check.
+            ▸  no node to run · no wallet to seed · no off-chain trust — just type, and the chain bites.
+
+  ░▒▓ ① YOUR CHANNEL = YOUR OWN CELL + AGENT SURFACE ▓▒░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       /channel  →  a semi-private Discord channel, backed by a REAL dregg cell that is yours.
+            @everyone  → DENIED VIEW       you (owner) → view + post       admin → view (operator sees all)
+       ‹ honest: this is Discord-permission privacy — private from PEERS, transparent to the ADMIN.
+         not cryptographic privacy from the operator; the admin portal monitors every channel by design. ›
+
+  ░▒▓ ② DRIVE YOUR HERMES FROM YOUR CHANNEL · every message is a TURN ▓▒░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       you —msg→ ⟦your cell⟧  ─▶  ToolGateway.admit + invoke  ─▶  verified Lean executor  ─▶  receipt #
+              ├ WHO  your agent descends from YOUR seed      ├ metered: rate + token budget bite first
+              └ WHAT cap-scoped per tool-class (read/search/fetch/run/edit/chat/llm)   └ ↦ a TurnReceipt
+       over-budget / past-deadline / out-of-mandate  ─▶  REFUSED IN-BAND, NAMING THE LEG — no turn, no spend.
+       ‹ honest seam: today the tool-call is classified from your text by a small command grammar; the
+         live Hermes-LLM-over-ACP producer drops into the SAME enforcement seam — only the source changes. ›
+
+  ░▒▓ ③ BRING YOUR OWN LLM KEY · a metered, never-logged HELD CAPABILITY ▓▒░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       Anthropic · OpenAI · OpenRouter · Kimi · DeepSeek   —  you port in YOUR key; we are careful with it:
+            ▒ AEAD-at-rest  XChaCha20-Poly1305, per-user-derived key, bound to (user, provider) — a DB
+                            dump without the deployment secret is inert; a ciphertext can't be replayed.
+            ▒ never-logged  redacted to ‘****abcd’ on Debug/Display · zeroized on drop · exposed ONLY to set
+                            the auth header at call time.
+            ▒ revocable     revoke = DELETE the ciphertext — nothing recoverable after (proven by tests).
+            ▒ gated         provider-permission + spend + rate gates bite BEFORE the paid call ever fires.
+       “bring your own key, watch your own agent civilization.”
+
+  ░▒▓ ④ EVERY ACTION ON THE LIVE CHAIN · a real federation, not a mock ▓▒░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       the bot submits to a REAL 2-node consensus federation — cross-node finality, not a local sandbox.
+            ┌─[node A]─┐   cross-node    ┌─[node B]─┐        /admin portal → the operator monitors every
+            │  ▓▒░  ✦ │═══finality═══│ ✦  ░▒▓  │        channel, cell, Hermes activity + cap record live.
+            └─────────┘               └─────────┘
+
+  ░▒▓ ⑤ THE ON-CHAIN COMMAND CELL · the chain itself can drive the bot ▓▒░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
+       the bot is a Reactor (the reactive twin of invoke): it WATCHES a committed command cell and reacts
+       to each on-chain op with a receipted custodial turn.   the chain is the bus; the bot is a reactor.
+            ⟦command cell⟧ ─commit─▶ ReceiptFilter ─▶ BotCommandReactor.react ─▶ turn → EmitEvent → Discord
+       so an AGENT can drive the bot THROUGH the chain — no Discord login required to act.
+
+  ░▒▓ THE HONEST DIAL · what is real, what is early ▓▒░
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+     REAL today  ▒ the cell, the gateway, the receipt, the key-vault, the reactor — proven offline + LIVE on
+                    the devnet federation as “Dragon’s Egg.” every refusal names its leg; no off-chain trust.
+     EARLY      ▒ it's a LIVE DEVNET: 2 nodes today (→ 5 for full attack-resistance). the live LLM-call path
+                    needs YOUR key + the operator's live-LLM switch. the Hermes brain seam is named (②).
+
+  ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+     your channel · your agent · your key · your ledger.   the front door to a home where digital minds can
+     act, pay, and be checked — and the system can only DO what it can PROVE.
+
+              ░▒▓█  bring your own key.  watch your own agent civilization.  █▓▒░
+                    the DreggNet Discord bot  ·  live on the devnet as “Dragon’s Egg”  ·  built with Claude
+                                  🐉   https://www.dregg.net   ·   $DREGG

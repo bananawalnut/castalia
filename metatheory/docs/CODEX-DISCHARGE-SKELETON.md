@@ -378,6 +378,18 @@ carries its closure shape. Pure-Lean ranks are VK-risk-free and can soak before 
   programmatic diverge after the widget exists needs a `branch_resync` (mirror of `doc_resync`) — closure = add it if a flow
   edits the branch out-of-band while its editor is open.
 
+## polyana seam WIRED: `polyana-bridge` realizes the sketch against real dregg cores (2026-06-25)
+- WHAT: `docs/deos/polyana-seam-sketch.rs` (was "ILLUSTRATIVE, NOT WIRED") is now the `polyana-bridge` crate
+  (workspace member). Slice 3 = `gate_effect_set`/`gate_auth` over the PROVEN `is_facet_attenuation`/`is_attenuation`;
+  Slice 1 = `witness_receipt` → real chained `dregg_turn::TurnReceipt` (v3 hash binds the chain link); Slice 1's payoff =
+  `attest_whole_log` + `dregg_query` `AttestedAnswer` non-omission certificate. 7 tests green (`polyana-bridge/tests/seam.rs`).
+- NAMED TAILS (closure shape): (a) the EffectMask bit-assignment is the bridge's polyana-vocab intern, NOT dregg protocol
+  bits — extend `POLYANA_EFFECT_BITS` as polyana's vocabulary grows (≤32 tokens, `u32`); promote to a richer set type if it
+  outgrows that. (b) `audit_records` leaves `EffectSummary`s empty — wire polyana's typed effect summaries (fn_name/intent
+  kind → `EffectSummary`) so the attested queries see real facts, not just the receipt-hash MMR. (c) ACTUAL adoption is in
+  polyana's own repo (`~/pug/polyana`, read-only here): a `pa_witness` call site that also emits the bridge receipt + a
+  `cap-bundle` parser → `CapBundle` — an ember/David seam, out-of-tree. (d) Slice 2 (`Target::HostPd` confinement) stays in
+  `sel4/dregg-firmament`, not re-exported.
 
 ## umem Stage A LANDED: the per-cell heap is a first-class umem (additive); live producer is the named seam (2026-06-25)
 - WHAT: `UMEM-PRIMITIVE.md §2/§7` Stage A — the per-cell heap (`CellState.heap_map`) projected as a

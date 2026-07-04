@@ -13,14 +13,13 @@ resolver = "3"
 # workspace, so those two stay separate workspaces (discord-bot excluded below,
 # deos-zed-full still excluded). `default-members` (below) is the light protocol/
 # circuit/app set so bare `cargo build`/`cargo test` stays gpui/mozjs/servo-free.
-members = ["macaroon", "secrets", "token", "tokenizer", "hints", "commit", "trace", "demo", "demo-agent", "demo/sdk-consensus", "federation", "circuit", "circuit-prove", "audit", "bridge", "wire", "persist", "cell", "cell-crypto", "turn", "exec-lean", "coord", "tests", "types", "sdk", "dregg-sdk-net", "node", "intent", "net", "discharge-gateway", "teasting", "app-framework", "dregg-payable", "dregg-dsl", "dregg-dsl-runtime", "dregg-dsl-tests", "dregg-dsl-differential", "blocklace", "captp", "cli", "verifier", "protocol-tests", "observability", "storage", "starbridge-apps/nameservice", "dfa", "dfa-federation", "rbg", "credentials", "directory", "starbridge-apps/identity", "starbridge-apps/subscription", "starbridge-apps/governed-namespace", "starbridge-apps/compartment-workflow-mandate", "starbridge-apps/storage-gateway-mandate", "starbridge-apps/privacy-voting", "starbridge-apps/bounty-board", "starbridge-apps/agent-provenance", "starbridge-apps/tool-access-delegation", "starbridge-apps/sealed-auction", "starbridge-apps/polis", "starbridge-apps/escrow-market", "starbridge-apps/first-room", "starbridge-apps/compute-exchange", "starbridge-apps/gallery", "starbridge-apps/swarm-orchestration", "starbridge-apps/supply-chain-provenance", "starbridge-apps/agent-orchestration", "starbridge-apps/tussle", "starbridge-apps/kvstore", "starbridge-apps/branch-stitch-multiplayer", "starbridge-apps/execution-lease", "starbridge-apps/org", "starbridge-apps/vat", "starbridge-apps/billing", "dregg-sandbox", "starbridge-apps/guard", "starbridge-apps/domains", "starbridge-apps/edge-mandate", "dregg-umem", "dregg-storage-templates", "preflight", "dregg-lean-ffi", "lightclient", "redteam", "perf", "dregg-auth", "dregg-query", "dregg-merge", "dregg-userspace-verify", "dregg-deploy", "dregg-analyzer", "deos-reflect", "starbridge-v2", "starbridge-v2/web", "deos-js", "deos-js-runtime", "deos-view", "deos-zed", "deos-matrix", "deos-hermes", "deos-terminal", "servo-render", "deos-web-cells", "starbridge-web-surface", "deos-leptos", "android-cell", "mobile/deos-core-smoke", "dregg-agent", "grain-turn", "hosted-lease", "grain-verify", "grain-verify-wasm", "grain-fork", "sandstorm-bridge", "hosted-durable", "grain-commons", "http-serve", "agent-platform"]
-
+members = ["macaroon", "secrets", "token", "tokenizer", "hints", "commit", "trace", "demo", "demo-agent", "demo/sdk-consensus", "federation", "circuit", "circuit-prove", "audit", "bridge", "wire", "persist", "cell", "cell-crypto", "turn", "exec-lean", "coord", "tests", "types", "sdk", "dregg-sdk-net", "node", "intent", "net", "discharge-gateway", "teasting", "app-framework", "dregg-payable", "dregg-dsl", "dregg-dsl-runtime", "dregg-dsl-tests", "dregg-dsl-differential", "blocklace", "captp", "cli", "verifier", "protocol-tests", "observability", "storage", "starbridge-apps/nameservice", "dfa", "dfa-federation", "rbg", "credentials", "directory", "starbridge-apps/identity", "starbridge-apps/subscription", "starbridge-apps/governed-namespace", "starbridge-apps/compartment-workflow-mandate", "starbridge-apps/storage-gateway-mandate", "starbridge-apps/privacy-voting", "starbridge-apps/bounty-board", "starbridge-apps/agent-provenance", "starbridge-apps/tool-access-delegation", "starbridge-apps/sealed-auction", "starbridge-apps/polis", "starbridge-apps/escrow-market", "starbridge-apps/first-room", "starbridge-apps/compute-exchange", "starbridge-apps/gallery", "starbridge-apps/swarm-orchestration", "starbridge-apps/supply-chain-provenance", "starbridge-apps/agent-orchestration", "starbridge-apps/tussle", "starbridge-apps/kvstore", "starbridge-apps/branch-stitch-multiplayer", "starbridge-apps/execution-lease", "dregg-storage-templates", "preflight", "dregg-lean-ffi", "lightclient", "redteam", "perf", "dregg-auth", "dregg-query", "dregg-userspace-verify", "dregg-deploy", "dregg-analyzer", "deos-reflect", "starbridge-v2", "starbridge-v2/web", "deos-js", "deos-js-runtime", "deos-view", "deos-zed", "deos-matrix", "deos-hermes", "deos-terminal", "servo-render", "deos-web-cells", "starbridge-web-surface", "deos-leptos", "android-cell", "mobile/deos-core-smoke", "polyana-bridge"]
 
 # default-members = the LIGHT protocol/circuit/app crates (members minus the 12
 # gpui/mozjs/servo elephants). A bare `cargo build`/`cargo test` (no `--workspace`,
 # no `-p <elephant>`) operates on THESE only, so the default dev loop never pulls
 # gpui/mozjs/servo. Build an elephant explicitly with `-p starbridge-v2` etc.
-default-members = ["macaroon", "secrets", "token", "tokenizer", "hints", "commit", "trace", "demo", "demo-agent", "demo/sdk-consensus", "federation", "circuit", "circuit-prove", "audit", "bridge", "wire", "persist", "cell", "cell-crypto", "turn", "exec-lean", "coord", "tests", "types", "sdk", "dregg-sdk-net", "node", "intent", "net", "discharge-gateway", "teasting", "app-framework", "dregg-payable", "dregg-dsl", "dregg-dsl-runtime", "dregg-dsl-tests", "dregg-dsl-differential", "blocklace", "captp", "cli", "verifier", "protocol-tests", "observability", "storage", "starbridge-apps/nameservice", "dfa", "dfa-federation", "rbg", "credentials", "directory", "starbridge-apps/identity", "starbridge-apps/subscription", "starbridge-apps/governed-namespace", "starbridge-apps/compartment-workflow-mandate", "starbridge-apps/storage-gateway-mandate", "starbridge-apps/privacy-voting", "starbridge-apps/bounty-board", "starbridge-apps/agent-provenance", "starbridge-apps/tool-access-delegation", "starbridge-apps/sealed-auction", "starbridge-apps/polis", "starbridge-apps/escrow-market", "starbridge-apps/first-room", "starbridge-apps/compute-exchange", "starbridge-apps/gallery", "starbridge-apps/swarm-orchestration", "starbridge-apps/supply-chain-provenance", "starbridge-apps/agent-orchestration", "starbridge-apps/tussle", "starbridge-apps/kvstore", "starbridge-apps/branch-stitch-multiplayer", "starbridge-apps/execution-lease", "starbridge-apps/org", "starbridge-apps/vat", "starbridge-apps/billing", "dregg-sandbox", "starbridge-apps/guard", "starbridge-apps/domains", "starbridge-apps/edge-mandate", "dregg-umem", "dregg-storage-templates", "preflight", "dregg-lean-ffi", "lightclient", "redteam", "perf", "dregg-auth", "dregg-query", "dregg-merge", "dregg-userspace-verify", "dregg-deploy", "dregg-analyzer", "deos-reflect", "dregg-agent", "hosted-lease", "grain-verify", "sandstorm-bridge", "hosted-durable", "grain-commons", "http-serve", "agent-platform"]
+default-members = ["macaroon", "secrets", "token", "tokenizer", "hints", "commit", "trace", "demo", "demo-agent", "demo/sdk-consensus", "federation", "circuit", "circuit-prove", "audit", "bridge", "wire", "persist", "cell", "cell-crypto", "turn", "exec-lean", "coord", "tests", "types", "sdk", "dregg-sdk-net", "node", "intent", "net", "discharge-gateway", "teasting", "app-framework", "dregg-payable", "dregg-dsl", "dregg-dsl-runtime", "dregg-dsl-tests", "dregg-dsl-differential", "blocklace", "captp", "cli", "verifier", "protocol-tests", "observability", "storage", "starbridge-apps/nameservice", "dfa", "dfa-federation", "rbg", "credentials", "directory", "starbridge-apps/identity", "starbridge-apps/subscription", "starbridge-apps/governed-namespace", "starbridge-apps/compartment-workflow-mandate", "starbridge-apps/storage-gateway-mandate", "starbridge-apps/privacy-voting", "starbridge-apps/bounty-board", "starbridge-apps/agent-provenance", "starbridge-apps/tool-access-delegation", "starbridge-apps/sealed-auction", "starbridge-apps/polis", "starbridge-apps/escrow-market", "starbridge-apps/first-room", "starbridge-apps/compute-exchange", "starbridge-apps/gallery", "starbridge-apps/swarm-orchestration", "starbridge-apps/supply-chain-provenance", "starbridge-apps/agent-orchestration", "starbridge-apps/tussle", "starbridge-apps/kvstore", "starbridge-apps/branch-stitch-multiplayer", "starbridge-apps/execution-lease", "dregg-storage-templates", "preflight", "dregg-lean-ffi", "lightclient", "redteam", "perf", "dregg-auth", "dregg-query", "dregg-userspace-verify", "dregg-deploy", "dregg-analyzer", "deos-reflect", "polyana-bridge"]
 
 # chain/ and chain/program/ are standalone workspaces with their own root Cargo.toml.
 # chain has a known dep conflict (sp1-core-machine pins generic-array =1.1.0,
@@ -50,7 +49,7 @@ default-members = ["macaroon", "secrets", "token", "tokenizer", "hints", "commit
 # still builds standalone (`cd dregg-tui && cargo build`); its path-deps
 # (dregg-sdk/turn/circuit/verifier) are root-workspace members so THEIR
 # `workspace = true` deps resolve against the root.
-exclude = ["chain", "chain/program", "wasm", "sdk-py", "pg-dregg", "sel4/dregg-firmament", "deos-zed-full", "dregg-doc", "discord-bot", "dregg-tui", "dreggnet"]
+exclude = ["chain", "chain/program", "wasm", "sdk-py", "pg-dregg", "sel4/dregg-firmament", "deos-zed-full", "dregg-doc", "discord-bot", "dregg-tui"]
 
 [workspace.package]
 version = "0.1.0"
@@ -141,24 +140,9 @@ pr-run-mode = "plan"
 #
 # The plonky3-recursion path-patch the 12 crates carried is DROPPED on purpose:
 # the workspace.dependencies below pin `p3-recursion`/`p3-circuit`/
-# `p3-circuit-prover`/`p3-poseidon2-circuit-air` at git rev be52a51 (the pushed
+# `p3-circuit-prover`/`p3-poseidon2-circuit-air` at git rev 72ffc56 (the pushed
 # fork tip == the local `../plonky3-recursion` tree), so all crates resolve the
 # git rev — no path override needed.
-#
-# …EXCEPT (TEMP, 2026-07-02): the DETERMINISM-FIX path patch below. The pinned
-# rev be52a51 builds the recursive-verifier op-list in hashbrown-HashMap
-# iteration order (`verify_p3_batch_proof_circuit`'s global-lookup grouping), so
-# the recursion-VK fingerprint — the light client's distributed trust anchor —
-# was RANDOM per circuit build: two folds of the IDENTICAL chain in one process
-# minted different fingerprints. Fixed in fork commit 993efec ("deterministic
-# verifier op-list", branch update-plonky3-rev). Remove this [patch] block after
-# ember pushes 993efec and the four rev pins are bumped to it. The tooth:
-# circuit-prove/tests/recursion_vk_determinism.rs.
-[patch."https://github.com/emberian/plonky3-recursion"]
-p3-recursion = { path = "../plonky3-recursion/recursion" }
-p3-circuit = { path = "../plonky3-recursion/circuit" }
-p3-circuit-prover = { path = "../plonky3-recursion/circuit-prover" }
-p3-poseidon2-circuit-air = { path = "../plonky3-recursion/poseidon2-circuit-air" }
 # ─────────────────────────────────────────────────────────────────────────────
 [patch.crates-io]
 # ark-serialize fork — the `serde_with` feature `dregg-hints` needs (emberian/algebra).
@@ -192,7 +176,11 @@ servo-net = { path = "servo-render/vendor/servo-net" }
 [workspace.dependencies]
 ## Local
 dregg-macaroon = { path = "macaroon", default-features = false }
+dregg-net = { path = "net" }
 dregg-types = { path = "types" }
+dregg-secrets = { path = "secrets" }
+dregg-token = { path = "token" }
+dregg-tokenizer = { path = "tokenizer" }
 
 ## Plonky3 core (rev 82cfad73 — the version dregg proofs were validated against)
 p3-air = { git = "https://github.com/Plonky3/Plonky3", rev = "82cfad73cd734d37a0d51953094f970c531817ec" }
@@ -217,10 +205,10 @@ p3-util = { git = "https://github.com/Plonky3/Plonky3", rev = "82cfad73cd734d37a
 ## child-VK identity pinned in-band + table_public_inputs threaded = the constant-VK perpetual
 ## fold; validated end-to-end by incremental_accumulate_verifies_whole_history). PURE git deps,
 ## no `[patch]`, no sibling checkout — a fresh clone and CI resolve this identically.
-p3-recursion = { git = "https://github.com/emberian/plonky3-recursion", rev = "be52a51b87c39e41ade632320697df983751471f" }
-p3-circuit = { git = "https://github.com/emberian/plonky3-recursion", rev = "be52a51b87c39e41ade632320697df983751471f" }
-p3-circuit-prover = { git = "https://github.com/emberian/plonky3-recursion", rev = "be52a51b87c39e41ade632320697df983751471f" }
-p3-poseidon2-circuit-air = { git = "https://github.com/emberian/plonky3-recursion", rev = "be52a51b87c39e41ade632320697df983751471f" }
+p3-recursion = { git = "https://github.com/emberian/plonky3-recursion", rev = "d959ff10f86495e81bd883e5d9dde1f0fcf00d81" }
+p3-circuit = { git = "https://github.com/emberian/plonky3-recursion", rev = "d959ff10f86495e81bd883e5d9dde1f0fcf00d81" }
+p3-circuit-prover = { git = "https://github.com/emberian/plonky3-recursion", rev = "d959ff10f86495e81bd883e5d9dde1f0fcf00d81" }
+p3-poseidon2-circuit-air = { git = "https://github.com/emberian/plonky3-recursion", rev = "d959ff10f86495e81bd883e5d9dde1f0fcf00d81" }
 
 ## Crates.io
 ## --- TEMP LOCAL DSU-FIX ITERATION PATCH (REMOVE before CI-correct rev bump) ---

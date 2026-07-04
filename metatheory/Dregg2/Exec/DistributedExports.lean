@@ -547,22 +547,12 @@ def directDepsOf (d : Dag) (b : Nat) : List Nat :=
 
 /-- **`hbBool d a b`** — DECIDABLE happened-before: `a` is reachable from `b` by following dependency
 edges backward. BFS with `fuel = |turns|` (each step descends a strictly-smaller insertion index on a
-wellformed DAG, so `|turns|` steps suffice; on an ill-formed DAG it just bottoms out, fail-closed).
-
-PERF — `.dedup` the per-layer frontier (the live `@[export] dregg_coord_causal_order` path). Without
-it, on a RECONVERGENT DAG (diamonds) a node reachable by `k` distinct paths appears `k` times in the
-frontier, and stacked diamonds MULTIPLY the frontier each layer → an O(2^depth) frontier blow-up (the
-`causalPast`-class "DAG re-walked as a tree" bomb). Deduping caps every layer at ≤ |nodes|, so the
-walk is O(depth · |nodes| · |turns|) — polynomial. RESULT-PRESERVING: dedup keeps the SET of frontier
-nodes identical at every layer, so `preds.contains a` / `preds.isEmpty` and the final `Bool` are
-UNCHANGED (the chain + diamond `#guard`s below witness identical output); fuel can only be needed for
-FEWER layers, never more. No theorem unfolds `hbReach` (`coord_causal_order_eq` treats `hbBool`
-opaquely), so this in-place change preserves every proof. -/
+wellformed DAG, so `|turns|` steps suffice; on an ill-formed DAG it just bottoms out, fail-closed). -/
 def hbReach (d : Dag) (fuel : Nat) (frontier : List Nat) (a : Nat) : Bool :=
   match fuel with
   | 0 => false
   | fuel + 1 =>
-    let preds := (frontier.foldr (fun b acc => directDepsOf d b ++ acc) []).dedup
+    let preds := frontier.foldr (fun b acc => directDepsOf d b ++ acc) []
     if preds.contains a then true
     else if preds.isEmpty then false
     else hbReach d fuel preds a

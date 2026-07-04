@@ -53,7 +53,6 @@ pub mod obligation_standing;
 pub mod permissions;
 pub mod preconditions;
 pub mod predicate;
-pub mod prepaid_lease;
 pub mod program;
 pub mod revocation_channel;
 pub mod ring_closure;
@@ -88,11 +87,10 @@ pub use capability::{
 };
 pub use cell::{Cell, CellConfig, CellMode, VerificationKey, VerificationKeyIntegrityError};
 pub use commitment::{
-    CANONICAL_CAP_ROOT_CONTEXT, CANONICAL_COMMITMENT_CONTEXT, authority_residue_bytes,
-    canonical_to_babybear_pi, cap_ref_to_leaf, capability_ref_leaf_commitment,
-    compute_authority_digest_8, compute_authority_digest_felt, compute_canonical_capability_root,
-    compute_canonical_capability_root_8, compute_canonical_capability_root_felt,
-    compute_canonical_state_commitment, digest8_to_bytes32, felt_to_bytes32,
+    CANONICAL_CAP_ROOT_CONTEXT, CANONICAL_COMMITMENT_CONTEXT, canonical_to_babybear_pi,
+    cap_ref_to_leaf, capability_ref_leaf_commitment, compute_authority_digest_felt,
+    compute_canonical_capability_root, compute_canonical_capability_root_felt,
+    compute_canonical_state_commitment, felt_to_bytes32,
 };
 pub use custom_effect::{
     CustomEffectError, CustomEffectRegistry, CustomEffectVerifier, StubCustomEffectVerifier,

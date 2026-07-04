@@ -23,11 +23,6 @@ dregg-dsl-runtime = { path = "../dregg-dsl-runtime" }
 dregg-token = { path = "../token", default-features = false, features = ["macaroon", "rand-deps"] }
 dregg-macaroon = { path = "../macaroon" }
 blake3 = "1"
-# BlakeTwo256 (blake2b-256) is the Substrate extrinsic-hash function; the live
-# Midnight observer (`midnight_observer::LiveSubstrateRpc`) hashes the SCALE
-# extrinsic bytes with it. Pure-Rust RustCrypto, already in the workspace lock
-# (consistent with `sha2`/`hmac`); adds no new transitive crates.
-blake2 = "0.10"
 ed25519-dalek = { version = "2", features = ["std"] }
 sha2 = { workspace = true }
 postcard = { version = "1", features = ["use-std"] }
@@ -57,25 +52,6 @@ bincode = "1"
 # NO new crates to the lockfile beyond what `solana-vote-interface` already pins
 # (no curve25519 conflict). See docs/deos/TRUSTLESS-SOLANA-BRIDGE.md.
 solana-stake-interface = { version = "4.3.0", default-features = false }
-# The live off-chain relayer (`solana_relayer`) speaks the REAL Solana JSON-RPC
-# wire: pubkeys are base58 and account `data` is base64 over JSON-RPC. Both are
-# tiny, pure, and already in the workspace lock (pulled by reqwest et al.) — they
-# add NO new transitive crates. The JSON envelope is parsed with the existing
-# `serde_json` dep; the byte-pipe is the injected `JsonRpcTransport` seam (a
-# dependency-free `std::net` plain-HTTP transport ships for the local validator;
-# an https/TLS transport is injected by the deploy harness). No reqwest/tokio is
-# pulled into the verified core. See solana_relayer.rs docs. `bs58` is also used
-# by the `SOLANA_LOCAL=1`/`SOLANA_DEVNET=1` e2e harness pubkey decode.
-base64 = { version = "0.22", default-features = false, features = ["std"] }
-bs58 = "0.5"
-# Keccak-256 (the pre-NIST keccak Ethereum uses for event-signature topics and
-# the Solidity ABI) for the live EVM inbound relayer (`ethereum_relayer`): it
-# computes the canonical `Deposit(...)` event `topic0` so a forged-topic log is
-# refused without trusting a pinned constant. Pure-Rust RustCrypto, already in the
-# workspace lock (pulled transitively) — adds NO new transitive crate. The Mina
-# observer (`mina_observer`) needs no new dep: Mina GraphQL is a JSON POST over the
-# same injected `JsonRpcTransport`/`StdHttpTransport` seam the Solana relayer ships.
-sha3 = "0.10"
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -90,6 +66,11 @@ solana-hash = "4"
 # (pass 3) vote-account-data fixtures. `solana-vote-interface` + `bincode` are
 # already normal deps and are reused by the provenance tests.
 solana-pubkey = "4"
+# Base58 pubkey decode for the local-validator e2e harness (`solana_local_e2e`):
+# the harness script emits the harvested account pubkeys base58 (Solana's native
+# encoding); the gated test decodes them to the raw 32-byte form the verifier
+# hashes. Only used by the `SOLANA_LOCAL=1` e2e path.
+bs58 = "0.5"
 
 [[bench]]
 name = "presentation_bench"

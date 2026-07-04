@@ -59,8 +59,8 @@
 //! walls, and exits 0 iff every prove→verify and every must-reject landed as designed.
 
 use dregg_app_framework::stark_rehydrate::{
-    StarkRehydrateError, StarkSnapshot, TransferTurn, mint_transfer_leg, verify_stark_leg,
-    verify_stark_proof_against,
+    PI_NEW_COMMIT, PI_OLD_COMMIT, StarkRehydrateError, StarkSnapshot, TransferTurn,
+    mint_transfer_leg, verify_stark_leg, verify_stark_proof_against,
 };
 use dregg_app_framework::{
     AffordanceSpec, AgentCipherclerk, AppCipherclerk, AppSpec, AuthRequired, CellSpec,
@@ -182,22 +182,20 @@ fn main() {
     println!("    minting the DARKENED-view leg (debit {dark_amount}) …");
     let dark_leg = mint_leg(balance, nonce, dark_amount);
 
-    // H0 DEPLOYED-WIDE: the genuine endpoint commitment is the 8-felt wide AFTER anchor (head lane
-    // shown); the single-felt PI 35 is retired to zero on the deployed wide leg.
-    let c_full = full_leg.wide_new_root8().expect("wide leg")[0];
-    let c_dark = dark_leg.wide_new_root8().expect("wide leg")[0];
+    let c_full = full_leg.new_root();
+    let c_dark = dark_leg.new_root();
     println!(
-        "    FULLER   endpoint commitment Cfull = {}…  (wide AFTER anchor, head lane)",
+        "    FULLER   endpoint commitment Cfull = {}…  (PI {PI_NEW_COMMIT})",
         felt8(&c_full)
     );
     println!(
-        "    DARKENED endpoint commitment Cdark = {}…  (wide AFTER anchor, head lane)",
+        "    DARKENED endpoint commitment Cdark = {}…  (PI {PI_NEW_COMMIT})",
         felt8(&c_dark)
     );
     println!(
-        "    (both share the OLD-state wide anchor = {}… — same before-state,\n     \
+        "    (both share the OLD-state commit at PI {PI_OLD_COMMIT} = {}… — same before-state,\n     \
          genuinely DIFFERENT after-states ⇒ Cfull ≠ Cdark)",
-        felt8(&full_leg.wide_old_root8().expect("wide leg")[0])
+        felt8(&full_leg.old_root())
     );
     assert_ne!(
         c_full, c_dark,
@@ -250,13 +248,12 @@ fn main() {
     );
 
     // (W1) The STARK wall. The viewer holds ONLY the darkened proof (`dark_leg`). To
-    //      "prove the fuller view" they would have to present a STARK whose 8-felt wide AFTER
-    //      anchor = Cfull. The only artifact they hold is the darkened proof; splicing Cfull into
-    //      its wide-anchor head lane and re-verifying is UNSAT — the descriptor's wide hash sites
-    //      force the anchor to the genuine post-state the proof witnessed, which is Cdark, not Cfull.
+    //      "prove the fuller view" they would have to present a STARK whose PI 35 = Cfull.
+    //      The only artifact they hold is the darkened proof; splicing Cfull into its PI
+    //      vector and re-verifying is UNSAT — the descriptor's hash sites force PI 35 to
+    //      be the genuine post-state the proof witnessed, which is Cdark, not Cfull.
     let mut forged_pis = dark_leg.public_inputs.clone();
-    let pi_wide_new = forged_pis.len() - 8; // head lane of the wide AFTER anchor
-    forged_pis[pi_wide_new] = c_full; // claim the darkened proof attests the FULLER endpoint
+    forged_pis[PI_NEW_COMMIT] = c_full; // claim the darkened proof attests the FULLER endpoint
     match verify_stark_proof_against(&dark_leg.descriptor, &dark_leg.proof, &forged_pis) {
         Err(_) => println!(
             "    (W1) STARK wall:   the darkened proof CANNOT attest Cfull — UNSAT (forgery rejected)."
@@ -294,14 +291,11 @@ fn main() {
     println!("(6) anti-ghost sanity (the STARK fails closed on the viewer's OWN endpoint too):");
     let mut tampered = dark_snap.clone();
     let honest = tampered.endpoint_commitment();
-    // H0 DEPLOYED-WIDE: tamper the genuine 8-felt wide AFTER anchor (head lane at `len - 8`), not
-    // the retired single-felt PI 35.
-    let pi_wide_new = tampered.proof.public_inputs.len() - 8;
-    tampered.proof.public_inputs[pi_wide_new] = honest + BabyBear::ONE;
+    tampered.proof.public_inputs[PI_NEW_COMMIT] = honest + BabyBear::ONE;
     match tampered.rehydrate_for(&viewer, gallery.surface()) {
         Err(StarkRehydrateError::StarkInvalid(_)) => {
             println!(
-                "    tampered darkened endpoint (wide AFTER anchor flipped): REJECTED — no projection minted."
+                "    tampered darkened endpoint (PI {PI_NEW_COMMIT} flipped): REJECTED — no projection minted."
             )
         }
         other => panic!("a tampered darkened endpoint must be rejected; got {other:?}"),

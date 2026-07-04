@@ -99,7 +99,6 @@ theorem soundN_of_all {tbl : Table} (h : ∀ r ∈ tbl, genuineChipRowZ r) :
   obtain ⟨hlen, heq⟩ := h r hr
   exact ⟨insOf r, hlen, heq⟩
 
-set_option maxRecDepth 8192 in
 /-- **The active union chip table is `ChipTableSoundN permOutZ`.** Every one of the two rows' evaluated
 chip tuples is a genuine `chipRowN permOutZ ins` row (all-zero squeeze) — a kernel-`decide`-checked
 enumeration of the concrete table. So the active `.poseidon2` table is genuinely chip-faithful. -/

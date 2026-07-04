@@ -80,7 +80,6 @@ fn setup(balance: u64) -> (Cell, CellId, V9RotationContext, [u8; 32]) {
         nullifier_root: [0u8; 32],
         commitments_root: [0u8; 32],
         iroot: rw::iroot(&[]),
-        material: Default::default(),
     };
     let old_commitment = compute_canonical_state_commitment_v9_8(&cell, &ctx);
     (cell, cell_id, ctx, old_commitment)
@@ -163,7 +162,6 @@ fn welded_transfer_commits_through_executor() {
         &ctx.nullifier_root,
         &ctx.commitments_root,
         &[],
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -171,7 +169,6 @@ fn welded_transfer_commits_through_executor() {
         &ctx.nullifier_root,
         &ctx.commitments_root,
         &[],
-        &Default::default(),
     );
 
     let caveat = transfer_caveat_manifest();
@@ -252,18 +249,16 @@ fn welded_transfer_commits_through_executor() {
     }
 }
 
-/// THE FLIP (G4): a deployed BARE sovereign transfer is now REJECTED by the welded-requiring
-/// executor. The transfer key HAS a welded twin present and is NOT one of the 3 producer-bare wide
-/// members, so `verify_one_cohort_run`'s `require_welded` DROPS the bare member from the accept set:
-/// a welded leg is the SOLE accepted form. Disarming the producer alone (without reverting the
-/// verifier) is a HALF-rollback that fails closed — the bare proof binds no admitted descriptor. (A
-/// genuine rollback reverts BOTH the producer toggle AND this verifier narrowing; the bare TSV stays
-/// in-tree as that rollback target.)
+/// THE BARE PATH STAYS GREEN: a deployed BARE sovereign transfer (cipherclerk-minted, the live
+/// default) still COMMITS through the welded-aware executor. The transfer key HAS a welded twin
+/// present, so this exercises the fall-back to the bare member + the UNIQUE-accept tooth: the bare
+/// proof verifies against the bare member ALONE (it cannot satisfy the welded member's extra umemOp),
+/// so the 8-felt anchors stay bound and the bare default is untouched.
 #[test]
-fn bare_transfer_rejected_by_welded_requiring_executor() {
+fn bare_transfer_still_commits_through_welded_aware_executor() {
     let (mut cclerk, cell_id, mut ledger) = setup_bare(1000);
-    // DISARM the domain-1 producer (the G4 default is ARMED) so it mints the BARE wide leg — the
-    // half-rollback the welded-requiring executor must REJECT.
+    // The VK epoch ARMED the domain-1 producer by default; this control explicitly DISARMS to keep
+    // exercising the bare leg (the byte-identical fall-back the welded-aware executor still admits).
     cclerk.set_umem_weld_staged_enabled(false);
 
     let dest_cell =
@@ -282,25 +277,15 @@ fn bare_transfer_rejected_by_welded_requiring_executor() {
 
     let executor = TurnExecutor::new(ComputronCosts::zero());
     match executor.execute(&turn, &mut ledger) {
-        TurnResult::Rejected { reason, .. } => {
-            let s = format!("{reason:?}");
-            assert!(
-                s.contains("bound NO descriptor")
-                    || s.contains("welded required")
-                    || s.contains("ProofVerificationFailed"),
-                "expected a welded-required rejection of the bare transfer, got: {s}"
-            );
+        TurnResult::Committed { .. } => {}
+        other => {
+            panic!("the bare transfer must STILL commit (fallback to bare member), got {other:?}")
         }
-        other => panic!(
-            "the bare transfer must be REJECTED by the welded-requiring executor (G4 flip), got \
-             {other:?}"
-        ),
     }
-    // The stored commitment did NOT advance (no commit happened).
-    assert!(
-        ledger.get_sovereign_commitment(&cell_id).is_some(),
-        "the sovereign registration is intact (the rejected turn did not commit)"
-    );
+    let committed = ledger
+        .get_sovereign_commitment(&cell_id)
+        .expect("commitment present after commit");
+    assert_eq!(*committed, turn.execution_proof_new_commitment.unwrap());
 }
 
 /// Cipherclerk-driven sovereign-cell setup (the c1 `setup_sovereign_cell` shape) for the bare path.
@@ -320,7 +305,6 @@ fn setup_bare(balance: u64) -> (AgentCipherclerk, CellId, Ledger) {
         nullifier_root: [0u8; 32],
         commitments_root: [0u8; 32],
         iroot: rw::iroot(&[]),
-        material: Default::default(),
     };
     let commitment = compute_canonical_state_commitment_v9_8(&cell, &ctx);
 

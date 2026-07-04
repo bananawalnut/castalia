@@ -18,23 +18,13 @@
 //! `dregg-circuit`; the gate is gone because this whole crate IS the prover.
 
 pub mod accumulator;
-pub mod bridge_leaf_adapter;
-pub mod carrier_pin_twin;
-pub mod custom_leaf_adapter;
 pub mod custom_proof_bind;
-pub mod deco_leaf_adapter;
-pub mod dsl_leaf_adapter;
 pub mod effect_vm_p3_air;
-pub mod factory_leaf_adapter;
-pub mod hatchery_leaf_adapter;
 pub mod ivc_turn_chain;
 pub mod joint_turn_aggregation;
 pub mod joint_turn_recursive;
 pub mod lean_lookup_air;
-pub mod membership_leaf_adapter;
 pub mod merge_pool;
-pub mod note_spend_leaf_adapter;
 pub mod plonky3_recursion_impl;
 pub mod recursive_witness_bundle;
 pub mod shielded;
-pub mod sovereign_leaf_adapter;

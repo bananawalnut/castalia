@@ -118,7 +118,6 @@ fn build_transfer_base() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -126,7 +125,6 @@ fn build_transfer_base() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
 
     let caveat = transfer_caveat_manifest();

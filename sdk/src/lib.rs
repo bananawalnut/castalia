@@ -103,10 +103,6 @@
 // receipt event streams, the PIR discovery client, and the wire codec) lives in
 // the `dregg-sdk-net` crate, which depends on this one.
 pub mod beacon_cell;
-// The v12 carrier-witness ATTACH SITES: per-carrier turn-build retention projections
-// (factory backing / hatchery attestation / sovereign authority / sender membership) +
-// the fail-closed leg attach through the fold lane's `from_retained_*` projections.
-pub mod carrier_witness_attach;
 pub mod cipherclerk;
 // The threshold-seal organ (DKG group-key hashed-ElGamal) and the
 // sealed-bid/sealed-ballot orchestration that welds it with the beacon. These
@@ -123,10 +119,6 @@ pub mod sealed_governance;
 // wire-free). It is unconditional in the offline core. The networked
 // `WireCodec` over it lives in `dregg-sdk-net`.
 pub mod embed;
-// The ONE source of truth for the dregg production domains (api / devnet / auth
-// / gateway / hosting / portal). Defaults to the current `*.fg-goose.online`
-// values; overridable via the `DREGG_*_DOMAIN` env vars. See `endpoints.rs`.
-pub mod endpoints;
 pub mod error;
 pub mod explain;
 pub mod factories;
@@ -190,7 +182,6 @@ pub mod cclerk {
 
 /// **Noun 1**: proof-of-execution for one committed turn, with the composed
 /// STARK lazily attached. See [`receipt`].
-pub use endpoints::DreggEndpoints;
 pub use receipt::{Receipt, TurnProof};
 
 /// **Noun 2**: the light-client artifact — the verdict from verifying ONE

@@ -80,7 +80,6 @@ fn wide_sovereign_pipeline_proves_and_anchored_verify_accepts() {
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -88,7 +87,6 @@ fn wide_sovereign_pipeline_proves_and_anchored_verify_accepts() {
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
 
     let initial_vm_state = CellState::with_capability_root_and_record_digest(
@@ -142,14 +140,12 @@ fn wide_sovereign_pipeline_proves_and_anchored_verify_accepts() {
         nullifier_root,
         commitments_root,
         iroot: before_w.iroot,
-        material: Default::default(),
     };
     let after_ctx = V9RotationContext {
         cells_root: after_w.pre_limbs[0],
         nullifier_root,
         commitments_root,
         iroot: after_w.iroot,
-        material: Default::default(),
     };
     let trusted_before8 = cell_chip_commit8(&before_cell, &before_ctx);
     let trusted_after8 = cell_chip_commit8(&after_cell, &after_ctx);
@@ -194,7 +190,6 @@ fn wide_sovereign_forged_anchor_is_rejected() {
         &nullifier_root,
         &commitments_root,
         &[],
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -202,7 +197,6 @@ fn wide_sovereign_forged_anchor_is_rejected() {
         &nullifier_root,
         &commitments_root,
         &[],
-        &Default::default(),
     );
 
     let initial_vm_state = CellState::with_capability_root_and_record_digest(
@@ -266,14 +260,15 @@ fn wide_sovereign_forged_anchor_is_rejected() {
 // VERIFIES against the executor-anchored wide refusal descriptor. A prover refusal or a verifier
 // rejection FAILS the test (no catch_unwind — unambiguous).
 //
-// H1: the refusal wide geometry is the record-pin8 geometry: the rotated prefix is 54 (= 42 v1 + 4
-// commit pins + the 8 authority record-pins, `withRecordPin8Headroom2`) and the wide descriptor carries
-// 54 + 16 = 70. So the 16 wide commit PIs start at `REFUSAL_WIDE_PI_BASE = 54`.
+// The refusal wide geometry is the record-pin geometry: 39 base PIs (the record/lifecycle pin at PI
+// 38) + 16 wide = 55; the wide refusal descriptor carries 63 PIs total — wait, the v1 prefix grew
+// 34→42, so the refusal rotated prefix is 47 (= 42 + 4 commit pins + 1 record pin) and the wide
+// descriptor carries 47 + 16 = 63. So the 16 wide commit PIs start at `REFUSAL_WIDE_PI_BASE = 47`.
 
-/// Where the 16 wide commit PIs start for the REFUSAL cohort (a record-digest mover: the 8 authority
-/// record-pins occupy PI 46..53, so the wide commit PIs sit at 54..70 —
-/// `refusalVmDescriptor2R24` wide = 70 PIs = 54 base + 16 wide).
-const REFUSAL_WIDE_PI_BASE: usize = 54;
+/// Where the 16 wide commit PIs start for the REFUSAL cohort (the record-pin family carries the
+/// record pin at the rotated `ROT_PI_COUNT`, so the wide commit PIs sit one slot past the
+/// transfer-shape base — `refusalVmDescriptor2R24` wide = 63 PIs = 47 base + 16 wide).
+const REFUSAL_WIDE_PI_BASE: usize = 47;
 
 /// A sovereign refusal before/after cell pair: the after-cell carries the refusal audit slot written
 /// into `fields_map[REFUSAL_AUDIT_EXT_KEY]` (via the shared `apply_effect_to_cell` weld — the SAME
@@ -329,7 +324,6 @@ fn wide_sovereign_refusal_proves_and_anchored_verify_accepts() {
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -337,7 +331,6 @@ fn wide_sovereign_refusal_proves_and_anchored_verify_accepts() {
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
 
     // The refusal moves the AFTER record-digest / fields_root limbs (the genuine write — non-vacuity).
@@ -400,11 +393,11 @@ fn wide_sovereign_refusal_proves_and_anchored_verify_accepts() {
     assert_eq!(
         producer_dpis.len(),
         desc.public_input_count,
-        "wide refusal PI count (58 narrow base = 50 + 8 authority + 16 wide = 74 — the H1 8-felt record-pin8)"
+        "wide refusal PI count (47 base + 16 wide = 63)"
     );
     assert_eq!(
-        desc.public_input_count, 74,
-        "refusal wide descriptor carries 74 PIs (all 8 authority record-pins + 4 dsl rc + 16 wide commit PIs)"
+        desc.public_input_count, 63,
+        "refusal wide descriptor carries 63 PIs"
     );
 
     // -- EXECUTOR LEG: anchor the 16 wide commit PIs to the TRUSTED before/after cell chip-commits
@@ -414,14 +407,12 @@ fn wide_sovereign_refusal_proves_and_anchored_verify_accepts() {
         nullifier_root,
         commitments_root,
         iroot: before_w.iroot,
-        material: Default::default(),
     };
     let after_ctx = V9RotationContext {
         cells_root: after_w.pre_limbs[0],
         nullifier_root,
         commitments_root,
         iroot: after_w.iroot,
-        material: Default::default(),
     };
     let trusted_before8 = cell_chip_commit8(&before_cell, &before_ctx);
     let trusted_after8 = cell_chip_commit8(&after_cell, &after_ctx);
@@ -538,7 +529,6 @@ fn flagday_transfer_witness(
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -546,7 +536,6 @@ fn flagday_transfer_witness(
         &nullifier_root,
         &commitments_root,
         &receipt_hashes,
-        &Default::default(),
     );
 
     let rotation = RotationTurnWitness {

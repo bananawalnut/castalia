@@ -34,27 +34,12 @@ pub mod authorize;
 pub mod convert;
 pub mod delta;
 pub mod ethereum;
-/// The **live off-chain inbound relayer** for the EVM bridge: a real Ethereum
-/// JSON-RPC client (`eth_getBlockByNumber("finalized")` / `eth_getLogs` /
-/// `eth_getTransactionReceipt` / `eth_getProof`) that watches the bridge contract
-/// for finalized `Deposit` logs, runs the off-chain verify (finality + the BR-2-B
-/// escrow-to-contract binding + receipt inclusion), and produces the committed-mint
-/// input. The Ethereum-direction twin of [`solana_relayer`]; the in-circuit witness
-/// of EVM finality is the circuit swarm's VK-epoch (`dregg_circuit::bridge_action_air`).
-pub mod ethereum_relayer;
 pub mod midnight;
 pub mod midnight_gateway;
 pub mod midnight_inclusion;
 pub mod midnight_observer;
 pub mod midnight_verified;
 pub mod mina;
-/// The **live off-chain Mina observer** for the settlement loop: a real Mina
-/// GraphQL client (`bestChain` for the finality depth + `account(publicKey)` for
-/// the zkApp's settled `provenRoot`) that confirms an outbound dregg→Mina
-/// settlement landed on a depth-finalized canonical block (and matches the settled
-/// dregg root) instead of trusting a relayer ack. The Mina-direction twin of
-/// [`midnight_observer`]; finalized-only, the verify, the injected transport.
-pub mod mina_observer;
 pub mod present;
 /// Mirror a Solana/pump.fun SPL token (`$DREGG`) into dregg's value layer as a
 /// conserved, `Payable` asset. See `docs/deos/TOKEN-MIRROR-BRIDGE.md`.
@@ -90,15 +75,6 @@ pub mod solana_wire;
 /// proven-from-the-bank-hash derivation. See `docs/deos/TRUSTLESS-SOLANA-BRIDGE.md`.
 pub mod solana_provenance;
 
-/// The **live off-chain relayer** (the watching service): a real Solana JSON-RPC
-/// client that watches the bridge vault for finalized locks, runs the off-chain
-/// verify (finality + the BR-2-B escrow-to-vault binding + structure/binding),
-/// and produces the committed-mint input. Replaces the in-memory feed stand-in.
-/// The in-circuit witness of the consensus path is the circuit swarm's G1
-/// VK-epoch (`dregg_circuit::bridge_action_air`). See `solana_relayer` docs and
-/// `docs/deos/TRUSTLESS-SOLANA-BRIDGE.md`.
-pub mod solana_relayer;
-
 /// Full-fidelity bridge-action binding: a thin re-export plus a wrapper for
 /// the new sibling AIR `dregg_circuit::bridge_action_air` that pins
 /// (nullifier, recipient, destination_federation, amount) at full byte/bit
@@ -118,21 +94,12 @@ pub use action_binding::{
 pub use authorize::{AuthError, authorize_with_trace};
 pub use convert::{grant_to_facts, macaroon_to_factset};
 pub use delta::attenuation_to_delta;
-pub use ethereum_relayer::{
-    BlockTag, DEPOSIT_EVENT_SIGNATURE, ETH_DEPOSIT_NULLIFIER_DOMAIN, EthBridgeConfig, EthJsonRpc,
-    EthLog, EthProof, EthReceipt, EthRelayer, EthRelayerError, EthRpc, EthStorageSlot,
-    ObservedDeposit, deposit_event_topic0, encode_amount_word, eth_deposit_nullifier,
-};
 pub use midnight_gateway::{
     AcceptedEnvelope, BridgeGateway, ClaimFraud, ClaimVerdict, GatewayError, Verdict, Watchtower,
     claim_hash,
 };
 pub use midnight_verified::{
     VerifiedBridgeError, VerifiedDreggToMidnight, commit_midnight_recipient,
-};
-pub use mina_observer::{
-    MinaBlock, MinaGraphQlRpc, MinaObserver, MinaObserverConfig, MinaRpc, MinaZkappAccount,
-    ObserveError, ObservedMinaSettlement, decode_root_from_fields, encode_root_to_fields,
 };
 pub use present::{
     BridgeCommittedThresholdProof, BridgePredicateProof, BridgePredicateProofInner,
@@ -159,10 +126,6 @@ pub use solana_provenance::{
     STAKE_HISTORY_SYSVAR_ID, STAKE_PROGRAM_ID, SYSVAR_OWNER_ID, VerifiedStakeTable,
     WeakSubjectivityAnchor, active_stake, decode_authorized_voter, decode_stake_delegation,
     decode_stake_history, derive_stake_table, effective_stake, rotate, vote_program_id,
-};
-pub use solana_relayer::{
-    AccountResponse, Commitment, JsonRpcTransport, ObservedLock, RelayerError, RpcAccount,
-    RpcError, SolanaJsonRpc, SolanaRelayer, SolanaRpc, StdHttpTransport,
 };
 pub use solana_trustless::{
     AccountInclusionProof, ConsensusEvidence, LockProofError, LockProofTrust, ProofMintError,

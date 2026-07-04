@@ -63,17 +63,6 @@ export { ProfileError, PROFILE_ENV } from "./profiles";
 export type { ProfileInfo } from "./profiles";
 
 // The node surface + the acting runtime.
-export {
-  DEFAULT_DOMAINS,
-  DREGG_ENDPOINTS,
-  apiUrl,
-  devnetUrl,
-  devnetWssUrl,
-  gatewayUrl,
-  portalUrl,
-  resolveDomains,
-} from "./endpoints";
-export type { DreggDomains } from "./endpoints";
 export { AgentRuntime, NodeClient, NodeError } from "./client";
 export type {
   CellDetail,

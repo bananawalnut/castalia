@@ -296,29 +296,6 @@ theorem conserves_from_verification
   exact verified_history_conserves CH RH cmb compress compressN hCmb hCompress hCompressN hLeaf hRest
     g steps hgen hatt.ordered hstruct
 
-/-- **`non_omission_from_verification` (THE WHOLE-HISTORY NON-OMISSION HEADLINE — from `verify agg.root`).**
-A light client that checks ONLY `verify agg.root = true` (re-witnessing NOTHING) learns the receipt log
-chains genuinely across the WHOLE history — `LogChained g steps`, i.e. every folded step's post-log is
-the next step's pre-log — with NO `hweld`. The verified root gives `AggregateAttests` (hence the
-`ChainBound` root tooth); under `compressNInjective` + the genesis log pin + the structural envelope
-`SeamStruct` (only its turn-match arm), `logChained_of_verified` DERIVES log continuity from that tooth
-via `root_tooth_pins_log` (the rotated commit's receipt-log limb). This is exactly the §3 residual the
-ROOT-FACE repair named ("`HistoryAggregation.stateRoot := rotatedCommit`") now CLOSED whole-history: a
-node cannot drop / forge / reorder / truncate a receipt at ANY step without breaking a published
-commit, and the light client sees it from the succinct aggregate alone. The receipt LOG — the one
-component the kernel-only §8 root did NOT bind — is now bound by the model the aggregate attests. -/
-theorem non_omission_from_verification
-    (hCompressN : compressNInjective compressN)
-    (agg : Aggregate Proof) (g : RecChainedState) (steps : List ChainStep)
-    (es : EngineSound Proof verify CH RH cmb compress compressN agg g steps)
-    (hroot : verify agg.root = true)
-    (hgen : LogGenesisPin g steps)
-    (hstruct : SeamStruct steps) :
-    LogChained g steps := by
-  have hatt := light_client_verifies_whole_history Proof verify CH RH cmb compress compressN
-    agg g steps es hroot
-  exact logChained_of_verified CH RH cmb compress compressN hCompressN g steps hgen hatt.ordered hstruct
-
 end Engine
 
 /-! ## 5. NON-VACUITY — the named hypotheses are REALIZABLE (witnessed BOTH ways).
@@ -725,8 +702,6 @@ end Accumulator
 #assert_axioms Dregg2.Circuit.RecursiveAggregation.attested_history_conserves
 -- the CRITICAL-3 closure: conservation-over-history DERIVED from `verify agg.root`, no StateChained:
 #assert_axioms Dregg2.Circuit.RecursiveAggregation.conserves_from_verification
--- whole-history NON-OMISSION derived from `verify agg.root` (the rotated commit binds every receipt log):
-#assert_axioms Dregg2.Circuit.RecursiveAggregation.non_omission_from_verification
 #assert_axioms Dregg2.Circuit.RecursiveAggregation.real_engine_sound
 #assert_axioms Dregg2.Circuit.RecursiveAggregation.light_client_fires_on_real_chain
 #assert_axioms Dregg2.Circuit.RecursiveAggregation.real_chain_first_turn_executed

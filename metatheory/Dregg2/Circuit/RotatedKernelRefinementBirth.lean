@@ -43,15 +43,13 @@ INSERT into the cap-tree) — is the load-bearing one.
 
 `spawnV3` pins `cap_root` FROZEN (`gCapPass`), so on it the cap handoff was the named PHASE-D residual.
 **`spawnWriteV3`** (§5b) REBASES onto the cap-WRITE rotation (`rotateV3WithNewCellKeyPinCapWrite`: cap-root
-limb 25 FREED) ALONGSIDE the unchanged accounts grow-gate (limb 0 — they coexist, distinct limbs); the
-cap-tree INSERT is FORCED by the deployed `effCapInsertV3 spawnWriteV3` keystone wrap
-(`CapInsertEmit.effCapInsertV3_forces_write8` — the spliced conferred edge over the FULL committed 8-felt
-cap-root groups; the arity-2 map-op pair was shape-UNSAT vs the arity-7 `CanonicalCapTree` and is
-DROPPED) — exactly as `RotatedKernelRefinementCapFamily.delegate_forces_committed_write`. The
+limb 25 FREED) and drives the cap-tree INSERT (`anchorReadOpRot` membership-read of the parent's held cap
++ `insertWriteOpRot` of the conferred edge) ALONGSIDE the unchanged accounts grow-gate (limb 0 — they
+coexist, distinct limbs). So the `caps` edge is FORCED from the deployed `writesTo` — exactly as
+`RotatedKernelRefinementCapFamily.revokeCapability_forced_sat` forces `removeEdgeCaps`. The
 `SpawnTraceReadout.capsMoveDecodes` seam (the faithful cap-tree↔kernel-`Caps` ENCODING — a HYPOTHESIS,
-never an axiom, exactly `RevokeCapabilityTraceReadout.capsMoveDecodes`'s class) lifts the forced
-`capInserts8` to the `caps` function move; `spawn_caps_forced_sat`/`spawnWrite_descriptorRefines_sat`
-discharge it.
+never an axiom, exactly `RevokeCapabilityTraceReadout.capsMoveDecodes`'s class) lifts the forced set-insert
+to the `caps` function move; `spawn_caps_forced_sat`/`spawnWrite_descriptorRefines_sat` discharge it.
 
 So spawn's `caps` handoff is FORCED (no longer VALUE_PARTIAL on the cap edge). The `delegate`/`delegations`
 POINTER moves remain the NAMED faithful-encoding residual (the single cap-tree INSERT binds the `caps`
@@ -69,7 +67,6 @@ import Dregg2.Circuit.AccountsCommit
 import Dregg2.Circuit.Spec.accountgrowth
 import Dregg2.Circuit.Spec.factorycreation
 import Dregg2.Circuit.Emit.CapOpenEmit
-import Dregg2.Circuit.Emit.CapInsertEmit
 
 namespace Dregg2.Circuit.RotatedKernelRefinementBirth
 
@@ -91,17 +88,9 @@ open Dregg2.Circuit.Emit.EffectVmEmitRotationV3
   (createCellV3 factoryV3 spawnV3
    createCellV3_grow_gate_forces_set_insert factoryV3_grow_gate_forces_set_insert
    spawnV3_grow_gate_forces_set_insert
-   spawnWriteV3 spawnWriteV3_grow_gate_forces_set_insert
-   beforeCapRootCol afterCapRootCol beforeCapRootCols afterCapRootCols
-   withSelectorGate withSelectorGate_satisfied2
+   spawnWriteV3 spawnWriteV3_grow_gate_forces_set_insert spawnWriteV3_forces_write
+   beforeCapRootCol afterCapRootCol
    beforeCellsRootCol afterCellsRootCol NEW_CELL_KEY_PARAM_COL FACTORY_CHILD_KEY_PARAM_COL)
-open Dregg2.Circuit.DeployedCapTree (CapLeaf Cap8Scheme Digest8)
-open Dregg2.Circuit.DeployedCapOpen (leafOf capPermOut)
-open Dregg2.Circuit.DescriptorIR2 (ChipTableSoundN)
-open Dregg2.Circuit.SortedTreeNonMembership (keyOf SpineCommits GapOpen sortedInsert)
-open Dregg2.Circuit.Emit.CapOpenEmit (capOpenCols effCapInsertV3)
-open Dregg2.Circuit.Emit.CapInsertEmit
-  (capInserts8 effCapInsertV3_forces_write8 effCapInsertV3_strips_to_capOpen)
 open Dregg2.Exec
 open Dregg2.Exec.TurnExecutorFull
 
@@ -659,10 +648,9 @@ theorem createCellFromFactory_sat_rejects_wrong_accounts (hash : List ℤ → �
   hwrong (createFromFactory_forced_sat hash hsat pre post actor newCell vk rd)
 
 /-- **`SpawnTraceReadout`** — `CreateCellTraceReadout`'s accounts-growth seam for the spawn descriptor
-(selector `32`) plus the born-empty residual AND the cap-handoff seam (the INSERT-shaped keystone
-carriers — `capsMoveDecodes` is DISCHARGED on the deployed `effCapInsertV3 spawnWriteV3` wrap by
-`effCapInsertV3_forces_write8`, exactly as §4's `spawnGenuineEncodes`). -/
-structure SpawnTraceReadout (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
+(selector `32`) plus the born-empty residual AND the PHASE-D cap-handoff residual (the live frozen
+`cap_root` cannot force it — carried, named, exactly as §4's `spawnGenuineEncodes`). -/
+structure SpawnTraceReadout (hash : List ℤ → ℤ)
     (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
     (pre post : RecChainedState) (actor child target : CellId) : Type where
   row : Nat
@@ -680,18 +668,17 @@ structure SpawnTraceReadout (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
   frLifecycle : post.kernel.lifecycle = fun c => if c = child then 0 else pre.kernel.lifecycle c
   frDeathCert : post.kernel.deathCert = fun c => if c = child then 0 else pre.kernel.deathCert c
   frBal : post.kernel.bal = fun c a => if c = child then 0 else pre.kernel.bal c a
-  -- ⚑ THE CAP-HANDOFF SEAM (now FORCED on the `effCapInsertV3 spawnWriteV3` keystone wrap): the
-  -- deployed faithful 8-felt cap-tree INSERT (`capInserts8` — the spliced conferred edge at the child
-  -- key over the FULL committed 8-felt cap-root groups) DECODES to the kernel `caps` move
-  -- (`spawnCapsMap`). The faithful cap-tree↔kernel-`Caps` encoding seam — exactly
-  -- `RevokeCapabilityTraceReadout.capsMoveDecodes`'s class (a HYPOTHESIS, never an axiom): on
+  -- ⚑ THE CAP-HANDOFF SEAM (now FORCED on `spawnWriteV3`): the deployed cap-tree INSERT `writesTo`
+  -- (the conferred edge `param[KEEP_MASK]` at the child key `param[CAP_KEY]` into the before cap-root)
+  -- DECODES to the kernel `caps` move (`spawnCapsMap`). The faithful cap-tree↔kernel-`Caps` encoding seam
+  -- — exactly `RevokeCapabilityTraceReadout.capsMoveDecodes`'s class (a HYPOTHESIS, never an axiom): on
   -- `spawnV3` (frozen `cap_root`) the antecedent never fires, so `capHandoff` is a plain residual; on
-  -- the keystone wrap the antecedent is DISCHARGED by `effCapInsertV3_forces_write8`, so the `caps`
-  -- move is FORCED (`spawn_caps_forced_sat`).
+  -- `spawnWriteV3` (limb 25 freed, the insert FORCED) the antecedent is DISCHARGED by
+  -- `spawnWriteV3_forces_write`, so the `caps` move is FORCED (`spawn_caps_forced_sat`).
   capsMoveDecodes :
-    capInserts8 S8 (beforeCapRootCols (envAt t row))
-        (leafOf (capOpenCols spawnWriteV3.traceWidth) (envAt t row))
-        (afterCapRootCols (envAt t row))
+    writesTo hash ((envAt t row).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t row).loc (prmCol CAP_KEY)) ((envAt t row).loc (prmCol KEEP_MASK))
+        ((envAt t row).loc (afterCapRootCol EFFECT_VM_WIDTH))
       → post.kernel.caps = spawnCapsMap pre.kernel actor child target
   -- ⚑ THE PHASE-D RESIDUAL: the parent→child capability handoff (the live `cap_root` is FROZEN).
   capHandoff : post.kernel.caps = spawnCapsMap pre.kernel actor child target
@@ -709,35 +696,13 @@ structure SpawnTraceReadout (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
   epochStampResidual : post.kernel.delegationEpochAt = spawnEpochAtMap pre.kernel actor child
   frHeaps : post.kernel.heaps = pre.kernel.heaps
 
-/-- **`SpawnWriteAnchor` — the realizable INSERT carriers for the spawn cap handoff** (what the deployed
-`CanonicalCapTree::insert_witness` computes — the readout-linked twin of
-`RotatedKernelRefinementCapFamily.DelegateWriteAnchor`'s carrier fields, AT the readout's active row):
-the cap-open appendix's read leaf IS the spliced conferred edge, its key's non-membership bracket in
-BEFORE (the pred/succ `GapOpen` covering the committed spine) is genuinely realizable — the sorted
-insert refuses a present key, so an honest witness always carries the bracket — and the AFTER cap-root
-commits the inserted spine. -/
-structure SpawnWriteAnchor (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target) : Type where
-  -- the active spawn row is not the trailing/padding row (the keystone welds bind under
-  -- `when_transition`).
-  hnotlast : rd.row + 1 ≠ t.rows.length
-  spine : List ℤ
-  hold : SpineCommits S8 (beforeCapRootCols (envAt t rd.row)) spine
-  gap : GapOpen S8 (beforeCapRootCols (envAt t rd.row))
-    (keyOf (leafOf (capOpenCols spawnWriteV3.traceWidth) (envAt t rd.row)))
-  gapCov : gap.coversSpine spine
-  hnew : SpineCommits S8 (afterCapRootCols (envAt t rd.row))
-    (sortedInsert (keyOf (leafOf (capOpenCols spawnWriteV3.traceWidth) (envAt t rd.row))) spine)
-
 /-- **`spawn_forced_sat`** — the accounts growth FORCED by the DEPLOYED `spawnV3` (Class A). The child IS
 inserted; the cap-handoff remains the named PHASE-D residual (frozen `cap_root`). -/
-theorem spawn_forced_sat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
+theorem spawn_forced_sat (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
     (hsat : Satisfied2 hash spawnV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target) :
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target) :
     post.kernel.accounts = insert child pre.kernel.accounts :=
   rd.growthDecodes
     (spawnV3_grow_gate_forces_set_insert hash hsat rd.row rd.hrow rd.hsel).2
@@ -745,129 +710,107 @@ theorem spawn_forced_sat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
 /-- **`spawn_descriptorRefines_sat` — THE CLASS-A REFINEMENT for spawn (VALUE_PARTIAL).** The accounts
 insert is forced from the DEPLOYED grow-gate's `Satisfied2` (`spawn_forced_sat`); the parent→child cap
 handoff is the named PHASE-D residual (the frozen `cap_root` cannot force it). -/
-theorem spawn_descriptorRefines_sat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
+theorem spawn_descriptorRefines_sat (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
     (hsat : Satisfied2 hash spawnV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target) :
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target) :
     SpawnFullSpec pre actor child target post := by
   refine ⟨rd.guard, ?_, rd.frCell, rd.frSlotCaveats, rd.frLifecycle, rd.frDeathCert,
     rd.frBal, rd.capHandoff, rd.delegateHandoff, rd.delegationsHandoff, rd.logAdv,
     rd.frNullifiers, rd.frRevoked, rd.frCommitments, rd.frFactories,
     rd.frDelegationEpoch, rd.epochStampResidual, rd.frHeaps⟩
-  exact spawn_forced_sat S8 hash hsat pre post actor child target rd
+  exact spawn_forced_sat hash hsat pre post actor child target rd
 
 /-- **CLASS-A TOOTH** — a spawn whose post accounts drop the child is UNSAT (the grow-gate bites). -/
-theorem spawn_sat_rejects_wrong_accounts (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
+theorem spawn_sat_rejects_wrong_accounts (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
     (hsat : Satisfied2 hash spawnV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target)
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target)
     (hwrong : post.kernel.accounts ≠ insert child pre.kernel.accounts) :
     False :=
-  hwrong (spawn_forced_sat S8 hash hsat pre post actor child target rd)
+  hwrong (spawn_forced_sat hash hsat pre post actor child target rd)
 
-/-! ## §5b — the spawn CAP-HANDOFF FORCED close (the `effCapInsertV3 spawnWriteV3` keystone wrap).
+/-! ## §5b — the spawn CAP-HANDOFF FORCED close (`spawnWriteV3`, limb 25 freed).
 
 `spawnV3` froze `cap_root` (`gCapPass`), so the parent→child cap handoff was the named PHASE-D residual.
 `spawnWriteV3` REBASES onto the cap-WRITE rotation (`rotateV3WithNewCellKeyPinCapWrite`: cap-root limb 25
-freed) ALONGSIDE the unchanged accounts grow-gate (limb 0). The cap-tree INSERT itself is FORCED by the
-SHAPE-MATCHED keystone wrap (the arity-2 `anchorReadOpRot`/`insertWriteOpRot` pair was shape-UNSAT
-against the deployed arity-7 `CanonicalCapTree::insert_witness` and is DROPPED): `effCapInsertV3
-spawnWriteV3` FORCES the spliced-leaf membership in the REBUILT AFTER tree
-(`CapInsertEmit.effCapInsertV3_forces_write8` → `capInserts8`), exactly as `delegate_forces_committed_write`
-— closing the load-bearing `caps` edge. (The `delegate`/`delegations` POINTER moves remain the named
-residual: the single cap-tree INSERT binds the `caps` edge, not the per-cell `delegate`/`delegations`
-snapshots, which ride `birth`'s `delegateHandoff`/`delegationsHandoff` faithful-encoding fields.) -/
+freed) and drives the cap-tree INSERT (`anchorReadOpRot` + `insertWriteOpRot`) ALONGSIDE the unchanged
+accounts grow-gate (limb 0). The cap handoff is now FORCED from the deployed `writesTo`, exactly as
+`RotatedKernelRefinementCapFamily.revokeCapability_forced_sat` forces the `removeEdgeCaps` move — closing
+the load-bearing `caps` edge. (The `delegate`/`delegations` POINTER moves remain the named residual: the
+single cap-tree INSERT binds the `caps` edge, not the per-cell `delegate`/`delegations` snapshots, which
+ride `birth`'s `delegateHandoff`/`delegationsHandoff` faithful-encoding fields.) -/
 
-/-- **`spawn_caps_forced_sat` — the parent→child cap edge is FORCED by the DEPLOYED keystone wrap.** The
-faithful 8-felt cap-tree INSERT (`capInserts8` — the spliced conferred edge at the child key) is
-discharged by `effCapInsertV3_forces_write8` + the readout's realizable INSERT carriers, and the
-readout's `capsMoveDecodes` seam lifts it to the kernel `caps` move (`spawnCapsMap`). Mirrors
-`RotatedKernelRefinementCapFamily.delegate_forces_committed_write`. -/
-theorem spawn_caps_forced_sat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
-    (name : String) (n : Nat)
+/-- **`spawn_caps_forced_sat` — the parent→child cap edge is FORCED by the DEPLOYED `spawnWriteV3`.** The
+cap-tree INSERT `writesTo` (the conferred edge sorted-inserted at the child key) is discharged by
+`spawnWriteV3_forces_write`, and the readout's `capsMoveDecodes` seam lifts it to the kernel `caps` move
+(`spawnCapsMap`). Mirrors `revokeCapability_forced_sat`. -/
+theorem spawn_caps_forced_sat (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (hChip : ChipTableSoundN (capPermOut S8) (t.tf .poseidon2))
-    (hsat : Satisfied2 hash (effCapInsertV3 spawnWriteV3 name n) minit mfin maddrs t)
+    (hsat : Satisfied2 hash spawnWriteV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target)
-    (anc : SpawnWriteAnchor S8 hash minit mfin maddrs t pre post actor child target rd) :
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target) :
     post.kernel.caps = spawnCapsMap pre.kernel actor child target :=
   rd.capsMoveDecodes
-    (effCapInsertV3_forces_write8 S8 spawnWriteV3 name n hash minit mfin maddrs t hChip hsat
-      rd.row rd.hrow anc.hnotlast anc.spine anc.hold anc.gap anc.gapCov anc.hnew)
+    (spawnWriteV3_forces_write hash minit mfin maddrs t hsat rd.row rd.hrow rd.hsel).2
 
 /-- **`spawnWrite_descriptorRefines_sat` — THE CLASS-A REFINEMENT for spawn with the cap handoff FORCED.**
-Over the keystone wrap `effCapInsertV3 spawnWriteV3`: BOTH the accounts insert (via
-`spawnWriteV3_grow_gate_forces_set_insert`/`growthDecodes` on the stripped base — the cells map-ops
-survive the drop) AND the parent→child cap edge (via `spawn_caps_forced_sat`) are FORCED. The
-`delegate`/`delegations` pointer moves ride the readout's faithful-encoding residual fields. Editing the
-deployed AFTER welds turns the cap leg — and the apex — RED. -/
-theorem spawnWrite_descriptorRefines_sat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
-    (name : String) (n : Nat)
+Over the cap-WRITE descriptor `spawnWriteV3`: BOTH the accounts insert (via
+`spawnWriteV3_grow_gate_forces_set_insert`/`growthDecodes`) AND the parent→child cap edge (via
+`spawn_caps_forced_sat`) are FORCED. The `delegate`/`delegations` pointer moves ride the readout's
+faithful-encoding residual fields. Editing `spawnWriteV3`'s `insertWriteOpRot` turns the cap leg — and the
+apex — RED. -/
+theorem spawnWrite_descriptorRefines_sat (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (hChip : ChipTableSoundN (capPermOut S8) (t.tf .poseidon2))
-    (hsat : Satisfied2 hash (effCapInsertV3 spawnWriteV3 name n) minit mfin maddrs t)
+    (hsat : Satisfied2 hash spawnWriteV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target)
-    (anc : SpawnWriteAnchor S8 hash minit mfin maddrs t pre post actor child target rd) :
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target) :
     SpawnFullSpec pre actor child target post := by
   refine ⟨rd.guard, ?_, rd.frCell, rd.frSlotCaveats, rd.frLifecycle, rd.frDeathCert,
     rd.frBal, ?_, rd.delegateHandoff, rd.delegationsHandoff, rd.logAdv,
     rd.frNullifiers, rd.frRevoked, rd.frCommitments, rd.frFactories,
     rd.frDelegationEpoch, rd.epochStampResidual, rd.frHeaps⟩
-  · -- accounts insert: forced by the cells grow-gate (still present on the stripped base).
-    have hbase : Satisfied2 hash spawnWriteV3 minit mfin maddrs t :=
-      Dregg2.Circuit.Emit.CapOpenEmit.effCapOpenV3_satisfied2_strips_to_base hash spawnWriteV3 name n
-        minit mfin maddrs t
-        (effCapInsertV3_strips_to_capOpen spawnWriteV3 name n hash minit mfin maddrs t hsat)
+  · -- accounts insert: forced by the cells grow-gate (still present on `spawnWriteV3`).
     exact rd.growthDecodes
-      (spawnWriteV3_grow_gate_forces_set_insert hash hbase rd.row rd.hrow rd.hsel).2
+      (spawnWriteV3_grow_gate_forces_set_insert hash hsat rd.row rd.hrow rd.hsel).2
   · -- the parent→child cap edge: FORCED (no longer the frozen residual).
-    exact spawn_caps_forced_sat S8 hash name n hChip hsat pre post actor child target rd anc
+    exact spawn_caps_forced_sat hash hsat pre post actor child target rd
 
 /-- **`spawnWrite_descriptorRefines_capOpenSat` — the apex-wirable, LIGHT-CLIENT spawn rung.** Consumes
 `Satisfied2 hash spawnWriteCapOpenV3` (the SINGLE descriptor carrying BOTH the cap-membership authority
-crown AND the cap-tree INSERT — the keystone wrap under the spawn selector tooth) by stripping the
-selector tooth (`withSelectorGate_satisfied2`) and applying `spawnWrite_descriptorRefines_sat`. This
+crown AND the cap-tree INSERT) by stripping the cap-open authority appendix + selector tooth to the base
+`spawnWriteV3` (`capOpen_satisfied2_strips_to_base`) and applying `spawnWrite_descriptorRefines_sat`. This
 makes the cap handoff light-client-verifiable IN the descriptor the SDK route proves+verifies. Mirrors
-`delegate_descriptorRefines_capOpenSat`. -/
-theorem spawnWrite_descriptorRefines_capOpenSat (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
-    (name : String) (n : Nat)
+`revokeCapability_descriptorRefines_capOpenSat`. -/
+theorem spawnWrite_descriptorRefines_capOpenSat (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (hChip : ChipTableSoundN (capPermOut S8) (t.tf .poseidon2))
-    (hsat : Satisfied2 hash
-      (withSelectorGate Dregg2.Circuit.Emit.EffectVmEmitSpawn.SEL_SPAWN_RT
-        (effCapInsertV3 spawnWriteV3 name n)) minit mfin maddrs t)
+    (hsat : Satisfied2 hash Dregg2.Circuit.Emit.CapOpenEmit.spawnWriteCapOpenV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target)
-    (anc : SpawnWriteAnchor S8 hash minit mfin maddrs t pre post actor child target rd) :
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target) :
     SpawnFullSpec pre actor child target post :=
-  spawnWrite_descriptorRefines_sat S8 hash name n hChip
-    (withSelectorGate_satisfied2 hash _ (effCapInsertV3 spawnWriteV3 name n) minit mfin maddrs t hsat)
-    pre post actor child target rd anc
+  spawnWrite_descriptorRefines_sat hash
+    (Dregg2.Circuit.Emit.CapOpenEmit.capOpen_satisfied2_strips_to_base hash _ spawnWriteV3 _ _
+      minit mfin maddrs t hsat)
+    pre post actor child target rd
 
 /-- **CLASS-A FORGE TOOTH (spawn) — a forged wrong-caps post-root on the WRITE-CAPOPEN wrapper is UNSAT.**
 Over the LIVE `spawnWriteCapOpenV3` (the descriptor the SDK route verifies), a post-state whose `caps` are
-NOT the genuine `spawnCapsMap` handoff cannot arise from a `Satisfied2` witness — the keystone welds FORCE
-the spliced conferred edge. Perturbing the AFTER welds breaks the force and reds this. Mirrors
-`revokeCapability_capOpenSat_rejects_forged_postroot`. -/
-theorem spawn_capOpenSat_rejects_forged_capHandoff (S8 : Cap8Scheme) (hash : List ℤ → ℤ)
-    (name : String) (n : Nat)
+NOT the genuine `spawnCapsMap` handoff cannot arise from a `Satisfied2` witness — the stripped
+`insertWriteOpRot` FORCES the conferred edge. Perturbing `insertWriteOpRot`'s `afterCapRootCol` breaks the
+strip and reds this. Mirrors `revokeCapability_capOpenSat_rejects_forged_postroot`. -/
+theorem spawn_capOpenSat_rejects_forged_capHandoff (hash : List ℤ → ℤ)
     {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (hChip : ChipTableSoundN (capPermOut S8) (t.tf .poseidon2))
-    (hsat : Satisfied2 hash
-      (withSelectorGate Dregg2.Circuit.Emit.EffectVmEmitSpawn.SEL_SPAWN_RT
-        (effCapInsertV3 spawnWriteV3 name n)) minit mfin maddrs t)
+    (hsat : Satisfied2 hash Dregg2.Circuit.Emit.CapOpenEmit.spawnWriteCapOpenV3 minit mfin maddrs t)
     (pre post : RecChainedState) (actor child target : CellId)
-    (rd : SpawnTraceReadout S8 hash minit mfin maddrs t pre post actor child target)
-    (anc : SpawnWriteAnchor S8 hash minit mfin maddrs t pre post actor child target rd)
+    (rd : SpawnTraceReadout hash minit mfin maddrs t pre post actor child target)
     (hwrong : post.kernel.caps ≠ spawnCapsMap pre.kernel actor child target) :
     False :=
-  hwrong (spawn_caps_forced_sat S8 hash name n hChip
-    (withSelectorGate_satisfied2 hash _ (effCapInsertV3 spawnWriteV3 name n) minit mfin maddrs t hsat)
-    pre post actor child target rd anc)
+  hwrong (spawn_caps_forced_sat hash
+    (Dregg2.Circuit.Emit.CapOpenEmit.capOpen_satisfied2_strips_to_base hash _ spawnWriteV3 _ _
+      minit mfin maddrs t hsat)
+    pre post actor child target rd)
 
 /-! ## §6 — axiom-hygiene tripwires. -/
 

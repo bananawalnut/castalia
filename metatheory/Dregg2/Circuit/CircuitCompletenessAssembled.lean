@@ -294,40 +294,31 @@ fixed effect's leaf `Spec` antecedent. (Stated inline per field for the leaf-spe
 carries; the realizability shape is identical across all 21.) -/
 structure CompletenessWitnesses (S : CommitSurface) (hash : List ℤ → ℤ)
     (compressN : List ℤ → ℤ) : Type 1 where
-  /-- transfer (tag 0) — at the DEPLOYED membership-teeth transfer descriptor
-  (`CarrierComposed.transferV3Membership` = `Rfix 0`, the v12 big-bang): the honest prover also
-  publishes the 4 rc TAIL PIs AND the two `(sender_leaf, authorized_root)` teeth PIs (50..51 —
-  additive `.piBinding` pins over appended teeth columns, filled by the producer). -/
+  /-- transfer (tag 0). -/
   bwTransfer : ∀ (pre post : RecChainedState) (tr : Turn) (a : AssetId) (turn : BoundaryTurn),
     Dregg2.Circuit.Spec.BalanceMovement.BalanceMovementSpec pre tr a post →
     ∃ (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace),
-      Satisfied2 hash
-        Dregg2.Circuit.Emit.CarrierComposed.transferV3Membership minit mfin maddrs t ∧
+      Satisfied2 hash Dregg2.Circuit.RotatedKernelRefinement.transferV3 minit mfin maddrs t ∧
       tracePublishedCommit t = commitOf S pre post turn
-  /-- burn (tag 4) — at the DEPLOYED rc-EMIT-wrapped burn descriptor (`withDfaRcPins burnV3`
-  = `Rfix 4`). -/
+  /-- burn (tag 4). -/
   bwBurn : ∀ (pre post : RecChainedState) (actor cell : CellId) (a : AssetId) (amt : ℤ)
       (turn : BoundaryTurn),
     Dregg2.Circuit.Spec.SupplyDestruction.BurnSpec pre actor cell a amt post →
     ∃ (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace),
-      Satisfied2 hash
-        (Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-          Dregg2.Circuit.RotatedKernelRefinementMintBurn.burnV3) minit mfin maddrs t ∧
+      Satisfied2 hash Dregg2.Circuit.RotatedKernelRefinementMintBurn.burnV3 minit mfin maddrs t ∧
       tracePublishedCommit t = commitOf S pre post turn
-  /-- bridgeMint (tag 20) — at the DEPLOYED felt-mint-hash bridge descriptor
-  (`mintV3BridgeHash = withMintHashPin (withSelectorGate selM.MINT mintV3)`, the live
-  `mintVmDescriptor2R24` on selector `BRIDGE_MINT = 40` with the STEP-3 mint-hash pin at PI 46)
-  — `= Rfix 20`. An honest bridge-mint completeness witness publishes a trace satisfying it
-  (active rows set `sel[BRIDGE_MINT]`, pads `sel[NOOP]`; the producer publishes the mint row's
-  `param0` — the felt-domain mint identity — at the appended pin slot, `trace_rotated.rs`'s
-  BridgeMint arm). The dedicated supply-mint (tag 3) is `bwSupplyMint`. -/
+  /-- bridgeMint (tag 20) — at the DEPLOYED gated bridge-mint descriptor (`withSelectorGate
+  selM.MINT mintV3`, the live `mintVmDescriptor2R24` on selector `BRIDGE_MINT = 40`) — `= Rfix 20`.
+  An honest bridge-mint completeness witness publishes a trace satisfying it (active rows set
+  `sel[BRIDGE_MINT]`, pads `sel[NOOP]`). The dedicated supply-mint (tag 3) is `bwSupplyMint`. -/
   bwMint : ∀ (pre post : RecChainedState) (actor cell : CellId) (a : AssetId) (amt : ℤ)
       (turn : BoundaryTurn),
     Dregg2.Circuit.Spec.SupplyCreation.MintASpec pre actor cell a amt post →
     ∃ (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace),
       Satisfied2 hash
-        (Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-          Dregg2.Circuit.Emit.EffectVmEmitRotationV3.mintV3BridgeHash) minit mfin maddrs t ∧
+        (Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withSelectorGate
+          Dregg2.Circuit.Emit.EffectVmEmitMint.selM.MINT
+          Dregg2.Circuit.Emit.EffectVmEmitRotationV3.mintV3) minit mfin maddrs t ∧
       tracePublishedCommit t = commitOf S pre post turn
   /-- mint (tag 3) — the DEDICATED supply-mint (SUPPLY-MODEL.md Stage 2b). At the deployed
   `supplyMintVmDescriptor2R24` (`withSelectorGate sel.MINT mintV3`, selector `MINT = 14`) — `= Rfix
@@ -349,14 +340,11 @@ structure CompletenessWitnesses (S : CommitSurface) (hash : List ℤ → ℤ)
     ∃ (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace),
       Satisfied2 hash (Rfix 5) minit mfin maddrs t ∧
       tracePublishedCommit t = commitOf S pre post turn
-  /-- incrementNonce (tag 7) — at the DEPLOYED rc-EMIT-wrapped descriptor (`withDfaRcPins
-  incNonceV3` = `Rfix 7`). -/
+  /-- incrementNonce (tag 7). -/
   bwIncNonce : ∀ (pre post : RecChainedState) (actor cell : CellId) (n : ℤ) (turn : BoundaryTurn),
     Dregg2.Circuit.Spec.CellStateMonotone.IncrementNonceSpec pre actor cell n post →
     ∃ (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace),
-      Satisfied2 hash
-        (Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-          Dregg2.Circuit.RotatedKernelRefinementIncNonce.incNonceV3) minit mfin maddrs t ∧
+      Satisfied2 hash Dregg2.Circuit.RotatedKernelRefinementIncNonce.incNonceV3 minit mfin maddrs t ∧
       tracePublishedCommit t = commitOf S pre post turn
   /-- emitEvent (tag 6) — LIVE descriptor. -/
   bwEmitEvent : ∀ (pre post : RecChainedState) (actor cell : CellId) (topic data : ℤ)
@@ -452,19 +440,18 @@ structure CompletenessWitnesses (S : CommitSurface) (hash : List ℤ → ℤ)
 The Value rungs conclude `Satisfied2 hash <e>V3`; the apex needs `Satisfied2 hash (Rfix e)`. The re-key
 (`actionTagToPos`) lands each value tag at its cohort position, so `Rfix e = <e>V3` by `rfl`. -/
 
-theorem Rfix_burn : Rfix 4 = Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-    Dregg2.Circuit.RotatedKernelRefinementMintBurn.burnV3 := rfl
+theorem Rfix_burn : Rfix 4 = Dregg2.Circuit.RotatedKernelRefinementMintBurn.burnV3 := rfl
 -- mint (tag 3) routes to the DEDICATED `supplyMintVmDescriptor2R24` (the bare `mintV3` plus the
 -- appended `selectorGate sel.MINT = 14`, SUPPLY-MODEL.md Stage 2b — its OWN selector). bridgeMint
--- (tag 20) keeps the `mintVmDescriptor2R24` slot, now the STEP-3 felt-mint-hash member
--- (`mintV3BridgeHash = withMintHashPin (withSelectorGate selM.MINT = BRIDGE_MINT = 40)`).
--- The descriptor BODY is identical (`mintV3`); only the appended selector operand + the additive
--- mint-hash pin differ, so the two share every proven value/anti-ghost tooth (through the peel).
+-- (tag 20) keeps the original `mintVmDescriptor2R24` (`selectorGate selM.MINT = BRIDGE_MINT = 40`).
+-- The descriptor BODY is identical (`mintV3`); only the appended selector operand differs, so the
+-- two share every proven value/anti-ghost tooth.
 theorem Rfix_mint : Rfix 3 = Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withSelectorGate
     Dregg2.Circuit.Emit.EffectVmEmit.sel.MINT
     Dregg2.Circuit.Emit.EffectVmEmitRotationV3.mintV3 := rfl
-theorem Rfix_bridgeMint : Rfix 20 = Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-    Dregg2.Circuit.Emit.EffectVmEmitRotationV3.mintV3BridgeHash := rfl
+theorem Rfix_bridgeMint : Rfix 20 = Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withSelectorGate
+    Dregg2.Circuit.Emit.EffectVmEmitMint.selM.MINT
+    Dregg2.Circuit.Emit.EffectVmEmitRotationV3.mintV3 := rfl
 
 /-! ## §4 — the per-effect VALUE-LEG dischargers (DUAL of `closedLogExtract_<e>_closed`).
 
@@ -498,9 +485,6 @@ theorem descriptorComplete_transfer
   descriptorComplete_of_satFloor _ hash (Rfix 0) (kstepAll 0) <| by
     intro pre post turn hstep _hpreWF _hpostWF
     obtain ⟨tr, a, hspec⟩ := dispatchArm_transfer pre post hstep
-    -- v12 big-bang: route the goal to the deployed teeth-exposing member (`Rfix 0 =
-    -- transferV3Membership`), the descriptor `bwTransfer` publishes at.
-    rw [Dregg2.Circuit.CircuitSoundnessAssembled.Rfix_transfer]
     exact bw.bwTransfer pre post tr a turn hspec
 
 /-- burn (tag 4). -/
@@ -549,8 +533,7 @@ theorem descriptorComplete_incrementNonce (S : CommitSurface) (hash : List ℤ �
   descriptorComplete_of_satFloor S hash (Rfix 7) (kstepAll 7) <| by
     intro pre post turn hstep _hpreWF _hpostWF
     obtain ⟨actor, cell, n, hspec⟩ := dispatchArm_incrementNonce pre post hstep
-    rw [show Rfix 7 = Dregg2.Circuit.Emit.EffectVmEmitRotationV3.withDfaRcPins
-      Dregg2.Circuit.RotatedKernelRefinementIncNonce.incNonceV3 from rfl]
+    rw [show Rfix 7 = Dregg2.Circuit.RotatedKernelRefinementIncNonce.incNonceV3 from rfl]
     exact bw.bwIncNonce pre post actor cell n turn hspec
 
 /-- emitEvent (tag 6) — LIVE descriptor. -/

@@ -800,16 +800,6 @@ pub struct TurnExecutor {
     /// merely-touched cell gets a walkable per-cell receipt chain here without its
     /// head locking that cell's next authored turn to a causal edge it never made.
     pub per_cell_receipt_head: Mutex<HashMap<CellId, [u8; 32]>>,
-    /// **The last committed turn's exact write-set** — every cell whose serialized
-    /// state that turn mutated, captured from the execution journal
-    /// ([`crate::journal::LedgerJournal::touched_cells`]) on the success path. A
-    /// durable consumer that reconstructs post-state from a per-turn change-set
-    /// (the redb commit-log overlay) reads this instead of re-deriving the set
-    /// syntactically from the input turn — the syntactic walk misses cells an
-    /// effect resolves at runtime (a burn's well, a create's newborn, a factory
-    /// birth), which silently corrupts a recovered image (CORE-AUDIT.md finding 1).
-    /// Overwritten on every committed turn; empty until the first commit.
-    pub last_write_set: Mutex<Vec<CellId>>,
     /// Optional X25519 keypair used to decrypt `EncryptedTurn` submissions.
     ///
     /// When set, callers may submit privacy-preserving `EncryptedTurn`
@@ -922,10 +912,8 @@ pub struct TurnExecutor {
     /// universal-memory witness lane, recursion-gated like the umem circuit leg): when
     /// set, `execute()` snapshots the universal-map projection (`crate::umem`) around
     /// the forest journal window and emits the turn's Blum op trace into
-    /// [`Self::last_umem_witness`]. ON by default (the umem VK EPOCH — G4): the deployed
-    /// executor observes the universal-memory boundary alongside the welded proving path.
-    /// This is the OBSERVATION bridge, distinct from the producer weld toggle
-    /// (`cipherclerk::umem_weld_staged_enabled`) and the executor verify's `require_welded`.
+    /// [`Self::last_umem_witness`]. OFF by default — the live proving path is
+    /// untouched.
     pub umem_witness_enabled: std::sync::atomic::AtomicBool,
     /// The most recent turn's universal-memory witness (pre/post projections + the
     /// Blum write trace whose fold connects them), or the emitter's refusal. `None`
@@ -998,7 +986,6 @@ impl TurnExecutor {
             epoch_minter: None,
             last_receipt_hash: Mutex::new(HashMap::new()),
             per_cell_receipt_head: Mutex::new(HashMap::new()),
-            last_write_set: Mutex::new(Vec::new()),
             executor_signing_key: None,
             turn_decryption_keypair: None,
             require_validity_proof: false,
@@ -1060,7 +1047,6 @@ impl TurnExecutor {
             epoch_minter: None,
             last_receipt_hash: Mutex::new(HashMap::new()),
             per_cell_receipt_head: Mutex::new(HashMap::new()),
-            last_write_set: Mutex::new(Vec::new()),
             executor_signing_key: None,
             turn_decryption_keypair: None,
             require_validity_proof: false,
@@ -1104,7 +1090,6 @@ impl TurnExecutor {
             epoch_minter: None,
             last_receipt_hash: Mutex::new(HashMap::new()),
             per_cell_receipt_head: Mutex::new(HashMap::new()),
-            last_write_set: Mutex::new(Vec::new()),
             executor_signing_key: None,
             turn_decryption_keypair: None,
             require_validity_proof: false,
@@ -1515,20 +1500,6 @@ impl TurnExecutor {
             .copied()
     }
 
-    /// **The last committed turn's exact write-set** — the cells whose serialized
-    /// state that turn mutated, captured from the execution journal (see
-    /// [`crate::journal::LedgerJournal::touched_cells`] and the field docs on
-    /// [`Self::last_write_set`]). A durable consumer that rebuilds post-state from
-    /// a per-turn change-set reads this (COMPLETE by construction) instead of a
-    /// syntactic input-turn walk (which misses runtime-resolved cells). Empty
-    /// before the first committed turn.
-    pub fn last_write_set(&self) -> Vec<CellId> {
-        self.last_write_set
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
-    }
-
     /// Seed the receipt-chain head for an agent (for state recovery / loading).
     ///
     /// Use this when an executor is started against a ledger that already has
@@ -1892,8 +1863,7 @@ mod proof_verify;
 // mint, closing the multi-relayer double-mint gap.
 pub mod bridge_ledger;
 pub use bridge_ledger::{
-    BridgeEscrowReceipt, BridgeEscrowRecord, BridgeMintError, BridgeMintReceipt, BridgeMintRequest,
-    escrow_nullifier_for, new_mirror_ledger_cell, read_supply,
+    BridgeMintError, BridgeMintReceipt, BridgeMintRequest, new_mirror_ledger_cell, read_supply,
 };
 
 // MEASUREMENT-ONLY: env-gated (`DREGG_TURN_PROFILE=1`) per-turn phase profiler.

@@ -732,17 +732,15 @@ pub struct ConsumedCapWitness {
     pub leaf_expiry: u32,
     /// Leaf field 7: optional breadstuff hash folded to one felt.
     pub leaf_breadstuff: u32,
-    /// Sibling 8-felt digests along the membership path, bottom-up
-    /// (`CAP_TREE_DEPTH` entries). Each is a native-`node8` `Digest8` (8 lanes,
-    /// canonical BabyBear values stored as `u32`).
-    pub siblings: Vec<[u32; 8]>,
+    /// Sibling digests along the membership path, bottom-up
+    /// (`CAP_TREE_DEPTH` entries).
+    pub siblings: Vec<u32>,
     /// Direction bits along the path: 0 = current node is the LEFT child
     /// (sibling on the right), 1 = right.
     pub directions: Vec<u8>,
-    /// The canonical FAITHFUL 8-felt capability root the path opens against — the
-    /// holder's PRE-state `capability_root` (`Digest8`, lane 0 ‖ lanes 1..7). Lane 0
-    /// is the historical scalar root (`compute_canonical_capability_root_felt`).
-    pub cap_root: [u32; 8],
+    /// The canonical capability root (felt) the path opens against — the
+    /// holder's PRE-state `capability_root`.
+    pub cap_root: u32,
 }
 
 impl ConsumedCapWitness {
@@ -763,27 +761,27 @@ impl ConsumedCapWitness {
     /// Recompute the Merkle root implied by the leaf preimage + path.
     /// `None` if the witness is malformed (wrong path length / direction
     /// bits outside {0,1}).
-    pub fn recompute_root(&self) -> Option<[u32; 8]> {
-        use dregg_circuit::cap_root::{CAP_TREE_DEPTH, cap_node8};
+    pub fn recompute_root(&self) -> Option<u32> {
+        use dregg_circuit::cap_root::{CAP_TREE_DEPTH, cap_node};
         use dregg_circuit::field::BabyBear;
         if self.siblings.len() != CAP_TREE_DEPTH || self.directions.len() != CAP_TREE_DEPTH {
             return None;
         }
-        // The internal-node hash MUST be the canonical native `cap_node8` (the
-        // arity-16 `node8` compression `perm(L8 ‖ R8)[0..8]`) the sorted
-        // `CanonicalCapTree` folds with — NOT a lane-0 squeeze — or the recomputed
-        // top diverges from `tree.root()` and `verify()` rejects a genuine path.
+        // The internal-node hash MUST be the canonical `cap_node` (the arity-3
+        // `cap_chip_absorb([CAP_FACT_MARK, l, r])`) the sorted `CanonicalCapTree`
+        // folds with — NOT a bare `hash_fact` — or the recomputed top diverges
+        // from `tree.root()` and `verify()` rejects a genuine membership path.
         let mut cur = self.cap_leaf().digest();
         for (sib, dir) in self.siblings.iter().zip(self.directions.iter()) {
-            let sib: [BabyBear; 8] = sib.map(BabyBear::new);
+            let sib = BabyBear::new(*sib);
             cur = match dir {
                 // direction 0 ⇒ current node is the LEFT child (sibling right).
-                0 => cap_node8(cur, sib),
-                1 => cap_node8(sib, cur),
+                0 => cap_node(cur, sib),
+                1 => cap_node(sib, cur),
                 _ => return None,
             };
         }
-        Some(cur.map(|f| f.as_u32()))
+        Some(cur.as_u32())
     }
 
     /// Verify the membership path: the recorded leaf preimage opens to the
@@ -793,13 +791,13 @@ impl ConsumedCapWitness {
         self.recompute_root() == Some(self.cap_root)
     }
 
-    /// The 32-byte encoding of `cap_root`'s LANE-0 (the historical scalar root),
-    /// byte-identical to `dregg_cell::compute_canonical_capability_root` over the
-    /// holder's pre-state c-list (`felt_to_bytes32`: lane-0's low 4 little-endian
-    /// bytes, rest zero). The full 8-felt root rides the `cap_root` field.
+    /// The 32-byte encoding of `cap_root`, byte-identical to
+    /// `dregg_cell::compute_canonical_capability_root` over the holder's
+    /// pre-state c-list (`felt_to_bytes32`: low 4 little-endian bytes, rest
+    /// zero).
     pub fn cap_root_bytes32(&self) -> [u8; 32] {
         let mut out = [0u8; 32];
-        out[0..4].copy_from_slice(&self.cap_root[0].to_le_bytes());
+        out[0..4].copy_from_slice(&self.cap_root.to_le_bytes());
         out
     }
 
@@ -832,15 +830,11 @@ impl ConsumedCapWitness {
         }
         hasher.update(&(self.siblings.len() as u64).to_le_bytes());
         for s in &self.siblings {
-            for lane in s {
-                hasher.update(&lane.to_le_bytes());
-            }
+            hasher.update(&s.to_le_bytes());
         }
         hasher.update(&(self.directions.len() as u64).to_le_bytes());
         hasher.update(&self.directions);
-        for lane in &self.cap_root {
-            hasher.update(&lane.to_le_bytes());
-        }
+        hasher.update(&self.cap_root.to_le_bytes());
         *hasher.finalize().as_bytes()
     }
 }

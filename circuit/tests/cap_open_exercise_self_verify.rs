@@ -36,7 +36,7 @@ use dregg_circuit::descriptor_ir2::{
     MemBoundaryWitness, parse_vm_descriptor2, prove_vm_descriptor2,
 };
 use dregg_circuit::effect_vm::trace_rotated::{
-    CAP_OPEN_BASE, CAP_OPEN_WIDTH, CapOpenWitness, DFA_RC_LEN, FACET_MASK_HI, RotatedBlockWitness,
+    CAP_OPEN_BASE, CAP_OPEN_WIDTH, CapOpenWitness, FACET_MASK_HI, RotatedBlockWitness,
     SIGNATURE_AUTH_TAG, WRITE_MASK_LO, generate_rotated_effect_vm_trace, transfer_caveat_manifest,
     widen_to_cap_open,
 };
@@ -121,7 +121,6 @@ fn build_exercise_base() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -129,11 +128,10 @@ fn build_exercise_base() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
 
     let caveat = transfer_caveat_manifest();
-    let (trace, mut pis) = generate_rotated_effect_vm_trace(
+    let (trace, pis) = generate_rotated_effect_vm_trace(
         &st,
         &effects,
         &bridge(&before_w),
@@ -141,11 +139,6 @@ fn build_exercise_base() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
         &caveat,
     )
     .expect("rotated ExerciseViaCapability base trace must generate");
-    // The cap-open faces were never rc-wrapped in the Lean emit (the committed
-    // `exerciseCapOpenVmDescriptor2R24` carries the UNWRAPPED 46-PI base); the v13 generic base now
-    // appends the 4 dsl rc pins, so lift the rc tail off — exactly as the SDK cap-open leg builder /
-    // the sibling `cap_open_self_verify` base does.
-    pis.truncate(pis.len() - DFA_RC_LEN);
     (trace, pis)
 }
 
@@ -219,22 +212,13 @@ fn cap_open_exercise_witness_and_appendix_are_genuine() {
         CAP_OPEN_WIDTH,
         "cap-open trace widened to CAP_OPEN_WIDTH"
     );
-    // Phase H-CAP-8 native 8-felt layout: cap_root group at +287..294, src at +295.
-    for j in 0..8 {
-        assert_eq!(
-            trace[0][CAP_OPEN_BASE + 287 + j],
-            w.cap_root[j],
-            "cap_root group lane {j}"
-        );
-    }
-    assert_eq!(trace[0][CAP_OPEN_BASE + 295], w.src, "src column");
-    for j in 0..8 {
-        assert_eq!(
-            trace[0][CAP_OPEN_BASE + 15 + 17 * 15 + 9 + j],
-            w.cap_root[j],
-            "node8[15] (top fold) lane {j} == cap_root"
-        );
-    }
+    assert_eq!(trace[0][CAP_OPEN_BASE + 56], w.cap_root, "cap_root column");
+    assert_eq!(trace[0][CAP_OPEN_BASE + 57], w.src, "src column");
+    assert_eq!(
+        trace[0][CAP_OPEN_BASE + 10 + 3 * 15],
+        w.cap_root,
+        "node[15] (top fold) == cap_root"
+    );
 }
 
 /// **THE AUTHORITY FORGE — rejected at WITNESS BUILD (green, NO `catch_unwind`).** The exercise
@@ -290,7 +274,7 @@ fn cap_open_exercise_authority_forge_rejected_at_witness() {
             w.cap_root,
             "the genuine held cap recomposes its committed root"
         );
-        w.siblings[0][0] += BabyBear::ONE; // forge the level-0 sibling lane (a cap not in the c-list)
+        w.siblings[0] += BabyBear::ONE; // forge the level-0 sibling (a cap not in the c-list)
         assert_ne!(
             w.recomposes(),
             w.cap_root,

@@ -18,7 +18,7 @@
  * exclusively through `@dregg/sdk`'s authorized builder — no `Unchecked` path).
  */
 
-import { AgentRuntime, Identity, devnetUrl } from "@dregg/sdk/browser";
+import { AgentRuntime, Identity } from "@dregg/sdk/browser";
 import { TrustedPathMediator, TurnDeclinedError, receiptView } from "./mediator";
 import type { ApprovalView } from "./protocol";
 import type { ProviderRequest, ProviderResponse } from "./protocol";
@@ -26,8 +26,7 @@ import { RESTRICTED_METHODS, UNRESTRICTED_METHODS } from "./protocol";
 
 // ── configuration (stored; defaults to the public devnet) ────────────────────
 
-// Central endpoint config (overridable via globalThis.__DREGG_ENDPOINTS__).
-const DEFAULT_NODE_URL = devnetUrl();
+const DEFAULT_NODE_URL = "https://devnet.dregg.fg-goose.online";
 
 interface StoredConfig {
   nodeUrl: string;

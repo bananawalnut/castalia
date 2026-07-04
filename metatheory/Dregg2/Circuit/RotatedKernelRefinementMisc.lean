@@ -62,8 +62,7 @@ open Dregg2.Circuit.Emit.EffectVmEmitV2 (graduateV1 graduateV1_sound graduable)
 open Dregg2.Circuit.Emit.EffectVmEmitRotationV3
   (makeSovereignV3 setFieldDynForcedV3 afterModeCol afterFieldsRootCol modeSovereign
    declaredFieldsRootCol rotateV3WithModeGate rotateV3WithFieldsRootGate rotateV3WithFieldsRootGate_mem
-   makeSovereignV3_forces_sovereign setFieldDynV1Face permsVKWeldGate permsVKWeldGate_forces
-   satisfied2_of_withRecordPin8Headroom2)
+   makeSovereignV3_forces_sovereign setFieldDynV1Face permsVKWeldGate permsVKWeldGate_forces)
 open Dregg2.Circuit.DescriptorIR2 (VmConstraint2)
 open Dregg2.Circuit.RotatedKernelRefinement (RotTableSide)
 open Dregg2.Exec
@@ -427,7 +426,7 @@ theorem makeSovereign_forced_sat (hash : List ℤ → ℤ)
         EffectVmEmitMakeSovereign.makeSovereignRuntimeVmDescriptor)
       (envAt t rd.row) (rd.row == 0) (rd.row + 1 == t.rows.length) :=
     graduateV1_sound hash _ minit mfin maddrs t hside.chip hside.range makeSovereign_mode_graduable
-      (satisfied2_of_withRecordPin8Headroom2 hash _ hsat) rd.row rd.hrow
+      hsat rd.row rd.hrow
   have hlastf : (rd.row + 1 == t.rows.length) = false := by
     simp only [beq_eq_false_iff_ne]; exact rd.hrowNotLast
   rw [hlastf] at hv1

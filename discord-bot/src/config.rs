@@ -63,11 +63,8 @@ impl Config {
             .try_into()
             .map_err(|_| "BOT_SECRET must be exactly 32 bytes (64 hex chars)".to_string())?;
 
-        // `DEVNET_URL` (explicit, full URL) wins; otherwise fall back to the
-        // central endpoint config — the devnet domain there is itself overridable
-        // via `DREGG_DEVNET_DOMAIN`, so the production domain lives in ONE place.
         let devnet_url = env::var("DEVNET_URL")
-            .unwrap_or_else(|_| dregg_sdk::DreggEndpoints::from_env().devnet_url());
+            .unwrap_or_else(|_| "https://devnet.dregg.fg-goose.online".to_string());
 
         let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:bot.db".to_string());
 

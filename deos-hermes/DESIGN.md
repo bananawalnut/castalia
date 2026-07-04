@@ -120,46 +120,22 @@ verdict.
   per-tool grants meter independently, the inspector + dock model render.
 - `src/main.rs` — `cargo run` (mock loop) / `cargo run -- live` (subprocess).
 
-- `src/brain.rs` — THE AGENT BRAIN (`LlmBrain`): the closed `decide → gate →
-  observe` loop that replaces the scripted stand-in. `LocalBrain` is a real
-  reactive ON-BOX brain (reads the prompt, adapts to refusals — falls back to a
-  read-only tool when a mutating one is denied, never bangs on a denied tool);
-  `HttpLlm` is the live BYO-key LLM path over the `LlmHttpCaller` provider seam.
-  The operator's `LlmKeys` reach the provider and NOWHERE the agent's reach
-  travels (redacted Debug; never a tool-call / receipt / wire).
-- `src/agent_peer.rs` — `HermesAgentPeer<B: LlmBrain>`: the `AcpPeer` that runs
-  the brain loop over the SAME `acp_adapter` wire shapes the mock replays, so the
-  UNCHANGED `AcpClient` drives a real confined agent.
-- `tests/confined_hermes_agent.rs` — the real agent end-to-end: a brain-driven
-  multi-step loop (every call cap-gated + receipted), cap-gate refusal + brain
-  adaptation, a receipted World turn, and BYO-key confinement (on-box + over a
-  mock provider).
-
 **REAL:** the entire `ToolGateway` path (`admit` + `invoke` on the verified Lean
 executor, genuine `TurnReceipt`s); the ACP ndjson JSON-RPC transport + the live
-subprocess spawner; the riding effects; the per-tool grants; the inspector; AND
-the agent BRAIN — a real closed reactive loop (`LocalBrain`) or a real BYO-key
-LLM (`HttpLlm`, proven over a mock provider, live against a real endpoint). The
-brain decides + adapts; it is no longer a pre-written script.
-**THE REMAINING SEAM (honest):** a live model-provider credential (the BYO key),
-and running the brain inside the exec-denied `confined` jail body (it runs
-`execve`-free, so `LocalBrain` already fits) in place of `stand_in_acp_peer`. The
-Nous-Research `hermes-acp` venv subprocess is the other live brain path: the
-install in this environment is broken (its venv lacks the `acp` Python module —
-`ModuleNotFoundError: No module named 'acp'`), and a working one needs a model
-provider + credentials. The default `cargo test` drives the real brain over the
-in-process peer; the live paths run the identical driver.
+subprocess spawner; the riding effects; the per-tool grants; the inspector.
+**MOCK (honest):** the Hermes *peer* in the tested end-to-end loop. The live
+`hermes-acp` install in this environment is broken (its venv lacks the `acp`
+Python module — `python -m acp_adapter.entry` raises `ModuleNotFoundError: No
+module named 'acp'`), and a working one needs a model provider + credentials.
+So the tested loop drives the SAME client against `MockHermesPeer`, which
+replays the real `acp_adapter` shapes; the live path runs the identical driver.
 
 ## 4. Roadmap — remaining to a fully confined deos-hermes agent
 
-1. **The brain is wired (`src/brain.rs` + `src/agent_peer.rs`).** The scripted
-   stand-in is replaced by a real closed-loop brain: `cargo run -- agent` drives
-   the on-box `LocalBrain` through the gate (no provider needed), and `HttpLlm`
-   is the live BYO-key LLM path (parse + key-confinement proven over a mock
-   provider). REMAINING: a live provider credential, and the broken `hermes-acp`
-   venv (the Nous-Research live brain path) — once its venv carries the `acp`
-   module and a provider is configured, `cargo run -- live` drives a real Hermes
-   session through the gate, no code change.
+1. **Fix / wire the live `hermes-acp` install.** The client + subprocess
+   spawner are real; once `hermes-acp`'s venv carries the `acp` module and a
+   provider is configured, `cargo run -- live` drives a real Hermes session
+   through the gate, no code change.
 2. **The sandbox-PD confinement (firmament/seL4).** Replace the bare `Command`
    in `AcpTransport::spawn_hermes` with a `spawn_hermes_in_pd(host_pd, cwd_cap,
    net_cap)` that launches Hermes into a confined protection-domain (the host-PD

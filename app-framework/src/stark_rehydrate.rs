@@ -149,9 +149,8 @@ pub struct StarkSnapshot {
     /// The publisher's authority lineage — every viewer's projection is an attenuation
     /// of this.
     pub lineage: AuthRequired,
-    /// The REAL STARK proof of the turn that produced the surface state. H0 DEPLOYED-WIDE: its
-    /// genuine post-state commitment is the 8-felt wide AFTER anchor at the PI tail (`[n-8 .. n)`);
-    /// the single-felt rotated NEW commit (PI 35) is RETIRED to zero on the deployed wide leg.
+    /// The REAL STARK proof of the turn that produced the surface state. Its
+    /// `public_inputs[35]` is the genuine post-state commitment the verifier binds.
     pub proof: RotatedParticipantLeg,
 }
 
@@ -167,18 +166,11 @@ impl StarkSnapshot {
         }
     }
 
-    /// The genuine post-state commitment this snapshot's proof attests — the "endpoint" the STARK
-    /// proves the surface state is. This is what a wrong-root proof would mismatch.
-    ///
-    /// H0 DEPLOYED-WIDE: the deployed leg is WIDE-anchored — the single-felt rotated NEW commit
-    /// (PI 35) is RETIRED to zero, so the genuine post-state is the 8-felt wide AFTER anchor. Report
-    /// its HEAD lane (the FULL 8-felt binding is what [`verify_stark`](Self::verify_stark)
-    /// re-verifies). Falls back to the single felt for any legacy narrow leg.
+    /// The genuine post-state commitment this snapshot's proof attests (PI 35) — the
+    /// "endpoint" the STARK proves the surface state is. This is what a wrong-root proof
+    /// would mismatch.
     pub fn endpoint_commitment(&self) -> BabyBear {
-        self.proof
-            .wide_new_root8()
-            .map(|a| a[0])
-            .unwrap_or_else(|| self.proof.new_root())
+        self.proof.new_root()
     }
 
     /// **Verify the carried STARK** — the genuine-endpoint check, with NO receipt-chain
@@ -516,13 +508,10 @@ mod tests {
         let honest = snap.endpoint_commitment();
         snap.verify_stark().expect("honest endpoint verifies");
 
-        // Tamper the claimed post-state commitment — the genuine 8-felt wide AFTER anchor (PI tail)
-        // — claiming the surface ended in a DIFFERENT state than the proof attests. The descriptor's
-        // in-circuit wide hash sites force it to the genuine post-state, so the tampered PI is UNSAT.
-        // (H0 DEPLOYED-WIDE: the single-felt PI 35 is retired/unbound on the wide leg; the head lane
-        // of the wide AFTER anchor sits at `len - 8` and equals `endpoint_commitment()`.)
-        let pi_wide_new = snap.proof.public_inputs.len() - 8;
-        snap.proof.public_inputs[pi_wide_new] = honest + BabyBear::ONE;
+        // Tamper the claimed post-state commitment (PI 35) — claim the surface ended in
+        // a DIFFERENT state than the proof attests. The descriptor's in-circuit hash
+        // sites force PI 35 to be the genuine post-state, so the tampered PI is UNSAT.
+        snap.proof.public_inputs[PI_NEW_COMMIT] = honest + BabyBear::ONE;
 
         // verify_stark MUST now fail — a tampered surface state is rejected.
         match snap.verify_stark() {

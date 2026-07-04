@@ -3,207 +3,182 @@
 //! ([`crate::cap_root::CanonicalCapTree`] — the sorted binary Poseidon2 Merkle
 //! tree whose root is the cell's `capability_root` since cap Phase A).
 //!
-//! ## Native 8-felt (Phase H-CAP-8)
-//!
-//! The canonical cap tree is native 8-felt: leaves are [`crate::cap_root::CapLeaf::digest`]
-//! (an 8-lane rate-8 absorb), and internal nodes are [`crate::cap_root::cap_node8`] (the
-//! arity-16 `node8` compression `perm(L8 ‖ R8)[0..8]`). This standalone leg is FAITHFUL to
-//! that width: it folds 8-felt `cur8/left8/right8/parent8` per level via the multi-output
-//! [`crate::dsl::circuit::ConstraintExpr::MerkleHash8`] gadget (the DSL-AIR twin of
-//! `cap_node8`, binding all 8 genuine Poseidon2 output lanes), and pins a 16-felt public
-//! input `[leaf_digest(8) ‖ cap_root(8)]`. There is NO lane-0 projection anywhere — the
-//! per-node and per-boundary collision floor is the full 8-felt width (~124-bit), matching
-//! the deployed FRI/STARK soundness.
-//!
 //! ## Why this exists (the AUTHORITY payoff leg)
 //!
-//! Phase B proves capability membership IN-ROW for the Attenuate/Grant EffectVm selectors
-//! (the non-amplification gates). Every OTHER verb's capability-gated turn needs a STANDALONE
-//! membership leg the composed full-turn proof can carry: "the consumed capability's 7-field
-//! leaf is a member of the holder's pre-state `capability_root`". The Phase-C executor witness
-//! ([`dregg_turn::TurnReceipt::consumed_capabilities`]) supplies the leaf preimage + sorted-Merkle
-//! path (8-felt sibling digests); this circuit proves the path, and
-//! `dregg_sdk::verify_full_turn_bound` pins its public inputs:
+//! Phase B proves capability membership IN-ROW for the Attenuate/Grant
+//! EffectVm selectors (the non-amplification gates). Every OTHER verb's
+//! capability-gated turn needs a STANDALONE membership leg the composed
+//! full-turn proof can carry: "the consumed capability's 7-field leaf is a
+//! member of the holder's pre-state `capability_root`". The Phase-C executor
+//! witness ([`dregg_turn::TurnReceipt::consumed_capabilities`]) supplies the
+//! leaf preimage + sorted-Merkle path; this circuit proves the path, and
+//! `dregg_sdk::verify_full_turn_bound` pins its two public inputs:
 //!
-//!   * `pi[LEAF_DIGEST..][0..8]` — the 8-felt Poseidon2 digest of the consumed cap's 7-field
-//!     leaf preimage (the verifier recomputes it from the receipt's witnessed fields, so a
-//!     leaf-field tamper mismatches);
-//!   * `pi[CAP_ROOT..][0..8]` — the 8-felt Merkle root the path reaches (the verifier pins it
-//!     to the holder's CANONICAL pre-state `capability_root`, so a path into a prover-chosen
-//!     tree mismatches).
+//!   * `pi[LEAF_DIGEST]` — the Poseidon2 digest of the consumed cap's 7-field
+//!     leaf preimage (the verifier recomputes it from the receipt's witnessed
+//!     fields, so a leaf-field tamper mismatches);
+//!   * `pi[CAP_ROOT]` — the Merkle root the path reaches (the verifier pins it
+//!     to the holder's CANONICAL pre-state `capability_root`, so a path into a
+//!     prover-chosen tree mismatches).
 //!
-//! ## The statement (depth = [`CAP_TREE_DEPTH`], 8-felt `cap_node8` nodes)
+//! ## The statement (depth = [`CAP_TREE_DEPTH`], binary `cap_node` nodes)
 //!
-//! The trace is exactly `CAP_TREE_DEPTH` rows (16 — a power of two, no padding), one per tree
-//! level, bottom-up:
+//! The trace is exactly `CAP_TREE_DEPTH` rows (16 — a power of two, no
+//! padding), one per tree level, bottom-up:
 //!
 //! ```text
-//! row r:  cur8_r  ∈ {left8_r, right8_r}   (selected lane-wise by dir_r ∈ {0,1})
-//!         parent8_r = cap_node8(left8_r, right8_r)   (in-circuit arity-16 node8, 8 lanes)
-//!         cur8_{r+1} = parent8_r                     (chain continuity, per lane)
-//! row 0:  cur8_0 = pi[LEAF_DIGEST..][0..8]
-//! last:   parent8 = pi[CAP_ROOT..][0..8]
+//! row r:  cur_r  ∈ {left_r, right_r}   (selected by dir_r ∈ {0,1})
+//!         parent_r = cap_node(left_r, right_r)        (in-circuit Poseidon2)
+//!         cur_{r+1} = parent_r                        (chain continuity)
+//! row 0:  cur_0 = pi[LEAF_DIGEST]
+//! last:   parent  = pi[CAP_ROOT]
 //! ```
+//!
+//! `cap_node(left, right)` (= `cap_chip_absorb([FACT_MARK, left, right])`, the
+//! SINGLE in-circuit cap hash since decision #1) is byte-identical to the node
+//! hash [`CanonicalCapTree`] builds with (the in-circuit gadget
+//! `dsl_p3_air::hash_input_state` mirrors it via the `Hash3Cap` form), so the
+//! proven root IS the canonical capability root. All five constraints are forms
+//! the audited `prove_dsl_p3`/`verify_dsl_p3` path arithmetizes for real (no
+//! bespoke `stark`).
 
-use crate::cap_root::{CAP_DIGEST_W, CAP_TREE_DEPTH, cap_node8};
+use crate::cap_root::{CAP_TREE_DEPTH, cap_node};
 use crate::dsl::circuit::{
     BoundaryDef, BoundaryRow, CircuitDescriptor, ColumnDef, ColumnKind, ConstraintExpr, DslCircuit,
     PolyTerm,
 };
 use crate::field::BabyBear;
 
-/// Trace width: `[cur8, left8, right8, parent8, dir]` = 4·8 + 1.
-pub const TRACE_WIDTH: usize = 4 * CAP_DIGEST_W + 1;
+/// Trace width: `[cur, left, right, parent, dir]`.
+pub const TRACE_WIDTH: usize = 5;
 
-/// Column base indices (each 8-felt block spans `base..base+8`).
+/// Column indices.
 pub mod col {
-    use super::CAP_DIGEST_W;
     /// The child node being authenticated at this level (= previous parent;
-    /// row 0 carries the 8-felt leaf digest). Lanes `CUR..CUR+8`.
+    /// row 0 carries the leaf digest).
     pub const CUR: usize = 0;
-    /// Left child of this level's node hash. Lanes `LEFT..LEFT+8`.
-    pub const LEFT: usize = CUR + CAP_DIGEST_W;
-    /// Right child of this level's node hash. Lanes `RIGHT..RIGHT+8`.
-    pub const RIGHT: usize = LEFT + CAP_DIGEST_W;
-    /// `cap_node8(left8, right8)` — the parent node. Lanes `PARENT..PARENT+8`.
-    pub const PARENT: usize = RIGHT + CAP_DIGEST_W;
+    /// Left child of this level's node hash.
+    pub const LEFT: usize = 1;
+    /// Right child of this level's node hash.
+    pub const RIGHT: usize = 2;
+    /// `cap_node(left, right)` — the parent node.
+    pub const PARENT: usize = 3;
     /// Direction bit: 0 ⇒ `cur` is the LEFT child (sibling right), 1 ⇒ RIGHT.
-    pub const DIR: usize = PARENT + CAP_DIGEST_W;
+    pub const DIR: usize = 4;
 }
 
-/// Public input base indices (each spans `base..base+8`).
+/// Public input indices.
 pub mod pi {
-    use super::CAP_DIGEST_W;
-    /// The 8-felt leaf digest being proven a member (row-0 `cur8` boundary). The
-    /// composing verifier recomputes this from the consumed-cap witness's 7-field
-    /// leaf preimage, so the leaf FIELDS are bound. Lanes `0..8`.
+    /// The leaf digest being proven a member (row-0 `cur` boundary). The
+    /// composing verifier recomputes this from the consumed-cap witness's
+    /// 7-field leaf preimage, so the leaf FIELDS are bound, not just a digest.
     pub const LEAF_DIGEST: usize = 0;
-    /// The 8-felt Merkle root the path reaches (last-row `parent8` boundary). The
+    /// The Merkle root the path reaches (last-row `parent` boundary). The
     /// composing verifier pins this to the holder's canonical pre-state
-    /// `capability_root`. Lanes `8..16`.
-    pub const CAP_ROOT: usize = LEAF_DIGEST + CAP_DIGEST_W;
+    /// `capability_root`.
+    pub const CAP_ROOT: usize = 1;
 }
 
-/// Public input count: `[leaf_digest(8), cap_root(8)]`.
-pub const PUBLIC_INPUT_COUNT: usize = 2 * CAP_DIGEST_W;
-
-/// Build the capability-membership CircuitDescriptor (native 8-felt).
+/// Build the capability-membership CircuitDescriptor.
 pub fn cap_membership_circuit_descriptor() -> CircuitDescriptor {
-    let mut constraints: Vec<ConstraintExpr> = Vec::new();
-
-    // C1: the direction bit is binary.
-    constraints.push(ConstraintExpr::Binary { col: col::DIR });
-
-    // C2 (per lane i): `cur8[i]` occupies the child slot `dir` selects:
-    //     (1 - dir)·(left[i] - cur[i]) + dir·(right[i] - cur[i]) == 0
-    //   ⇔ left[i] - cur[i] - dir·left[i] + dir·right[i] == 0
-    // (dir = 0 ⇒ left[i] == cur[i]; dir = 1 ⇒ right[i] == cur[i]). The OTHER slot is the
-    // prover-supplied sibling — unconstrained by design (any sibling defines SOME path;
-    // only a path whose top equals the pinned canonical root verifies). Enforced on all
-    // 8 lanes so the SELECTED 8-felt child equals `cur8` in full width.
-    for i in 0..CAP_DIGEST_W {
-        constraints.push(ConstraintExpr::Polynomial {
+    let constraints = vec![
+        // C1: the direction bit is binary.
+        ConstraintExpr::Binary { col: col::DIR },
+        // C2: `cur` occupies the child slot `dir` selects:
+        //     (1 - dir)·(left - cur) + dir·(right - cur) == 0
+        //   ⇔ left - cur - dir·left + dir·right == 0
+        // (dir = 0 ⇒ left == cur; dir = 1 ⇒ right == cur). The OTHER slot is the
+        // prover-supplied sibling — unconstrained by design (any sibling defines
+        // SOME path; only a path whose top equals the pinned canonical root
+        // verifies).
+        ConstraintExpr::Polynomial {
             terms: vec![
                 PolyTerm {
                     coeff: BabyBear::ONE,
-                    col_indices: vec![col::LEFT + i],
+                    col_indices: vec![col::LEFT],
                 },
                 PolyTerm {
                     coeff: -BabyBear::ONE,
-                    col_indices: vec![col::CUR + i],
+                    col_indices: vec![col::CUR],
                 },
                 PolyTerm {
                     coeff: -BabyBear::ONE,
-                    col_indices: vec![col::DIR, col::LEFT + i],
+                    col_indices: vec![col::DIR, col::LEFT],
                 },
                 PolyTerm {
                     coeff: BabyBear::ONE,
-                    col_indices: vec![col::DIR, col::RIGHT + i],
+                    col_indices: vec![col::DIR, col::RIGHT],
                 },
             ],
-        });
-    }
+        },
+        // C3: parent = cap_node(left, right) — REAL in-circuit Poseidon2 (one permutation
+        // aux block per row on the p3 path), the EXACT node hash `CanonicalCapTree` builds
+        // with since decision #1 (`cap_chip_absorb([FACT_MARK, left, right])`, the single
+        // in-circuit cap hash — NOT the capacity-tagged `hash_fact`).
+        ConstraintExpr::Hash3Cap {
+            output_col: col::PARENT,
+            left_col: col::LEFT,
+            right_col: col::RIGHT,
+        },
+        // C4: chain continuity — the next level authenticates THIS level's parent.
+        // (Transition constraints are when_transition-gated on the p3 path, so the
+        // last row has no wrap-around obligation.)
+        ConstraintExpr::Transition {
+            next_col: col::CUR,
+            local_col: col::PARENT,
+        },
+    ];
 
-    // C3: parent8 = cap_node8(left8, right8) — REAL in-circuit arity-16 Poseidon2 node8
-    // compression (one permutation aux block per row), ALL 8 output lanes bound. The EXACT
-    // node hash `CanonicalCapTree` builds with since Phase H-CAP-8.
-    let out_cols: [usize; CAP_DIGEST_W] = core::array::from_fn(|i| col::PARENT + i);
-    let left_cols: [usize; CAP_DIGEST_W] = core::array::from_fn(|i| col::LEFT + i);
-    let right_cols: [usize; CAP_DIGEST_W] = core::array::from_fn(|i| col::RIGHT + i);
-    constraints.push(ConstraintExpr::MerkleHash8 {
-        output_cols: out_cols,
-        left_cols,
-        right_cols,
-    });
-
-    // C4 (per lane i): chain continuity — the next level authenticates THIS level's parent.
-    // (Transition constraints are when_transition-gated on the p3 path, so the last row has
-    // no wrap-around obligation.)
-    for i in 0..CAP_DIGEST_W {
-        constraints.push(ConstraintExpr::Transition {
-            next_col: col::CUR + i,
-            local_col: col::PARENT + i,
-        });
-    }
-
-    // Boundaries: the 8-felt leaf digest enters at the bottom, the 8-felt root exits at the top.
-    let mut boundaries: Vec<BoundaryDef> = Vec::new();
-    for i in 0..CAP_DIGEST_W {
-        boundaries.push(BoundaryDef::PiBinding {
+    // Boundaries: leaf digest enters at the bottom, the root exits at the top.
+    let boundaries = vec![
+        BoundaryDef::PiBinding {
             row: BoundaryRow::First,
-            col: col::CUR + i,
-            pi_index: pi::LEAF_DIGEST + i,
-        });
-        boundaries.push(BoundaryDef::PiBinding {
+            col: col::CUR,
+            pi_index: pi::LEAF_DIGEST,
+        },
+        BoundaryDef::PiBinding {
             row: BoundaryRow::Last,
-            col: col::PARENT + i,
-            pi_index: pi::CAP_ROOT + i,
-        });
-    }
+            col: col::PARENT,
+            pi_index: pi::CAP_ROOT,
+        },
+    ];
 
-    let mut columns: Vec<ColumnDef> = Vec::new();
-    for i in 0..CAP_DIGEST_W {
-        columns.push(ColumnDef {
-            name: format!("cur{i}"),
-            index: col::CUR + i,
+    let columns = vec![
+        ColumnDef {
+            name: "cur".into(),
+            index: col::CUR,
             kind: ColumnKind::Value,
-        });
-    }
-    for i in 0..CAP_DIGEST_W {
-        columns.push(ColumnDef {
-            name: format!("left{i}"),
-            index: col::LEFT + i,
+        },
+        ColumnDef {
+            name: "left".into(),
+            index: col::LEFT,
             kind: ColumnKind::Value,
-        });
-    }
-    for i in 0..CAP_DIGEST_W {
-        columns.push(ColumnDef {
-            name: format!("right{i}"),
-            index: col::RIGHT + i,
+        },
+        ColumnDef {
+            name: "right".into(),
+            index: col::RIGHT,
             kind: ColumnKind::Value,
-        });
-    }
-    for i in 0..CAP_DIGEST_W {
-        columns.push(ColumnDef {
-            name: format!("parent{i}"),
-            index: col::PARENT + i,
+        },
+        ColumnDef {
+            name: "parent".into(),
+            index: col::PARENT,
             kind: ColumnKind::Hash,
-        });
-    }
-    columns.push(ColumnDef {
-        name: "dir".into(),
-        index: col::DIR,
-        kind: ColumnKind::Binary,
-    });
+        },
+        ColumnDef {
+            name: "dir".into(),
+            index: col::DIR,
+            kind: ColumnKind::Binary,
+        },
+    ];
 
     CircuitDescriptor {
-        name: "dregg-cap-membership-dsl-v2-node8".into(),
+        name: "dregg-cap-membership-dsl-v1".into(),
         trace_width: TRACE_WIDTH,
         max_degree: 7, // Poseidon2 S-box
         columns,
         constraints,
         boundaries,
-        public_input_count: PUBLIC_INPUT_COUNT, // [leaf_digest(8), cap_root(8)]
+        public_input_count: 2, // [leaf_digest, cap_root]
         lookup_tables: vec![],
     }
 }
@@ -213,16 +188,17 @@ pub fn cap_membership_dsl_circuit() -> DslCircuit {
     DslCircuit::new(cap_membership_circuit_descriptor())
 }
 
-/// Generate the cap-membership trace from an 8-felt leaf digest + sorted-Merkle path
-/// (the [`crate::cap_root::CanonicalCapTree::prove_membership`] / `ConsumedCapWitness`
-/// shape: bottom-up 8-felt siblings + direction bits, 0 = current node is the LEFT child).
+/// Generate the cap-membership trace from a leaf digest + sorted-Merkle path
+/// (the [`crate::cap_root::CanonicalCapTree::prove_membership`] /
+/// `ConsumedCapWitness` shape: bottom-up siblings + direction bits, 0 = current
+/// node is the LEFT child).
 ///
-/// Returns `(trace, public_inputs)` where `public_inputs = [leaf_digest(8) ‖ root(8)]`
-/// and `root` is the path's recomputed top. Errs on a malformed witness (wrong path length
-/// or a non-binary direction bit).
+/// Returns `(trace, public_inputs)` where `public_inputs = [leaf_digest, root]`
+/// and `root` is the path's recomputed top. Errs on a malformed witness (wrong
+/// path length or a non-binary direction bit).
 pub fn generate_cap_membership_trace(
-    leaf_digest: [BabyBear; CAP_DIGEST_W],
-    siblings: &[[BabyBear; CAP_DIGEST_W]],
+    leaf_digest: BabyBear,
+    siblings: &[BabyBear],
     directions: &[u8],
 ) -> Result<(Vec<Vec<BabyBear>>, Vec<BabyBear>), String> {
     if siblings.len() != CAP_TREE_DEPTH || directions.len() != CAP_TREE_DEPTH {
@@ -242,30 +218,27 @@ pub fn generate_cap_membership_trace(
             1 => (sib, cur),
             d => return Err(format!("direction bit {d} at level {level} is not binary")),
         };
-        let parent = cap_node8(left, right);
-        let mut row = Vec::with_capacity(TRACE_WIDTH);
-        row.extend_from_slice(&cur);
-        row.extend_from_slice(&left);
-        row.extend_from_slice(&right);
-        row.extend_from_slice(&parent);
-        row.push(BabyBear::new(directions[level] as u32));
-        debug_assert_eq!(row.len(), TRACE_WIDTH);
-        trace.push(row);
+        let parent = cap_node(left, right);
+        trace.push(vec![
+            cur,
+            left,
+            right,
+            parent,
+            BabyBear::new(directions[level] as u32),
+        ]);
         cur = parent;
     }
-    let mut pis = Vec::with_capacity(PUBLIC_INPUT_COUNT);
-    pis.extend_from_slice(&leaf_digest);
-    pis.extend_from_slice(&cur);
-    Ok((trace, pis))
+    Ok((trace, vec![leaf_digest, cur]))
 }
 
-/// Prove capability membership through the AUDITED Plonky3 prover (`p3-batch-stark`).
-/// Public inputs of the returned proof: `[leaf_digest(8) ‖ root(8)]` where `root` is the
-/// path's recomputed top — the COMPOSING verifier is responsible for pinning that root to
-/// the canonical pre-state `capability_root` (the non-vacuity tooth).
+/// Prove capability membership through the AUDITED Plonky3 prover
+/// (`p3-batch-stark`). Public inputs of the returned proof: `[leaf_digest,
+/// root]` where `root` is the path's recomputed top — the COMPOSING verifier is
+/// responsible for pinning that root to the canonical pre-state
+/// `capability_root` (the non-vacuity tooth).
 pub fn prove_cap_membership_p3(
-    leaf_digest: [BabyBear; CAP_DIGEST_W],
-    siblings: &[[BabyBear; CAP_DIGEST_W]],
+    leaf_digest: BabyBear,
+    siblings: &[BabyBear],
     directions: &[u8],
 ) -> Result<(crate::dsl::dsl_p3_air::DslP3Proof, Vec<BabyBear>), String> {
     let (trace, public_inputs) = generate_cap_membership_trace(leaf_digest, siblings, directions)?;
@@ -275,19 +248,17 @@ pub fn prove_cap_membership_p3(
     Ok((proof, public_inputs))
 }
 
-/// Verify a cap-membership proof on the AUDITED Plonky3 verifier. The caller supplies the
-/// 8-felt `leaf_digest` AND 8-felt `root` it expects this proof to attest; both are bound
-/// in-circuit (row-0 / last-row 8-lane boundaries), so a proof for a different leaf or
-/// against a different tree is rejected.
+/// Verify a cap-membership proof on the AUDITED Plonky3 verifier. The caller
+/// supplies the `leaf_digest` AND `root` it expects this proof to attest; both
+/// are bound in-circuit (row-0 / last-row boundaries), so a proof for a
+/// different leaf or against a different tree is rejected.
 pub fn verify_cap_membership_p3(
     proof: &crate::dsl::dsl_p3_air::DslP3Proof,
-    leaf_digest: [BabyBear; CAP_DIGEST_W],
-    root: [BabyBear; CAP_DIGEST_W],
+    leaf_digest: BabyBear,
+    root: BabyBear,
 ) -> Result<(), String> {
     let circuit = cap_membership_dsl_circuit();
-    let mut public_inputs = Vec::with_capacity(PUBLIC_INPUT_COUNT);
-    public_inputs.extend_from_slice(&leaf_digest);
-    public_inputs.extend_from_slice(&root);
+    let public_inputs = vec![leaf_digest, root];
     crate::dsl::dsl_p3_air::verify_dsl_p3(&circuit, proof, &public_inputs)
         .map_err(|e| format!("cap-membership p3 verification failed: {e}"))
 }
@@ -296,7 +267,7 @@ pub fn verify_cap_membership_p3(
 mod tests {
     use super::*;
     use crate::cap_root::{
-        CapLeaf, cap_node8, encode_breadstuff, encode_expiry, fold_bytes32, slot_hash,
+        CanonicalCapTree, CapLeaf, encode_breadstuff, encode_expiry, fold_bytes32, slot_hash,
         split_effect_mask,
     };
 
@@ -315,151 +286,98 @@ mod tests {
         }
     }
 
-    /// Build an honest 8-felt membership witness self-consistent with the DSL AIR's own
-    /// `cap_node8` fold. The leaf digest is a genuine `CapLeaf`'s FULL 8-felt digest; the
-    /// siblings are deterministic 8-felt digests; the returned root is the `cap_node8`-folded
-    /// path top.
-    fn real_tree_witness() -> (
-        [BabyBear; CAP_DIGEST_W],
-        CapLeaf,
-        Vec<[BabyBear; CAP_DIGEST_W]>,
-        Vec<u8>,
-    ) {
+    /// Build a real canonical tree + an honest membership witness for one leaf.
+    fn real_tree_witness() -> (CanonicalCapTree, CapLeaf, Vec<BabyBear>, Vec<u8>) {
         let target = leaf(1, 9, 1, 0x0000_00FF);
-        let leaf_digest = target.digest();
-        let mut siblings = Vec::with_capacity(CAP_TREE_DEPTH);
-        let mut directions = Vec::with_capacity(CAP_TREE_DEPTH);
-        let mut cur = leaf_digest;
-        for level in 0..CAP_TREE_DEPTH {
-            let sib: [BabyBear; CAP_DIGEST_W] =
-                core::array::from_fn(|i| BabyBear::new(0x1357 + (level * CAP_DIGEST_W + i) as u32));
-            let dir = (level % 2) as u8;
-            cur = if dir == 0 {
-                cap_node8(cur, sib)
-            } else {
-                cap_node8(sib, cur)
-            };
-            siblings.push(sib);
-            directions.push(dir);
-        }
-        (cur, target, siblings, directions)
+        let leaves = vec![leaf(0, 1, 1, 0x1), target, leaf(2, 3, 2, 0xFFFF_FFFF)];
+        let tree = CanonicalCapTree::new(leaves, CAP_TREE_DEPTH);
+        let pos = tree.position_of(target.slot_hash).expect("leaf present");
+        let (siblings, directions) = tree.prove_membership(pos).expect("path");
+        (tree, target, siblings, directions)
     }
 
-    /// CONTROL: an honest 8-felt membership witness proves + verifies through the audited p3
-    /// verifier at 16 PIs, and the published root equals the `cap_node8`-folded path top.
+    /// CONTROL: an honest membership witness over the REAL canonical tree
+    /// proves + verifies through the audited p3 verifier, and the published
+    /// root equals the tree's root.
     #[test]
     fn honest_cap_membership_round_trips_through_p3() {
-        let (root, target, siblings, directions) = real_tree_witness();
-        let leaf_digest = target.digest();
-        let (proof, pis) = prove_cap_membership_p3(leaf_digest, &siblings, &directions)
+        let (tree, target, siblings, directions) = real_tree_witness();
+        let (proof, pis) = prove_cap_membership_p3(target.digest(), &siblings, &directions)
             .expect("honest cap membership must prove+verify through audited p3");
+        assert_eq!(pis[pi::LEAF_DIGEST], target.digest());
         assert_eq!(
-            pis.len(),
-            PUBLIC_INPUT_COUNT,
-            "16 PIs: leaf_digest(8) ‖ cap_root(8)"
+            pis[pi::CAP_ROOT],
+            tree.root(),
+            "published root IS the canonical root"
         );
-        assert_eq!(&pis[pi::LEAF_DIGEST..pi::LEAF_DIGEST + 8], &leaf_digest[..]);
-        assert_eq!(
-            &pis[pi::CAP_ROOT..pi::CAP_ROOT + 8],
-            &root[..],
-            "published 8-felt root IS the folded root"
-        );
-        verify_cap_membership_p3(&proof, leaf_digest, root)
+        verify_cap_membership_p3(&proof, target.digest(), tree.root())
             .expect("audited p3 verify accepts the honest membership");
     }
 
-    /// ANTI-FORGERY (root): an honest proof verified against a DIFFERENT root is REJECTED —
-    /// the last-row 8-lane boundary pins the genuine path top.
+    /// ANTI-FORGERY (root): an honest proof verified against a DIFFERENT root
+    /// is REJECTED — the last-row boundary pins the genuine path top.
     #[test]
     fn forged_root_is_rejected() {
-        let (root, target, siblings, directions) = real_tree_witness();
-        let leaf_digest = target.digest();
+        let (tree, target, siblings, directions) = real_tree_witness();
         let (proof, _) =
-            prove_cap_membership_p3(leaf_digest, &siblings, &directions).expect("honest");
-        let mut forged_root = root;
-        forged_root[0] = forged_root[0] + BabyBear::new(1);
+            prove_cap_membership_p3(target.digest(), &siblings, &directions).expect("honest");
+        let forged_root = tree.root() + BabyBear::new(1);
         assert!(
-            verify_cap_membership_p3(&proof, leaf_digest, forged_root).is_err(),
+            verify_cap_membership_p3(&proof, target.digest(), forged_root).is_err(),
             "SOUNDNESS: a forged cap_root MUST be rejected by the audited p3 verifier"
         );
     }
 
-    /// ANTI-FORGERY (leaf): an honest proof verified for a DIFFERENT leaf digest is REJECTED —
-    /// the row-0 8-lane boundary pins the genuine leaf.
+    /// ANTI-FORGERY (leaf): an honest proof verified for a DIFFERENT leaf
+    /// digest is REJECTED — the row-0 boundary pins the genuine leaf.
     #[test]
     fn forged_leaf_is_rejected() {
-        let (root, target, siblings, directions) = real_tree_witness();
-        let leaf_digest = target.digest();
+        let (tree, target, siblings, directions) = real_tree_witness();
         let (proof, _) =
-            prove_cap_membership_p3(leaf_digest, &siblings, &directions).expect("honest");
+            prove_cap_membership_p3(target.digest(), &siblings, &directions).expect("honest");
         // An "inflated mask" tamper: same leaf but EFFECT_ALL rights.
         let mut inflated = target;
         let (lo, hi) = split_effect_mask(0xFFFF_FFFF);
         inflated.mask_lo = lo;
         inflated.mask_hi = hi;
-        assert_ne!(inflated.digest(), leaf_digest);
+        assert_ne!(inflated.digest(), target.digest());
         assert!(
-            verify_cap_membership_p3(&proof, inflated.digest(), root).is_err(),
+            verify_cap_membership_p3(&proof, inflated.digest(), tree.root()).is_err(),
             "SOUNDNESS: an inflated-mask leaf digest MUST be rejected"
         );
     }
 
-    /// ANTI-FORGERY (witness): a tampered sibling produces a path whose top is NOT the
-    /// canonical root, so the proof cannot verify against it.
+    /// ANTI-FORGERY (witness): a tampered sibling produces a path whose top is
+    /// NOT the canonical root, so the proof cannot verify against it.
     #[test]
     fn tampered_path_does_not_reach_canonical_root() {
-        let (root, target, mut siblings, directions) = real_tree_witness();
-        let leaf_digest = target.digest();
-        siblings[3][0] = siblings[3][0] + BabyBear::new(1);
-        let (proof, pis) = prove_cap_membership_p3(leaf_digest, &siblings, &directions)
+        let (tree, target, mut siblings, directions) = real_tree_witness();
+        siblings[3] = siblings[3] + BabyBear::new(1);
+        let (proof, pis) = prove_cap_membership_p3(target.digest(), &siblings, &directions)
             .expect("the tampered path still proves membership in SOME tree");
         assert_ne!(
-            &pis[pi::CAP_ROOT..pi::CAP_ROOT + 8],
-            &root[..],
+            pis[pi::CAP_ROOT],
+            tree.root(),
             "tampered path tops a different root"
         );
         assert!(
-            verify_cap_membership_p3(&proof, leaf_digest, root).is_err(),
+            verify_cap_membership_p3(&proof, target.digest(), tree.root()).is_err(),
             "SOUNDNESS: a path that does not reach the canonical root MUST be rejected"
         );
     }
 
-    /// THE 8-FELT FORGE TOOTH: a forged cap tree whose leaf differs but shares the SAME lane-0
-    /// projection (`leaf_digest[0]`) is REJECTED by the 8-felt gadget. Under the OLD 1-felt
-    /// `cap_node` leg (which bound only lane 0), this forgery would have verified; the native
-    /// 8-felt node8 gadget binds ALL 8 lanes, so a lane-0-only collision no longer passes.
-    #[test]
-    fn lane0_collision_forgery_is_rejected() {
-        let (root, target, siblings, directions) = real_tree_witness();
-        let genuine = target.digest();
-        // Craft a distinct 8-felt "leaf" that agrees with the genuine leaf on lane 0 but
-        // differs in a higher lane — the exact class of forgery a 1-felt (lane-0) leg would
-        // have accepted.
-        let mut forged_leaf = genuine;
-        forged_leaf[1] = forged_leaf[1] + BabyBear::new(1);
-        assert_eq!(forged_leaf[0], genuine[0], "shares the lane-0 projection");
-        assert_ne!(forged_leaf, genuine, "distinct as an 8-felt digest");
-        // Prove membership of the GENUINE leaf, then attempt to verify the proof as attesting
-        // the FORGED (lane-0-equal) leaf: the row-0 8-lane boundary rejects it.
-        let (proof, _) = prove_cap_membership_p3(genuine, &siblings, &directions).expect("honest");
-        assert!(
-            verify_cap_membership_p3(&proof, forged_leaf, root).is_err(),
-            "8-FELT TOOTH: a lane-0-equal but full-width-distinct leaf MUST be rejected"
-        );
-    }
-
-    /// A leaf NOT in the tree (no fabricated position) has no honest witness; the trace
-    /// generator rejects malformed paths outright.
+    /// A leaf NOT in the tree (no fabricated position) has no honest witness;
+    /// the trace generator rejects malformed paths outright.
     #[test]
     fn malformed_witness_is_refused() {
         let (_, target, siblings, mut directions) = real_tree_witness();
-        let leaf_digest = target.digest();
         // Wrong length.
         assert!(
-            generate_cap_membership_trace(leaf_digest, &siblings[..4], &directions[..4]).is_err()
+            generate_cap_membership_trace(target.digest(), &siblings[..4], &directions[..4])
+                .is_err()
         );
         // Non-binary direction bit.
         directions[0] = 2;
-        assert!(generate_cap_membership_trace(leaf_digest, &siblings, &directions).is_err());
+        assert!(generate_cap_membership_trace(target.digest(), &siblings, &directions).is_err());
     }
 }

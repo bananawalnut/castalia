@@ -150,27 +150,6 @@ pub enum ConstraintExpr {
         left_col: usize,
         right_col: usize,
     },
-    /// **Native 8-felt cap-tree node compression (`cap_root::cap_node8`).** Constrains
-    /// `output_cols[0..8] == cap_node8(left_cols[0..8], right_cols[0..8])` — ALL 8 lanes
-    /// of the arity-16 `node8` Poseidon2 compression `perm(L8 ‖ R8)[0..8]`
-    /// (`descriptor_ir2::chip_absorb_all_lanes(CHIP_NODE8_ARITY, L8‖R8)`). This is the
-    /// MULTI-OUTPUT twin of [`Self::Hash3Cap`]: where `Hash3Cap` squeezes a single lane-0
-    /// digest (the lossy ~31-bit 1-felt form), `MerkleHash8` EQUALITY-binds every one of
-    /// the 8 genuine output lanes, so the per-node collision floor is the full 8-felt
-    /// width (~124-bit), matching the deployed FRI/STARK soundness and the native 8-felt
-    /// cap tree (`CanonicalCapTree` since Phase H-CAP-8). The p3 AIR arithmetizes it via
-    /// `poseidon2_permute_expr_lanes` (the already-committed 8-lane exposure) over ONE
-    /// Poseidon2 aux block; the input state is `L8 ‖ R8` seeded directly into all 16
-    /// permutation lanes (no arity-tag lane — node8 seeds every lane with a genuine input,
-    /// byte-identical to `chip_absorb_all_lanes` at arity 16).
-    MerkleHash8 {
-        /// The 8 columns receiving the parent node's 8-felt digest lanes.
-        output_cols: [usize; 8],
-        /// The 8 columns of the left child's 8-felt digest.
-        left_cols: [usize; 8],
-        /// The 8 columns of the right child's 8-felt digest.
-        right_cols: [usize; 8],
-    },
     /// Constrain output_col == Poseidon2_hash_4_to_1(children) where children are
     /// reconstructed from (current_col, sib_cols[3], position_col) by placing
     /// current at the position index and siblings in the remaining slots.
@@ -428,27 +407,6 @@ impl ConstraintExpr {
                 // The single in-circuit cap-tree node hash (`cap_chip_absorb([FACT_MARK, l, r])`).
                 let expected = crate::cap_root::cap_node(local[*left_col], local[*right_col]);
                 expected - local[*output_col]
-            }
-            Self::MerkleHash8 {
-                output_cols,
-                left_cols,
-                right_cols,
-            } => {
-                // The native 8-felt cap-tree node compression (`cap_node8`): all 8 output
-                // lanes bound. The p3 AIR (`dsl_p3_air`) binds each lane individually via
-                // `poseidon2_permute_expr_lanes` — THAT is the deployed soundness. This
-                // concrete evaluator is the native satisfaction indicator: it sums the 8
-                // per-lane residuals, which is ZERO on an honest witness (every lane matches
-                // `cap_node8`) and non-zero on a tampered node (a genuine 8-felt collision is
-                // needed to spoof all eight simultaneously — the ~124-bit floor).
-                let left: [BabyBear; 8] = core::array::from_fn(|i| local[left_cols[i]]);
-                let right: [BabyBear; 8] = core::array::from_fn(|i| local[right_cols[i]]);
-                let expected = crate::cap_root::cap_node8(left, right);
-                let mut acc = BabyBear::ZERO;
-                for i in 0..8 {
-                    acc = acc + (expected[i] - local[output_cols[i]]);
-                }
-                acc
             }
             Self::MerkleHash {
                 output_col,
@@ -877,12 +835,6 @@ impl ConstraintExpr {
                 // cap_node(l, r) - output: the hash is opaque, constraint is degree 1.
                 1
             }
-            Self::MerkleHash8 { .. } => {
-                // cap_node8(L8, R8) - output8: the 8-lane compression is opaque (bound by
-                // the Poseidon2 aux block, not this polynomial), constraint is degree 1 —
-                // the same posture as every other hash form.
-                1
-            }
             Self::MerkleHash { .. } => {
                 // Position-aware hash_4_to_1(children): opaque hash, constraint is degree 1.
                 1
@@ -968,16 +920,6 @@ impl ConstraintExpr {
                 left_col,
                 right_col,
             } => Some((*output_col).max(*left_col).max(*right_col)),
-            Self::MerkleHash8 {
-                output_cols,
-                left_cols,
-                right_cols,
-            } => output_cols
-                .iter()
-                .chain(left_cols.iter())
-                .chain(right_cols.iter())
-                .copied()
-                .max(),
             Self::MerkleHash {
                 output_col,
                 current_col,

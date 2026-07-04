@@ -137,12 +137,8 @@ fn refused(
     mem_boundary: &MemBoundaryWitness,
     map_heaps: &[Vec<dregg_circuit::heap_root::HeapLeaf>],
 ) -> bool {
-    // The light client runs prove AND verify; a record-pin / commit-chain PiBinding mismatch is
-    // caught at VERIFY (`OodEvaluationMismatch`), not necessarily at prove — exercise BOTH legs
-    // (the docstrings' "UNSAT through verify_vm_descriptor2 ALONE").
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let proof = prove_vm_descriptor2(desc, trace, dpis, mem_boundary, map_heaps)?;
-        verify_vm_descriptor2(desc, &proof, dpis)
+        prove_vm_descriptor2(desc, trace, dpis, mem_boundary, map_heaps)
     }));
     match r {
         Err(_) => true,
@@ -171,9 +167,8 @@ fn setpermissions_forced_on_wire_rejects_forged_perms_anchor_disabled() {
     let desc = parse_vm_descriptor2(rotated_descriptor_json(name))
         .expect("rotated setPerms descriptor parses");
     assert_eq!(
-        desc.public_input_count, 58,
-        "setPerms PIs = 50 rotated base (46 + 4 dsl rc) + 8 authority limbs (the H1 record-pin8) = \
-         58 (committed setPermsVmDescriptor2R24)"
+        desc.public_input_count, 47,
+        "setPerms carries the appended record-forcing pin (47 PIs)"
     );
 
     let st = CellState::new(balance as u64, 0);
@@ -194,7 +189,6 @@ fn setpermissions_forced_on_wire_rejects_forged_perms_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -202,7 +196,6 @@ fn setpermissions_forced_on_wire_rejects_forged_perms_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
 
     // The perms-digest limb GENUINELY MOVED (anti-vacuity: the bound limb distinguishes A from B).
@@ -275,7 +268,6 @@ fn setpermissions_forced_on_wire_rejects_forged_perms_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     // The forged commit absorbs B' (a self-consistent post-cell that differs ONLY in perms).
     assert_ne!(
@@ -354,9 +346,8 @@ fn setvk_forced_on_wire_rejects_forged_vk_anchor_disabled() {
     let desc = parse_vm_descriptor2(rotated_descriptor_json(name))
         .expect("rotated setVK descriptor parses");
     assert_eq!(
-        desc.public_input_count, 58,
-        "setVK PIs = 50 rotated base (46 + 4 dsl rc) + 8 authority limbs (the H1 record-pin8) = 58 \
-         (committed setVKVmDescriptor2R24)"
+        desc.public_input_count, 47,
+        "setVK carries the appended record-forcing pin (47 PIs)"
     );
 
     let st = CellState::new(balance as u64, 0);
@@ -377,7 +368,6 @@ fn setvk_forced_on_wire_rejects_forged_vk_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -385,7 +375,6 @@ fn setvk_forced_on_wire_rejects_forged_vk_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
 
     assert_ne!(
@@ -438,7 +427,6 @@ fn setvk_forced_on_wire_rejects_forged_vk_anchor_disabled() {
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     assert_ne!(
         forged_after_w.state_commit, after_w.state_commit,

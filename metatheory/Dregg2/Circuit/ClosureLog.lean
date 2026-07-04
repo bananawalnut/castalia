@@ -265,7 +265,7 @@ with the FULL `RevokeSpec` — its `.log` advance DERIVED from `logBinds`. Floor
 (`S_live`), `logHashInjective LH`} + the circuit's `RevokeCapsTreeEncodes`-minus-log + the published
 receipt-prepend. -/
 theorem revoke_descriptorRefines_closedLog
-    (Scap : Dregg2.Circuit.DeployedCapTree.Cap8Scheme)
+    {State : Type} (Scap : Dregg2.Circuit.DeployedCapTree.CapHashScheme State)
     {CH : CellId → Value → ℤ} {RH : RecordKernelState → ℤ}
     {cmb compress : ℤ → ℤ → ℤ} {compressN : List ℤ → ℤ}
     {hCmb : compressInjective cmb} {hCompress : compressInjective compress}

@@ -104,17 +104,6 @@ pub struct BoundCustomProof {
     pub proof_bytes: Vec<u8>,
     /// The public inputs the sub-proof attests.
     pub public_inputs: Vec<BabyBear>,
-    /// **PROVER-SIDE-ONLY re-provable trace witness** (the named trace-column witness the
-    /// `CellProgram` proves over). Retained so the deployed chain prover can RE-PROVE the sub-proof
-    /// as a recursion-foldable leaf ([`crate::custom_leaf_adapter::prove_custom_leaf_with_commitment`])
-    /// and FOLD it under the custom-binding node — making the commitment binding witnessable by a
-    /// PURE LIGHT CLIENT, not just a re-executing validator. `None` for a `BoundCustomProof`
-    /// reconstructed from the on-wire [`dregg_turn::CustomProgramProof`] (the wire keeps only the
-    /// finished bytes + PIs; the re-provable witness is NEVER serialized). A `None`-witness bound
-    /// proof carries the off-AIR verify but cannot be folded — exactly the re-exec-only rung.
-    pub witness_values: Option<std::collections::HashMap<String, Vec<BabyBear>>>,
-    /// The number of trace rows for [`Self::witness_values`] (prover-side only; `None` off the wire).
-    pub num_rows: Option<usize>,
 }
 
 impl BoundCustomProof {
@@ -151,10 +140,6 @@ pub fn prove_custom_program(
         program: program.clone(),
         proof_bytes,
         public_inputs: public_inputs.to_vec(),
-        // RETAIN the re-provable witness (prover-side only) so the chain prover can mint the
-        // foldable sub-proof leaf for the deployed light-client custom binding.
-        witness_values: Some(witness_values.clone()),
-        num_rows: Some(num_rows),
     })
 }
 

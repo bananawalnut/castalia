@@ -206,28 +206,11 @@ pub const IS_AGENT_CELL: usize = INTRO_AS_TARGET_ROOT_BASE + INTRO_AS_TARGET_ROO
 // and the boundary holds trivially (the columns and PI both zero).
 // The verifier sets the PI sentinel when not sovereign.
 //
-// Phase 2 (Option B per design §3.2 — RETIRED / REPURPOSED): this pair
-// was specified to bind an inner sovereign `transition_proof` verified by an
-// off-AIR recursive verifier. That verifier is RETIRED (fail-closed,
-// `execute.rs` rejects any v1 `transition_proof`), `populate_sovereign_witness_pi`
-// has no caller, and no AIR constraint reads these columns — they were a DEAD
-// 4-felt sentinel (the adversarial finding;
-// `metatheory/Dregg2/Circuit/SovereignBackingAttack.lean`).
-//
-// DECISION (the sovereign recursion-leaf epoch): the COMMITMENT column carries the
-// sovereign AUTHORITY DIGEST — the 4-felt `key_commit` the re-proved
-// sovereign-authority leaf binds in-circuit
-// (`circuit-prove::sovereign_leaf_adapter::prove_sovereign_leaf_with_key_claim`),
-// connected to the deployed sovereign leg's `SOVEREIGN_WITNESS_KEY_COMMIT` teeth by
-// `joint_turn_recursive::prove_sovereign_binding_node_segmented`. It is NOT an inner
-// transition-proof hash. The queued 4→8 LIFT IS DEAD/SUBSUMED: a key/authority
-// DIGEST needs exactly 4 felts (same reasoning as KEY_COMMIT below — the Ed25519
-// signature binds the full 256-bit key off-AIR; widening adds no soundness). The
-// VK_HASH column is likewise vestigial (the leaf is minted under the fixed
-// `ir2_leaf_wrap_config`, not a per-witness inner VK). Re-pointing these columns'
-// VALUE to the authority digest on the deployed ROTATED leg (a rotated-PI exposure)
-// is the named BIG-BANG DESCRIPTOR piece; the leaf + binding-node mechanism is its
-// consumer and lands here. Const layout UNCHANGED (no BASE_COUNT cascade).
+// Phase 2 (Option B per design §3.2): an additional proof-commitment
+// pair binds an inner transition_proof. The off-AIR verifier reads
+// SOVEREIGN_TRANSITION_PROOF_VK_HASH + SOVEREIGN_TRANSITION_PROOF_COMMITMENT
+// and recursively verifies the inner STARK via Lane Golden-Edge's
+// generalized recursive verifier.
 /// 4-felt Poseidon2 hash of the sovereign cell's owning pubkey (the
 /// key that signed the witness). Zero sentinel when IS_SOVEREIGN_CELL == 0.
 ///

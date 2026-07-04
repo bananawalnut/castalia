@@ -64,8 +64,7 @@ namespace Dregg2.Distributed.FinalityGate
 
 open Dregg2.Authority.Blocklace (Block Lace BlockId AuthorId)
 open Dregg2.Distributed.BlocklaceFinality
-  (tauOrder tauGolden tauOrderFast tauGoldenFast tauOrderFast_eq tauGoldenFast_eq
-   findAllFinalLeaders finalLeaderAt leaderCandidates hasEquivInPast
+  (tauOrder tauGolden findAllFinalLeaders finalLeaderAt leaderCandidates hasEquivInPast
    trace3 trace3Participants traceEquiv)
 
 /-! ## 1. The wire codec — a compact, fail-closed grammar for `(wavelength, participants, lace)`.
@@ -158,7 +157,7 @@ encode the result. On a malformed wire it returns the `"ERR"` sentinel — the n
 function the linked Lean archive can run at the node's commit point. -/
 def finalizeGate (s : String) : String :=
   match decodeLaceWire s with
-  | some (w, parts, B) => encodeFinalWire (tauGoldenFast B parts w)
+  | some (w, parts, B) => encodeFinalWire (tauGolden B parts w)
   | none => "ERR"
 
 /-- **THE EXPORT.** `@[export dregg_blocklace_finalize]` — the C-ABI entry the node's FFI bridge
@@ -282,7 +281,7 @@ malformed wire it returns the `"ERR"` sentinel (fail-closed). Unlike `finalizeGa
 FULL total order, not its `(creator, seq)` projection. -/
 def tauOrderGate (s : String) : String :=
   match decodeLaceWire s with
-  | some (w, parts, B) => encodeOrderWire (tauOrderFast B parts w)
+  | some (w, parts, B) => encodeOrderWire (tauOrder B parts w)
   | none => "ERR"
 
 /-- **THE RAW-ORDER EXPORT.** `@[export dregg_tau_order]` — the C-ABI entry returning the verified
@@ -312,7 +311,6 @@ theorem tau_order_export_eq (s : String) (w : Nat) (parts : List AuthorId) (B : 
     dregg_tau_order s = encodeOrderWire (tauOrder B parts w) := by
   unfold dregg_tau_order tauOrderGate
   rw [h]
-  simp only [tauOrderFast_eq]
 
 /-- **`tau_order_export_is_verified` (the order is the verified rule's output, not a
 re-derivation).** The export's emitted order, read through `encodeOrderWire`, is the encoding of

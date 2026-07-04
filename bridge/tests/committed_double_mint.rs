@@ -27,36 +27,12 @@ use dregg_bridge::solana_mirror::{MirrorConfig, MirrorState, SolanaLockAttestati
 use dregg_bridge::stripe_mirror::{
     StripeMirrorConfig, StripeMirrorState, StripePaymentAttestation,
 };
-use dregg_cell::Nullifier;
 use dregg_cell::{AuthRequired, Cell, CellId, EFFECT_MINT, Ledger, Permissions};
 use dregg_turn::{
-    BridgeEscrowRecord, BridgeMintError, BridgeMintRequest, ComputronCosts, TurnExecutor,
-    escrow_nullifier_for, new_mirror_ledger_cell, read_supply,
+    BridgeMintError, BridgeMintRequest, ComputronCosts, TurnExecutor, new_mirror_ledger_cell,
+    read_supply,
 };
 use ed25519_dalek::SigningKey;
-
-/// Record the INDEPENDENT escrow leg (raising committed `currently_locked`) that a
-/// consensus-verified lock backs, before the mint draws against it. The escrow
-/// nullifier is domain-separated from the mint nullifier so the same lock records
-/// its escrow once and mints once.
-fn record_escrow(
-    exec: &TurnExecutor,
-    ledger: &mut Ledger,
-    ledger_cell: CellId,
-    mint_nullifier: Nullifier,
-    escrowed: u64,
-) {
-    exec.bridge_record_escrow(
-        ledger,
-        &BridgeEscrowRecord {
-            ledger_cell,
-            escrow_nullifier: escrow_nullifier_for(&mint_nullifier),
-            escrowed,
-            consensus_verified: true,
-        },
-    )
-    .expect("the independently-verified escrow leg is recorded");
-}
 
 // ── shared cell/ledger scaffolding (mirrors conservation_mint_property.rs) ──
 
@@ -180,11 +156,6 @@ fn two_solana_relayers_one_lock_only_one_mint() {
         "the same lock_id yields the same committed consume-once nullifier"
     );
 
-    // The INDEPENDENT escrow leg is recorded once (raising committed
-    // currently_locked), from the consensus-verified lock — the mint draws
-    // against it.
-    record_escrow(&exec, &mut ledger, ledger_cell, va.lock_nullifier, amount);
-
     // Relayer A lands the committed bridge mint FIRST: nullifier consumed, the
     // committed ledger cell debited, the conserving Effect::Mint applied.
     let req_a = BridgeMintRequest {
@@ -193,7 +164,6 @@ fn two_solana_relayers_one_lock_only_one_mint() {
         lock_nullifier: va.lock_nullifier,
         recipient: va.recipient,
         amount: va.amount,
-        consensus_verified: true,
     };
     let receipt = exec
         .bridge_mint_against_lock(&mut ledger, &req_a)
@@ -209,7 +179,6 @@ fn two_solana_relayers_one_lock_only_one_mint() {
         lock_nullifier: vb.lock_nullifier,
         recipient: vb.recipient,
         amount: vb.amount,
-        consensus_verified: true,
     };
     assert_eq!(
         exec.bridge_mint_against_lock(&mut ledger, &req_b)
@@ -255,7 +224,6 @@ fn solana_distinct_locks_both_mint_and_conserve() {
     for (lid, amt) in [(0x21u8, 300u64), (0x22u8, 200u64)] {
         let att = SolanaLockAttestation::create([lid; 32], SPL_MINT, amt, recipient, 0, &o);
         let v = relayer.verify_lock(&att).expect("verify");
-        record_escrow(&exec, &mut ledger, ledger_cell, v.lock_nullifier, amt);
         exec.bridge_mint_against_lock(
             &mut ledger,
             &BridgeMintRequest {
@@ -264,7 +232,6 @@ fn solana_distinct_locks_both_mint_and_conserve() {
                 lock_nullifier: v.lock_nullifier,
                 recipient: v.recipient,
                 amount: v.amount,
-                consensus_verified: true,
             },
         )
         .expect("each distinct lock mints");
@@ -319,14 +286,12 @@ fn two_stripe_relayers_one_payment_only_one_mint() {
         "the same payment_intent_id yields the same committed nullifier"
     );
 
-    record_escrow(&exec, &mut ledger, ledger_cell, va.payment_nullifier, cents);
     let req_a = BridgeMintRequest {
         actor: issuer,
         ledger_cell,
         lock_nullifier: va.payment_nullifier,
         recipient: va.recipient,
         amount: va.amount,
-        consensus_verified: true,
     };
     let receipt = exec
         .bridge_mint_against_lock(&mut ledger, &req_a)
@@ -341,7 +306,6 @@ fn two_stripe_relayers_one_payment_only_one_mint() {
         lock_nullifier: vb.payment_nullifier,
         recipient: vb.recipient,
         amount: vb.amount,
-        consensus_verified: true,
     };
     assert_eq!(
         exec.bridge_mint_against_lock(&mut ledger, &req_b)
@@ -381,18 +345,12 @@ fn unauthorized_bridge_mint_is_refused_and_rolls_back() {
     let att = SolanaLockAttestation::create([0x33u8; 32], SPL_MINT, 400, recipient, 0, &o);
     let v = relayer.verify_lock(&att).expect("verify");
 
-    // The escrow leg is recorded (locked=400) so the conservation check passes and
-    // the refusal we exercise is genuinely the MISSING-MINT-CAP one, not a draw
-    // exceeding the backing.
-    record_escrow(&exec, &mut ledger, ledger_cell, v.lock_nullifier, 400);
-
     let bad = BridgeMintRequest {
         actor: bystander_id,
         ledger_cell,
         lock_nullifier: v.lock_nullifier,
         recipient: v.recipient,
         amount: v.amount,
-        consensus_verified: true,
     };
     assert!(
         matches!(
@@ -402,13 +360,13 @@ fn unauthorized_bridge_mint_is_refused_and_rolls_back() {
         "a mint without the mint-cap must be refused"
     );
 
-    // The mint leg rolled back: live_supply is still 0 AND the mint nullifier was
-    // freed. The independently-recorded escrow (locked=400) is untouched.
+    // Nothing committed: the ledger cell is still zero AND the nullifier was
+    // rolled back.
     let (locked, live) = read_supply(ledger.get(&ledger_cell).unwrap());
     assert_eq!(
         (locked, live),
-        (400, 0),
-        "refused mint left live_supply at 0 (mint leg rolled back); escrow backing intact"
+        (0, 0),
+        "refused mint left committed supply untouched"
     );
 
     // The authorized issuer (granted the mint-cap by `scaffold`) can now mint the
@@ -419,7 +377,6 @@ fn unauthorized_bridge_mint_is_refused_and_rolls_back() {
         lock_nullifier: v.lock_nullifier,
         recipient: v.recipient,
         amount: v.amount,
-        consensus_verified: true,
     };
     exec.bridge_mint_against_lock(&mut ledger, &good)
         .expect("the same lock mints once the authorized relayer runs (nullifier was rolled back)");

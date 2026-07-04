@@ -369,64 +369,14 @@ impl FinalityCert {
         seen.len()
     }
 
-    /// **The quorum leg (committee-UNANCHORED diagnostic — NOT an acceptance gate).** True iff a
-    /// supermajority of DISTINCT participants signed a vote that VERIFIES over the finalized root,
-    /// counted against `supermajority_threshold(self.participant_count)`. This is signature-bound
-    /// (the `CertValid` binding), but the keys are WHATEVER THE CERT CARRIES and `participant_count`
-    /// is cert-supplied — so an equivocating prover can mint fresh keypairs, sign its fork, and set
-    /// `participant_count` to pass this (red-team LC-2). **Never gate light-client acceptance on this
-    /// method.** It is retained for diagnostics; the acceptance gate is
-    /// [`has_committee_quorum`](Self::has_committee_quorum), which anchors to the client's TRUSTED
-    /// committee. The production [`verify_finalized_history`] uses the committee-anchored path.
+    /// **The quorum leg.** True iff a supermajority of DISTINCT participants signed a vote that VERIFIES
+    /// over the finalized root — counted against the REAL node threshold
+    /// `dregg_blocklace::ordering::supermajority_threshold(participant_count) = 2*participant_count/3 + 1`.
+    /// The Rust mirror of `FinalizedLightClient.CertQuorum` AND the `CertValid` signature binding: a
+    /// cert padded with unsigned/forged/wrong-root pubkeys fails because those votes don't verify.
     pub fn has_quorum(&self) -> bool {
         self.distinct_signers()
             >= dregg_blocklace::ordering::supermajority_threshold(self.participant_count)
-    }
-
-    /// **The committee-anchored signature count (the LC-2 acceptance gate's counter).** Counts a
-    /// participant ONLY when (1) its key is a member of the client's TRUSTED `committee` (the
-    /// genesis/epoch-distributed validator set, held by the light client and NEVER read from the
-    /// cert), AND (2) its Ed25519 signature VERIFIES over this cert's `(finalized_root,
-    /// participant_count)` (the `CertValid` binding), AND (3) it is distinct (a participant listed
-    /// twice counts once). A vote by a key OUTSIDE the committee contributes NOTHING — so an
-    /// equivocating prover that mints fresh keypairs to sign a fork cannot raise this count, because
-    /// its forged keys are not in the committee. This is the genuine super-ratification evidence the
-    /// quorum threshold is taken against.
-    pub fn distinct_committee_signers(&self, committee: &[[u8; 32]]) -> usize {
-        let msg = self.signing_message();
-        let mut verified: Vec<[u8; 32]> = Vec::with_capacity(self.votes.len());
-        for vote in &self.votes {
-            // Distinct only — a participant listed twice counts once.
-            if verified.contains(&vote.validator) {
-                continue;
-            }
-            // MUST be a member of the trusted committee (the anchor). A forged/fresh key is rejected
-            // here regardless of how validly it signed.
-            if !committee.contains(&vote.validator) {
-                continue;
-            }
-            // A malformed verifying key cannot ratify.
-            let Ok(vk) = VerifyingKey::from_bytes(&vote.validator) else {
-                continue;
-            };
-            let sig = Signature::from_bytes(&vote.signature);
-            // `verify_strict` rejects non-canonical sigs / small-order keys; an unbound (wrong-root
-            // or wrong-count) signature does not verify, so it is not counted.
-            if vk.verify_strict(&msg, &sig).is_ok() {
-                verified.push(vote.validator);
-            }
-        }
-        verified.len()
-    }
-
-    /// **THE COMMITTEE-ANCHORED QUORUM LEG (the LC-2 acceptance gate).** True iff a supermajority of
-    /// the TRUSTED `committee` signed a vote that verifies over the finalized root. The threshold is
-    /// taken over the COMMITTEE SIZE (`committee.len()`) — the client's anchor — NOT the cert-carried
-    /// `participant_count`, so an attacker cannot shrink `participant_count` to lower the bar. The
-    /// Rust mirror of `FinalizedLightClient.CertValid` against an ANCHORED validator set.
-    pub fn has_committee_quorum(&self, committee: &[[u8; 32]]) -> bool {
-        self.distinct_committee_signers(committee)
-            >= dregg_blocklace::ordering::supermajority_threshold(committee.len())
     }
 }
 
@@ -452,19 +402,13 @@ pub enum FinalizedError {
         shown: u32,
     },
     /// Leg 3: the finality certificate did NOT exhibit a super-ratification quorum — fewer than
-    /// `2n/3 + 1` distinct COMMITTEE members signed a verifying vote. The shown root was not
-    /// finalized by the trusted committee; NO attestation. (Votes by keys OUTSIDE the trusted
-    /// committee do not count — so an equivocating prover's freshly-minted keys never raise this.)
+    /// `2n/3 + 1` distinct participants signed. The shown root was not finalized; NO attestation.
     NoQuorum {
-        /// Distinct committee members whose verifying vote the cert exhibited.
+        /// Distinct signers the cert exhibited.
         distinct_signers: usize,
-        /// The supermajority threshold required, taken over the TRUSTED COMMITTEE size (`2n/3 + 1`).
+        /// The supermajority threshold required (`2n/3 + 1`).
         threshold: usize,
     },
-    /// The light client was not anchored: the trusted committee is empty. Without a configured
-    /// validator set there is nothing to verify finality against — a count-only / cert-supplied
-    /// "quorum" must NEVER be accepted (red-team LC-2). Fail closed.
-    UnanchoredCommittee,
 }
 
 impl core::fmt::Display for FinalizedError {
@@ -487,13 +431,7 @@ impl core::fmt::Display for FinalizedError {
             } => write!(
                 f,
                 "finalized light-client: finality cert sub-quorum ({distinct_signers} distinct \
-                 committee signers < {threshold} required) — root not finalized by the trusted \
-                 committee"
-            ),
-            FinalizedError::UnanchoredCommittee => write!(
-                f,
-                "finalized light-client: refused — no trusted committee configured (unanchored); \
-                 a count-only / cert-supplied quorum is never accepted"
+                 signers < {threshold} required) — root not finalized"
             ),
         }
     }
@@ -521,35 +459,19 @@ pub struct FinalizedAttestation {
 ///
 /// Runs exactly: (1) `verify_history` on the aggregate against the client's trust anchor (VK pin +
 /// binding attestation + one recursive STARK verify, cost independent of history length); (2) the
-/// root seam `agg.final_root == finalized_root == cert.finalized_root`; (3) the COMMITTEE-ANCHORED
-/// quorum check `cert.has_committee_quorum(committee)` — a supermajority (`≥ 2n/3 + 1` of the
-/// TRUSTED committee) of DISTINCT validators *in `committee`* whose Ed25519 signature VERIFIES over
-/// the finalized root (the full `CertValid`: trusted-set membership + quorum + signature binding,
-/// not a bare or cert-supplied count). On success returns `FinalizedAttestation` — the Rust
-/// embodiment of `light_client_accepts_finalized_history`'s conclusion. Additive attestation: the
-/// aggregate verify + the committee-anchored quorum count IS the trust in the whole finalized
-/// history.
-///
-/// `committee` is the client's TRUSTED validator set — the federation committee keys, obtained from
-/// genesis/epoch configuration exactly like the VK anchor and NEVER read from the cert. It closes
-/// red-team **LC-2**: an equivocating prover that honestly executes a fork, mints fresh keypairs,
-/// and signs `finality_signing_message(fork_root, n)` can no longer finalize it, because its forged
-/// keys are not in `committee` (so they contribute nothing to the quorum), and the threshold is
-/// taken over the trusted committee size, not the cert-supplied `participant_count`. An empty
-/// `committee` is refused outright (`UnanchoredCommittee`) — a count-only quorum is never accepted.
+/// root seam `agg.final_root == finalized_root == cert.finalized_root`; (3) the quorum check
+/// `cert.has_quorum()` — a supermajority (`≥ 2n/3 + 1`) of DISTINCT validators whose Ed25519 signature
+/// VERIFIES over the finalized root (the full `CertValid`: quorum + signature binding, not a bare
+/// pubkey count). On success returns
+/// `FinalizedAttestation` — the Rust embodiment of `light_client_accepts_finalized_history`'s
+/// conclusion. Additive attestation: the aggregate verify + the quorum count IS the trust in the whole
+/// finalized history.
 pub fn verify_finalized_history(
     agg: &WholeChainProof,
     expected_vk: &RecursionVk,
     finalized_root: BabyBear,
     cert: &FinalityCert,
-    committee: &[[u8; 32]],
 ) -> Result<FinalizedAttestation, FinalizedError> {
-    // Anchor or refuse: a light client with no configured committee cannot verify finality. A
-    // count-only / cert-supplied quorum is NEVER an acceptance gate (LC-2).
-    if committee.is_empty() {
-        return Err(FinalizedError::UnanchoredCommittee);
-    }
-
     // Leg 1+2: the succinct aggregate (re-witnessing nothing).
     let history = verify_history(agg, expected_vk).map_err(|e| match e {
         LightClientError::AggregateInvalid(te) => FinalizedError::AggregateInvalid(te),
@@ -574,19 +496,18 @@ pub fn verify_finalized_history(
         });
     }
 
-    // Leg 3: the COMMITTEE-ANCHORED quorum (super-ratification) check — a supermajority of the
-    // TRUSTED committee, threshold taken over `committee.len()` (not the cert-supplied count).
-    if !cert.has_committee_quorum(committee) {
+    // Leg 3: the quorum (super-ratification) check — against the REAL node threshold.
+    if !cert.has_quorum() {
         return Err(FinalizedError::NoQuorum {
-            distinct_signers: cert.distinct_committee_signers(committee),
-            threshold: dregg_blocklace::ordering::supermajority_threshold(committee.len()),
+            distinct_signers: cert.distinct_signers(),
+            threshold: dregg_blocklace::ordering::supermajority_threshold(cert.participant_count),
         });
     }
 
     Ok(FinalizedAttestation {
         history,
         finalized_root,
-        quorum_signers: cert.distinct_committee_signers(committee),
+        quorum_signers: cert.distinct_signers(),
     })
 }
 
@@ -694,91 +615,6 @@ mod tests {
         assert!(!padded.has_quorum());
     }
 
-    /// **THE COMMITTEE-ANCHORED QUORUM (fold-free unit tooth for LC-2).** Exercises
-    /// `distinct_committee_signers` / `has_committee_quorum` directly — no STARK fold — so the LC-2
-    /// anchor (count ONLY votes by trusted keys; threshold over the committee size, not the
-    /// cert-supplied count) is validated in milliseconds. The end-to-end teeth
-    /// (`finalized_light_client_rejects_fork_by_foreign_committee`) ride the same logic through a real
-    /// fold.
-    #[test]
-    fn committee_anchored_quorum_counts_only_trusted_keys() {
-        let root = BabyBear::new(987_654);
-        let n = 4usize; // supermajority threshold over the committee = 2*4/3 + 1 = 3
-        let trusted: Vec<[u8; 32]> = (0..n as u8)
-            .map(|i| validator_key(i).verifying_key().to_bytes())
-            .collect();
-
-        // Honest: a 3-of-4 quorum of TRUSTED validators over THIS root.
-        let honest = FinalityCert {
-            votes: (0..3u8).map(|i| signed_vote(i, root, n)).collect(),
-            participant_count: n,
-            finalized_root: root,
-        };
-        assert_eq!(honest.distinct_committee_signers(&trusted), 3);
-        assert!(
-            honest.has_committee_quorum(&trusted),
-            "3 trusted signers is a supermajority of 4"
-        );
-
-        // FOREIGN KEYS: 3 well-formed, validly-signing keys that are NOT in the committee. The
-        // unanchored diagnostic counts them; the committee-anchored count is ZERO.
-        let foreign = FinalityCert {
-            votes: (100..103u8).map(|i| signed_vote(i, root, n)).collect(),
-            participant_count: n,
-            finalized_root: root,
-        };
-        assert_eq!(
-            foreign.distinct_signers(),
-            3,
-            "they verify on their own terms"
-        );
-        assert_eq!(
-            foreign.distinct_committee_signers(&trusted),
-            0,
-            "but none are in the trusted committee"
-        );
-        assert!(!foreign.has_committee_quorum(&trusted));
-
-        // SHRUNK COUNT defeated by the anchor: an attacker holding only 2 committee signatures
-        // claims `participant_count = 1` (hoping the threshold collapses to `2*1/3+1 = 1`). The two
-        // votes are genuine committee members, but the committee anchor takes the threshold over the
-        // TRUE committee size (4 ⇒ 3), so 2 < 3 stays sub-quorum — the shrink buys nothing.
-        let shrunk = FinalityCert {
-            votes: (0..2u8).map(|i| signed_vote(i, root, 1)).collect(),
-            participant_count: 1,
-            finalized_root: root,
-        };
-        assert_eq!(
-            shrunk.distinct_committee_signers(&trusted),
-            2,
-            "the 2 real committee signers verify (over their signed count)"
-        );
-        assert!(
-            !shrunk.has_committee_quorum(&trusted),
-            "but 2 < the committee supermajority of 3 — the shrunk count cannot lower the bar"
-        );
-
-        // MIXED: 2 trusted + 1 foreign — only the 2 trusted count; below the 3-threshold.
-        let mixed = FinalityCert {
-            votes: vec![
-                signed_vote(0, root, n),
-                signed_vote(1, root, n),
-                signed_vote(101, root, n),
-            ],
-            participant_count: n,
-            finalized_root: root,
-        };
-        assert_eq!(mixed.distinct_committee_signers(&trusted), 2);
-        assert!(
-            !mixed.has_committee_quorum(&trusted),
-            "2 trusted of 4 is not a supermajority"
-        );
-
-        // EMPTY committee: nothing is anchored, so nothing is a quorum.
-        assert_eq!(honest.distinct_committee_signers(&[]), 0);
-        assert!(!honest.has_committee_quorum(&[]));
-    }
-
     /// OPEN permissions so the rotated producer-witness path admits the actor cell without auth
     /// gating (mirrors `circuit/tests/rotation_batchstark_leaf_smoke.rs`).
     fn open_permissions() -> dregg_cell::Permissions {
@@ -836,21 +672,13 @@ mod tests {
             None,
         )
         .expect("rotated transfer leg mints + self-verifies");
-        // H0 DEPLOYED-WIDE: the deployed leg is now WIDE-anchored — the single-felt rotated roots
-        // (PI 42/43) are RETIRED to zero, so the chain genesis/final/continuity bind the GENUINE
-        // 8-felt (~124-bit) wide anchors. Report their HEAD felt (lane 0) as the scalar root the
-        // finality seam (`agg.final_root[0]`) compares; the full 8-felt array is read off the leg
-        // where the whole-history anchor itself is asserted.
-        let old8 = leg
-            .wide_old_root8()
-            .expect("deployed transfer leg is wide-anchored (8-felt before commit)");
-        let new8 = leg
-            .wide_new_root8()
-            .expect("deployed transfer leg is wide-anchored (8-felt after commit)");
+        // Read the ROTATED chain roots off the leg BEFORE it moves into the participant.
+        let old_root = leg.old_root();
+        let new_root = leg.new_root();
         (
             FinalizedTurn::new(DescriptorParticipant::rotated(leg)),
-            old8[0],
-            new8[0],
+            old_root,
+            new_root,
         )
     }
 
@@ -904,34 +732,13 @@ mod tests {
             attested.num_turns, 3,
             "the light client learns ALL three turns are attested"
         );
-        // H0 DEPLOYED-WIDE: the attested endpoints are the GENUINE 8-felt (~124-bit) wide anchors —
-        // the first turn's `wide_old_root8` and the last turn's `wide_new_root8` — NOT a broadcast of
-        // a single ~31-bit rotated commit felt across the lanes. Assert the FULL eight lanes.
-        let genesis8 = turns[0]
-            .participant
-            .rotated
-            .wide_old_root8()
-            .expect("first turn's leg is wide-anchored");
-        let final8 = turns[turns.len() - 1]
-            .participant
-            .rotated
-            .wide_new_root8()
-            .expect("last turn's leg is wide-anchored");
         assert_eq!(
-            attested.genesis_root, genesis8,
-            "attested genesis = the first turn's GENUINE 8-felt wide before-commit anchor"
+            attested.genesis_root, [genesis; SEG_ANCHOR_WIDTH],
+            "attested genesis = real genesis root (narrow leg broadcasts across the 8 anchor lanes)"
         );
         assert_eq!(
-            attested.final_root, final8,
-            "attested final = the last turn's GENUINE 8-felt wide after-commit anchor"
-        );
-        assert_eq!(
-            attested.genesis_root[0], genesis,
-            "the wide anchor's head felt is the scalar genesis the finality seam compares"
-        );
-        assert_eq!(
-            attested.final_root[0], final_root,
-            "the wide anchor's head felt is the scalar final the finality seam compares"
+            attested.final_root, [final_root; SEG_ANCHOR_WIDTH],
+            "attested final = real folded final root (broadcast across the 8 anchor lanes)"
         );
         assert_eq!(
             attested.chain_digest, agg.chain_digest,
@@ -1009,15 +816,6 @@ mod tests {
         }
     }
 
-    /// The TRUSTED committee for a group of `n` validators: the verifying-key bytes of validators
-    /// `0..n` — the genesis/epoch-distributed validator set the light client holds. The committee-
-    /// anchored `verify_finalized_history` counts ONLY votes by these keys.
-    fn committee(n: usize) -> Vec<[u8; 32]> {
-        (0..n)
-            .map(|i| validator_key(i as u8).verifying_key().to_bytes())
-            .collect()
-    }
-
     /// **THE THREE-LEG HEADLINE (Rust witness).** Fold a real K=2 chain, then verify it AS A FINALIZED
     /// light client: the aggregate verifies (legs 1+2), the root seam holds, AND a genuine 3-of-4
     /// super-ratification quorum certifies the final root (leg 3). The client obtains a
@@ -1037,7 +835,7 @@ mod tests {
         );
 
         let vk = agg.root_vk_fingerprint();
-        let attestation = verify_finalized_history(&agg, &vk, final_root, &cert, &committee(4))
+        let attestation = verify_finalized_history(&agg, &vk, final_root, &cert)
             .expect("aggregate + quorum cert + seam must all hold");
 
         assert_eq!(attestation.history.num_turns, 2, "both turns attested");
@@ -1072,7 +870,7 @@ mod tests {
         // A genuine quorum for the ORIGINAL finalized root — the relabeled aggregate must be
         // refused outright (the carried publics no longer verify against the binding proof).
         let cert = make_cert(3, 4, final_root);
-        match verify_finalized_history(&agg, &vk, final_root, &cert, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &cert) {
             Err(FinalizedError::AggregateInvalid(
                 dregg_circuit_prove::ivc_turn_chain::TurnChainError::ClaimedPublicsUnattested {
                     ..
@@ -1089,7 +887,7 @@ mod tests {
         // aggregate verifies, but its proven endpoint is not the root the client was shown.
         let shown = final_root + BabyBear::ONE;
         let cert_b = make_cert(3, 4, shown);
-        match verify_finalized_history(&agg, &vk, shown, &cert_b, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, shown, &cert_b) {
             Err(FinalizedError::AggregateRootMismatch { proven, shown: s }) => {
                 assert_eq!(proven, final_root.as_u32());
                 assert_eq!(s, shown.as_u32());
@@ -1116,7 +914,7 @@ mod tests {
         );
 
         let vk = agg.root_vk_fingerprint();
-        match verify_finalized_history(&agg, &vk, final_root, &weak_cert, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &weak_cert) {
             Err(FinalizedError::NoQuorum {
                 distinct_signers,
                 threshold,
@@ -1144,7 +942,7 @@ mod tests {
         assert!(cert.has_quorum(), "the cert itself carries a real quorum");
 
         let vk = agg.root_vk_fingerprint();
-        match verify_finalized_history(&agg, &vk, final_root, &cert, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &cert) {
             Err(FinalizedError::CertRootMismatch { certified, shown }) => {
                 assert_eq!(certified, foreign_root.as_u32());
                 assert_eq!(shown, final_root.as_u32());
@@ -1162,10 +960,7 @@ mod tests {
         let (turns, _g, final_root) = make_chain(1000, 0, 7, 2);
         let (agg, _att) = fold_and_attest(&turns).expect("the honest chain must fold");
 
-        // Validator 0 is IN the trusted committee(4) — so the repeats collapse to ONE
-        // committee signer (still far below the threshold of 3), exercising the dedup, not the
-        // committee-membership rejection (that is the foreign-key tooth's job).
-        let vote = signed_vote(0, final_root, 4);
+        let vote = signed_vote(7, final_root, 4);
         let padded_cert = FinalityCert {
             votes: vec![vote.clone(), vote.clone(), vote], // one distinct signer, listed thrice
             participant_count: 4,
@@ -1178,101 +973,13 @@ mod tests {
         );
 
         let vk = agg.root_vk_fingerprint();
-        match verify_finalized_history(&agg, &vk, final_root, &padded_cert, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &padded_cert) {
             Err(FinalizedError::NoQuorum {
                 distinct_signers, ..
             }) => {
                 assert_eq!(distinct_signers, 1, "duplicates collapsed to one");
             }
             other => panic!("a repeat-padded sub-quorum cert must be rejected; got {other:?}"),
-        }
-    }
-
-    /// **REJECTION TOOTH 6 — the EQUIVOCATING-PROVER FORK (red-team LC-2).** This is the attack the
-    /// trusted-committee anchor exists to stop. An equivocating prover honestly executes a FORK the
-    /// network never finalized (so the aggregate genuinely verifies and the root seam holds), then
-    /// mints `2n/3+1` FRESH keypairs that are NOT in the federation committee and signs a perfectly
-    /// well-formed `finality_signing_message(fork_root, n)` with each. Against the old count-only /
-    /// cert-supplied path this cert had a genuine signature-bound quorum and finalized the fork. With
-    /// the committee anchor, `distinct_committee_signers` counts ZERO (none of the forged keys are in
-    /// the trusted committee), so the client REJECTS with `NoQuorum`. Only the REAL committee's keys
-    /// can finalize.
-    #[test]
-    fn finalized_light_client_rejects_fork_by_foreign_committee() {
-        let (turns, _g, final_root) = make_chain(1000, 0, 7, 2);
-        let (agg, _att) = fold_and_attest(&turns).expect("the honest (forked) chain must fold");
-        let vk = agg.root_vk_fingerprint();
-
-        // The light client's TRUSTED committee: validators 0..4 (genesis-distributed).
-        let trusted = committee(4);
-
-        // The attacker mints 3 FRESH keypairs (indices 100..103) — NOT in the trusted committee —
-        // and signs a genuine, well-formed finality message over the fork root + the real group
-        // size. Every signature is a real, verifying Ed25519 signature.
-        let forged = FinalityCert {
-            votes: (100..103u8)
-                .map(|i| signed_vote(i, final_root, 4))
-                .collect(),
-            participant_count: 4,
-            finalized_root: final_root,
-        };
-        // The unanchored diagnostic would have called this a quorum (3 verifying distinct sigs)...
-        assert_eq!(
-            forged.distinct_signers(),
-            3,
-            "the forged sigs verify on their own terms (the old count-only trap)"
-        );
-        assert!(
-            forged.has_quorum(),
-            "the count-only diagnostic is fooled — exactly why it must not be the gate"
-        );
-        // ...but NONE of the forged keys are in the trusted committee, so the anchored count is 0.
-        assert_eq!(
-            forged.distinct_committee_signers(&trusted),
-            0,
-            "no forged key is in the trusted committee"
-        );
-        assert!(!forged.has_committee_quorum(&trusted));
-
-        match verify_finalized_history(&agg, &vk, final_root, &forged, &trusted) {
-            Err(FinalizedError::NoQuorum {
-                distinct_signers,
-                threshold,
-            }) => {
-                assert_eq!(distinct_signers, 0, "no trusted committee member signed");
-                assert_eq!(
-                    threshold, 3,
-                    "threshold is taken over the committee size (4)"
-                );
-            }
-            other => {
-                panic!("a fork finalized by a foreign committee must be rejected; got {other:?}")
-            }
-        }
-
-        // CONTROL: the SAME fork finalized by the REAL committee IS accepted (the anchor bites the
-        // foreign keys, not the honest quorum).
-        let honest = make_cert(3, 4, final_root);
-        assert!(
-            verify_finalized_history(&agg, &vk, final_root, &honest, &trusted).is_ok(),
-            "the genuine committee's quorum still finalizes"
-        );
-    }
-
-    /// **REJECTION TOOTH 7 — an UNANCHORED light client (empty committee) accepts NOTHING.** A client
-    /// configured with no trusted validator set has nothing to anchor finality against; it must fail
-    /// closed rather than fall back to a count-only quorum (red-team LC-2 / "reject unanchored").
-    #[test]
-    fn finalized_light_client_refuses_when_unanchored() {
-        let (turns, _g, final_root) = make_chain(1000, 0, 7, 2);
-        let (agg, _att) = fold_and_attest(&turns).expect("the honest chain must fold");
-        let vk = agg.root_vk_fingerprint();
-
-        // A genuine 3-of-4 quorum — but the client holds NO committee.
-        let cert = make_cert(3, 4, final_root);
-        match verify_finalized_history(&agg, &vk, final_root, &cert, &[]) {
-            Err(FinalizedError::UnanchoredCommittee) => {}
-            other => panic!("an unanchored client must refuse outright; got {other:?}"),
         }
     }
 
@@ -1312,7 +1019,7 @@ mod tests {
             "but NONE carry a valid signature — the binding leg counts zero"
         );
         assert!(!unsigned.has_quorum(), "an unsigned cert is not a quorum");
-        match verify_finalized_history(&agg, &vk, final_root, &unsigned, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &unsigned) {
             Err(FinalizedError::NoQuorum {
                 distinct_signers, ..
             }) => assert_eq!(distinct_signers, 0),
@@ -1335,7 +1042,7 @@ mod tests {
             0,
             "signatures bound to a different root do not verify over this cert's root"
         );
-        match verify_finalized_history(&agg, &vk, final_root, &wrong_root, &committee(4)) {
+        match verify_finalized_history(&agg, &vk, final_root, &wrong_root) {
             Err(FinalizedError::NoQuorum { .. }) => {}
             other => panic!("a wrong-root-bound finality cert must be rejected; got {other:?}"),
         }
@@ -1344,7 +1051,7 @@ mod tests {
         // forgery, not the honest cert).
         let honest = make_cert(3, 4, final_root);
         assert_eq!(honest.distinct_signers(), 3);
-        assert!(verify_finalized_history(&agg, &vk, final_root, &honest, &committee(4)).is_ok());
+        assert!(verify_finalized_history(&agg, &vk, final_root, &honest).is_ok());
     }
 
     /// **THE REJECTION TOOTH (Rust witness).** A light client REFUSES a corrupted aggregate
@@ -1398,34 +1105,29 @@ mod tests {
     /// PIs) can. `fold_and_attest` refuses with `TurnProofInvalid` and grants NO attestation.
     #[test]
     fn light_client_rejects_forged_turn() {
+        use dregg_circuit::effect_vm::trace_rotated::V1_PI_COUNT;
         use dregg_circuit_prove::ivc_turn_chain::TurnChainError;
         use dregg_circuit_prove::joint_turn_aggregation::RotatedParticipantLeg;
 
         let (mut turns, _g, real_final) = make_chain(1000, 0, 7, 3);
+        const PI_ROTATED_NEW: usize = V1_PI_COUNT + 1; // rotated NEW-commit (PI 35)
 
         // Destructure the LAST turn's leg, forge its claimed post-state root, rebuild it.
-        // H0 DEPLOYED-WIDE: the binding state anchor is the GENUINE 8-felt wide AFTER-commit at the
-        // PI tail `[n-8 .. n)` (the single-felt rotated NEW-commit PI 43 is RETIRED to zero / unbound
-        // — forging it would no longer change anything). Forge the head lane of the wide anchor; the
-        // proof's bound wide carrier disagrees with the tampered PI ⇒ the leaf re-verify is UNSAT.
         let last = turns.len() - 1;
         let DescriptorParticipant { rotated } = turns.remove(last).participant;
         let RotatedParticipantLeg {
             proof,
             descriptor,
             mut public_inputs,
-            carrier_witness,
         } = rotated;
-        let pi_wide_new = public_inputs.len() - 8; // first lane of the AFTER 8-felt wide commit
-        let lie = public_inputs[pi_wide_new] + BabyBear::ONE;
-        public_inputs[pi_wide_new] = lie;
+        let lie = public_inputs[PI_ROTATED_NEW] + BabyBear::ONE;
+        public_inputs[PI_ROTATED_NEW] = lie;
         assert_ne!(lie, real_final, "the forged final root must differ");
         turns.push(FinalizedTurn::new(DescriptorParticipant::rotated(
             RotatedParticipantLeg {
                 proof,
                 descriptor,
                 public_inputs,
-                carrier_witness,
             },
         )));
 
@@ -1450,10 +1152,8 @@ mod tests {
         use dregg_circuit_prove::ivc_turn_chain::TurnChainError;
 
         let (mut turns, _g, _f) = make_chain(1000, 0, 7, 3);
-        // H0 DEPLOYED-WIDE: continuity binds the GENUINE 8-felt wide anchors; read the head lane the
-        // host `ChainBreak` reports (`turn_anchors8`'s lane 0).
-        let prev_new = turns[0].participant.rotated.wide_new_root8().unwrap()[0];
-        let next_old = turns[2].participant.rotated.wide_old_root8().unwrap()[0];
+        let prev_new = turns[0].new_root();
+        let next_old = turns[2].old_root();
         assert_ne!(
             next_old, prev_new,
             "after the drop the surviving turns must NOT be continuous"
@@ -1486,9 +1186,8 @@ mod tests {
         use dregg_circuit_prove::ivc_turn_chain::TurnChainError;
 
         let (mut turns, _g, _f) = make_chain(1000, 0, 7, 3);
-        // H0 DEPLOYED-WIDE: continuity binds the GENUINE 8-felt wide anchors (head lane shown here).
-        let prev_new = turns[0].participant.rotated.wide_new_root8().unwrap()[0];
-        let swapped_in_old = turns[2].participant.rotated.wide_old_root8().unwrap()[0];
+        let prev_new = turns[0].new_root();
+        let swapped_in_old = turns[2].old_root();
         assert_ne!(
             swapped_in_old, prev_new,
             "the swapped-in turn must NOT continue turn 0"

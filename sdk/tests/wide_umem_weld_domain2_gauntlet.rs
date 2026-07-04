@@ -165,8 +165,6 @@ fn attenuate_fixture() -> (
         siblings: open.siblings.to_vec(),
         directions: open.directions.to_vec(),
         clist_leaves,
-        cap_leaves: Vec::new(),
-        cap_tombstones: Vec::new(),
     };
 
     let before_balance: u64 = 100_000;
@@ -195,22 +193,8 @@ fn attenuate_fixture() -> (
     let mut ledger = dregg_cell::Ledger::new();
     ledger.insert_cell(after_cell.clone()).unwrap();
     let receipt_log: Vec<[u8; 32]> = vec![[3u8; 32], [4u8; 32]];
-    let before_w = rw::produce(
-        &before_cell,
-        &ledger,
-        &[0u8; 32],
-        &[0u8; 32],
-        &receipt_log,
-        &Default::default(),
-    );
-    let after_w = rw::produce(
-        &after_cell,
-        &ledger,
-        &[0u8; 32],
-        &[0u8; 32],
-        &receipt_log,
-        &Default::default(),
-    );
+    let before_w = rw::produce(&before_cell, &ledger, &[0u8; 32], &[0u8; 32], &receipt_log);
+    let after_w = rw::produce(&after_cell, &ledger, &[0u8; 32], &[0u8; 32], &receipt_log);
 
     let proj_pre = project_record_kernel_state(&before_cell);
     let proj_post = project_record_kernel_state(&after_cell);
@@ -354,9 +338,11 @@ fn domain2_plain_cap_weld_is_wire_forbidden() {
     // grant base's hash_2_to_1 cap_root model satisfiable (the point here is the WIRE rejection, not
     // the proof).
     let before_balance: u64 = 100_000;
-    // Empty c-list cell: `CellState::new` seeds the canonical empty 8-felt cap-tree root into the
-    // deployed cap-root column (the lib owns the lane-0 seeding — no truncation here).
-    let initial = CellState::new(before_balance, 0);
+    let initial = CellState::with_capability_root(
+        before_balance,
+        0,
+        dregg_circuit::cap_root::empty_capability_root(),
+    );
     let effects = vec![VmEffect::GrantCapability {
         cap_entry: [BabyBear::ZERO; 8],
         phase_b: None,
@@ -379,22 +365,8 @@ fn domain2_plain_cap_weld_is_wire_forbidden() {
 
     let mut ledger = dregg_cell::Ledger::new();
     ledger.insert_cell(after_cell.clone()).unwrap();
-    let before_w = rw::produce(
-        &before_cell,
-        &ledger,
-        &[0u8; 32],
-        &[0u8; 32],
-        &[],
-        &Default::default(),
-    );
-    let after_w = rw::produce(
-        &after_cell,
-        &ledger,
-        &[0u8; 32],
-        &[0u8; 32],
-        &[],
-        &Default::default(),
-    );
+    let before_w = rw::produce(&before_cell, &ledger, &[0u8; 32], &[0u8; 32], &[]);
+    let after_w = rw::produce(&after_cell, &ledger, &[0u8; 32], &[0u8; 32], &[]);
 
     let proj_pre = project_record_kernel_state(&before_cell);
     let proj_post = project_record_kernel_state(&after_cell);

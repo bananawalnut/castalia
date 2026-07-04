@@ -868,7 +868,7 @@ fn main() -> Result<()> {
         .skip(1)
         .find(|a| !a.starts_with("--"))
         .cloned()
-        .unwrap_or_else(|| dregg_sdk::DreggEndpoints::from_env().devnet_url());
+        .unwrap_or_else(|| "https://devnet.dregg.fg-goose.online".to_string());
 
     if args.iter().any(|a| a == "--selfcheck") {
         std::process::exit(run_selfcheck());

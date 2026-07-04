@@ -1,6 +1,0 @@
-# The bundled net/ crates use nightly-only features (cfg_sanitize, linkage)
-# and edition 2024; pin the same toolchain the Elide source tree builds with.
-[toolchain]
-channel = "nightly-2026-03-24"
-profile = "default"
-components = ["cargo", "clippy", "rustc", "rustfmt"]

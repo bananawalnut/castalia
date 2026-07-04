@@ -178,7 +178,7 @@ use crate::ivc_turn_chain::{
     FinalizedTurn, HostSeg, RecursionVk, SEG_ANCHOR_WIDTH, SEG_DIGEST_WIDTH, TurnChainBindingAir,
     WholeChainProof, combine_seg, expose_claim_instance_index, ir2_leaf_wrap_config, leaf_seg,
     prove_descriptor_leaf_rotated_with_config, prove_descriptor_leaf_rotated_with_segment,
-    segment_combine_expose, turn_anchors8, verify_turn_chain_recursive,
+    segment_combine_expose, verify_turn_chain_recursive,
 };
 use crate::joint_turn_aggregation::verify_descriptor_participant;
 use crate::plonky3_recursion_impl::recursive::{
@@ -336,14 +336,12 @@ impl std::error::Error for AccError {}
 /// can be regenerated WITHOUT retaining the consumed turns.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChainSummary {
-    /// The genesis state anchor the chain started from (the first turn's `first_old8`); the
-    /// running segment's `first_old8`. GENUINE 8-felt (~124-bit) — sourced from the turn's WIDE
-    /// leg's 8-felt before-commit anchor ([`turn_anchors8`]); a narrow leg replicates its single
-    /// rotated commit felt across the eight lanes, matching the in-circuit leaf's narrow replicate.
-    pub genesis_root: [BabyBear; SEG_ANCHOR_WIDTH],
-    /// The running head state anchor (the last folded turn's `last_new8`); the next turn must
-    /// consume this. The running segment's `last_new8`. GENUINE 8-felt — see [`genesis_root`].
-    pub head_root: [BabyBear; SEG_ANCHOR_WIDTH],
+    /// The genesis root the chain started from (the first turn's `old_root`); the running
+    /// segment's `first_old`.
+    pub genesis_root: BabyBear,
+    /// The running head root (the last folded turn's `new_root`); the next turn must consume
+    /// this. The running segment's `last_new`.
+    pub head_root: BabyBear,
     /// The running ordered-history digest — the genuine 4-lane W24 Poseidon2 segment `acc`,
     /// folded LEFT-LINEARLY as `acc = commit(running.acc ++ leaf.acc)` (the host mirror of the
     /// in-circuit [`combine_segments_expose`]). This EQUALS the digest the running proof exposes,
@@ -357,14 +355,12 @@ impl ChainSummary {
     /// The running segment as a [`HostSeg`] (the host mirror of the running proof's exposed
     /// segment), so the next fold can `combine_seg(running, new_leaf)` exactly as the circuit does.
     fn as_seg(&self) -> HostSeg {
-        // FAITHFUL-FLOOR (codex #4 CLOSED): the online path now carries GENUINE 8-felt state
-        // endpoints — `genesis_root`/`head_root` are the turn's WIDE 8-felt anchors
-        // ([`turn_anchors8`]), the SAME source the K-fold tree consumes. No broadcast: each lane
-        // is the genuine per-lane anchor value (a narrow leg's replicate is already baked into the
-        // array at accumulate time, matching the in-circuit leaf's narrow replicate lane-for-lane).
+        // The online path keeps a single-felt running summary (scoped OUT of the FAITHFUL-FLOOR
+        // anchor lift — codex #4 mixed-root weakness unchanged); broadcast it across the eight
+        // anchor lanes to match the narrow-leg replicate the in-circuit leaf binds.
         HostSeg {
-            first_old8: self.genesis_root,
-            last_new8: self.head_root,
+            first_old8: [self.genesis_root; SEG_ANCHOR_WIDTH],
+            last_new8: [self.head_root; SEG_ANCHOR_WIDTH],
             count: BabyBear::new(self.num_turns as u32),
             acc: self.chain_digest,
         }
@@ -628,23 +624,13 @@ impl Accumulator {
         let old_root = turn.old_root();
         let new_root = turn.new_root();
 
-        // The turn's GENUINE 8-felt state anchors — sourced the SAME way the K-fold tree and the
-        // in-circuit descriptor leaf source them ([`turn_anchors8`]): a WIDE / wide-welded leg
-        // publishes the genuine ~124-bit `wide_old_root8`/`wide_new_root8`; a narrow leg replicates
-        // its single rotated commit felt across the eight lanes. These (not the single felts) are the
-        // running segment's endpoints, so the host summary matches the root-exposed segment lane-for-lane.
-        let (this_old8, this_new8) = turn_anchors8(turn);
-
-        // (2) continuity against the running head — at the GENUINE 8-felt anchor (lane-for-lane), the
-        //     host mirror of the in-circuit combine's `L.last_new8 == R.first_old8` connect. For a
-        //     narrow leg both arrays are the single-felt broadcast, so this reduces to the felt check;
-        //     for a wide leg it binds the full ~124-bit anchor (the felt PIs 34/35 may be retired).
+        // (2) continuity against the running head.
         if let Some(s) = self.summary
-            && s.head_root != this_old8
+            && s.head_root != old_root
         {
             return Err(AccError::ChainBreak {
-                expected_old_root: s.head_root[0].0,
-                found_old_root: this_old8[0].0,
+                expected_old_root: s.head_root.0,
+                found_old_root: old_root.0,
             });
         }
 
@@ -811,22 +797,20 @@ impl Accumulator {
 
         // (5) advance the running summary. The host folds the SEGMENT exactly as the in-circuit
         //     `combine_segments_expose` does — LEFT-LINEARLY: the new leaf's segment
-        //     `[first_old8, last_new8, 1, commit(first_old8 ++ last_new8)]` combines into the running
-        //     segment as `acc = commit(running.acc ++ leaf.acc)`. The result EQUALS the digest the
-        //     running proof exposes, so `finalize`'s carried `chain_digest` matches the root-exposed
-        //     segment tooth (O(1) memory: only the running 8-lane segment is kept).
-        // FAITHFUL-FLOOR (codex #4 CLOSED): the leaf carries the GENUINE 8-felt anchors
-        // (`this_old8`/`this_new8` from [`turn_anchors8`]) — the SAME source the in-circuit leaf binds
-        // and the K-fold tree folds. A wide leg contributes genuine per-lane ~124-bit entropy; a narrow
-        // leg's broadcast is already baked into the arrays. The running `genesis_root`/`head_root` keep
-        // the FULL 8-felt anchors (no `[0]` projection), so the endpoints genuinely bind all eight lanes.
-        let leaf = || leaf_seg(this_old8, this_new8);
+        //     `[old, new, 1, commit([old,new])]` combines into the running segment as
+        //     `acc = commit(running.acc ++ leaf.acc)`. The result EQUALS the digest the running
+        //     proof exposes, so `finalize`'s carried `chain_digest` matches the root-exposed
+        //     segment tooth (O(1) memory: only the running 4-lane segment is kept).
+        // Narrow legs: broadcast the single rotated commit felt across the eight anchor lanes (the
+        // host mirror of the in-circuit replicate). The running summary keeps the single felt
+        // (lane 0 of the broadcast anchors), which all eight lanes equal.
+        let leaf = || leaf_seg([old_root; SEG_ANCHOR_WIDTH], [new_root; SEG_ANCHOR_WIDTH]);
         let new_summary = match self.summary {
             None => {
                 let seg = leaf();
                 ChainSummary {
-                    genesis_root: seg.first_old8,
-                    head_root: seg.last_new8,
+                    genesis_root: seg.first_old8[0],
+                    head_root: seg.last_new8[0],
                     chain_digest: seg.acc,
                     num_turns: 1,
                 }
@@ -834,8 +818,8 @@ impl Accumulator {
             Some(s) => {
                 let seg = combine_seg(s.as_seg(), leaf());
                 ChainSummary {
-                    genesis_root: seg.first_old8,
-                    head_root: seg.last_new8,
+                    genesis_root: seg.first_old8[0],
+                    head_root: seg.last_new8[0],
                     chain_digest: seg.acc,
                     num_turns: s.num_turns + 1,
                 }
@@ -913,11 +897,10 @@ impl Accumulator {
         Ok(WholeChainProof {
             root: running,
             binding_proof: binding_inner,
-            // The GENUINE 8-felt running endpoints (codex #4 CLOSED) — the same per-lane anchors the
-            // running proof's exposed segment carries, so the segment tooth in
-            // `verify_turn_chain_recursive` matches lane-for-lane (no single-felt broadcast).
-            genesis_root: summary.genesis_root,
-            final_root: summary.head_root,
+            // Broadcast the single-felt running endpoints across the eight anchor lanes (the host
+            // mirror of the narrow-leg replicate the running proof's segment exposes).
+            genesis_root: [summary.genesis_root; SEG_ANCHOR_WIDTH],
+            final_root: [summary.head_root; SEG_ANCHOR_WIDTH],
             chain_digest: summary.chain_digest,
             num_turns: summary.num_turns,
         })
@@ -985,19 +968,9 @@ fn finalize_binding_leaf(
     }
     let chain_digest = trace.last().unwrap()[crate::ivc_turn_chain::COL_ACC_OUT];
     let matrix = crate::ivc_turn_chain::trace_to_matrix(&trace);
-    // The binding leaf's `[genesis_root, final_root, …]` PIs come from the SINGLE-felt seam-pair
-    // trace (PI 34/35), NOT the now-8-felt `summary` endpoints: `TurnChainBindingAir` constrains
-    // first-row `old_root == PI[0]` and last-real-row `new_root == PI[1]` against this single-felt
-    // trace, so the binding proof must stay self-consistent with the seam pairs it is built from.
-    // (The binding proof is host-side defense-in-depth, NOT a soundness dependency — the genuine
-    // 8-felt endpoints are bound by the segment tooth over the running proof's exposed segment.)
-    let binding_genesis = seam_pairs
-        .first()
-        .expect("seam_pairs non-empty (checked above)")
-        .0;
     let pis = vec![
-        binding_genesis,
-        final_root,
+        summary.genesis_root,
+        summary.head_root,
         BabyBear::new(summary.num_turns as u32),
         chain_digest,
     ];
@@ -1006,114 +979,4 @@ fn finalize_binding_leaf(
     let proof = prove_inner_for_air_with_config(&air, matrix, &pis, &wrap_config);
     verify_inner_for_air_with_config(&air, &proof, &pis, &wrap_config)?;
     Ok((proof, pis))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// An 8-felt anchor whose lane 0 is `shared0` (the single broadcast felt) and whose lanes 1..8
-    /// are `tail`-distinguished — the genuine ~124-bit wide anchor a WIDE leg publishes.
-    fn anchor(shared0: u32, tail: u32) -> [BabyBear; SEG_ANCHOR_WIDTH] {
-        core::array::from_fn(|i| {
-            BabyBear::new(if i == 0 {
-                shared0
-            } else {
-                tail.wrapping_add(i as u32)
-            })
-        })
-    }
-
-    /// **GENUINE-8-FELT ENDPOINT TOOTH (codex #4 CLOSED).** The online accumulator's running endpoints
-    /// now carry GENUINE per-lane ~124-bit entropy (the WIDE leg's 8-felt anchor), not a single felt
-    /// broadcast across eight lanes. So a forgery that matches the single broadcast felt (lane 0) but
-    /// differs in the wide anchor's lanes 1..8 produces a DIFFERENT exposed segment — endpoints AND
-    /// digest — and is REJECTED by the segment tooth in `verify_turn_chain_recursive`. Under the OLD
-    /// 1-felt broadcast both collapsed to `[lane0; 8]` and were INDISTINGUISHABLE. Host-only (no
-    /// recursion proving): exercises `leaf_seg`/`combine_seg`/`ChainSummary::as_seg` — the exact host
-    /// machinery that feeds the carried claim the verifier matches against the root-exposed segment.
-    #[test]
-    fn genuine_8felt_endpoint_binds_where_broadcast_did_not() {
-        let shared0 = 0x1234_u32;
-        // Two genuine wide anchors that AGREE on lane 0 but DIFFER beyond it — two distinct histories
-        // a forger might try to pass off as identical under the old single-felt summary.
-        let genuine_a = anchor(shared0, 100);
-        let genuine_b = anchor(shared0, 200);
-        assert_eq!(genuine_a[0], genuine_b[0], "the two anchors share lane 0");
-        assert_ne!(genuine_a, genuine_b, "but differ in the wide lanes 1..8");
-
-        // The OLD 1-felt broadcast collapsed any anchor to `[lane0; 8]` — indistinguishable from BOTH.
-        let broadcast: [BabyBear; SEG_ANCHOR_WIDTH] = [BabyBear::new(shared0); SEG_ANCHOR_WIDTH];
-
-        let new8 = anchor(0x5678, 300);
-
-        // (1) The per-turn leaf SEGMENT now incorporates ALL eight lanes: the two genuine anchors and
-        //     the broadcast give THREE DISTINCT segment digests (the old broadcast gave ONE).
-        let seg_a = leaf_seg(genuine_a, new8);
-        let seg_b = leaf_seg(genuine_b, new8);
-        let seg_bcast = leaf_seg(broadcast, new8);
-        assert_ne!(
-            seg_a.acc, seg_b.acc,
-            "genuine 8-felt anchors give DISTINCT digests"
-        );
-        assert_ne!(
-            seg_a.acc, seg_bcast.acc,
-            "a genuine anchor's digest != its lane-0 broadcast"
-        );
-        // The exposed endpoints THEMSELVES differ (the segment tooth compares full 8-felt arrays).
-        assert_eq!(seg_a.first_old8, genuine_a);
-        assert_ne!(seg_a.first_old8, seg_bcast.first_old8);
-
-        // (2) `ChainSummary::as_seg` carries the GENUINE per-lane endpoints (NO broadcast): a summary
-        //     built from a genuine anchor exposes that anchor VERBATIM, distinct from the broadcast a
-        //     forger controlling only the single felt could reproduce.
-        let digest = seg_a.acc; // any digest — the endpoints are what bind here.
-        let sum_a = ChainSummary {
-            genesis_root: genuine_a,
-            head_root: new8,
-            chain_digest: digest,
-            num_turns: 1,
-        };
-        let sum_bcast = ChainSummary {
-            genesis_root: broadcast,
-            head_root: new8,
-            chain_digest: digest,
-            num_turns: 1,
-        };
-        assert_eq!(
-            sum_a.as_seg().first_old8,
-            genuine_a,
-            "as_seg exposes the GENUINE anchor, not a lane-0 broadcast"
-        );
-        assert_ne!(
-            sum_a.as_seg().first_old8,
-            sum_bcast.as_seg().first_old8,
-            "a forger matching only the single broadcast felt CANNOT reproduce the genuine 8-felt endpoint"
-        );
-        // Sanity on the OLD behavior: the broadcast summary collapses to `[lane0; 8]` (what the
-        // single-felt summary always produced), confirming the genuine path is a strict strengthening.
-        assert_eq!(sum_bcast.as_seg().first_old8, broadcast);
-
-        // (3) The LEFT-LINEAR combine preserves genuine endpoints: combining two genuine leaves keeps
-        //     the left's `first_old8` and the right's `last_new8` per-lane, and folds an order-sensitive
-        //     8-lane digest — so the running summary an honest fold carries is itself genuinely 8-felt.
-        let mid = anchor(0x9abc, 400);
-        let left = leaf_seg(genuine_a, mid);
-        let right = leaf_seg(mid, new8);
-        let combined = combine_seg(left, right);
-        assert_eq!(
-            combined.first_old8, genuine_a,
-            "combine keeps the genuine left endpoint"
-        );
-        assert_eq!(
-            combined.last_new8, new8,
-            "combine keeps the genuine right endpoint"
-        );
-        // Order-sensitivity (commit(L ++ R) != commit(R ++ L)): swapping operands changes the digest.
-        let swapped = combine_seg(right, left);
-        assert_ne!(
-            combined.acc, swapped.acc,
-            "the 8-lane history digest is order-sensitive"
-        );
-    }
 }

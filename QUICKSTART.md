@@ -9,67 +9,20 @@ pasted (truncated) as the expected result.
 What you need: this repo and `cargo`. `python3` and `curl` for the raw HTTP bits.
 Docker for the site section.
 
-**Verified vs marshal-only — read this first.** dregg's whole point is that the
-node's state producer IS the *verified Lean executor*. But that executor links a
-~180 MB native archive (`dregg-lean-ffi/libdregg_lean.a`, the "Lean seed") that is
-**gitignored** — a fresh clone does **not** have it. So there are two build modes:
-
-- **verified** (`state_producer:"lean"`): the node runs the proved Lean function.
-  Needs the seed **and** the elan/Lean toolchain on PATH. Get the seed the fast
-  way — `./scripts/fetch-lean-seed.sh` downloads a prebuilt one in minutes — or
-  the slow way, `./scripts/bootstrap.sh` (compiles it from source, **hours** the
-  first time because it builds mathlib).
-- **marshal-only** (`state_producer:"rust"`): a plain `cargo build` with **no
-  seed** builds this — the node would run the *un-verified* Rust executor. It is
-  fine for UI/dev, but it is **not** the verified node. The node **refuses to
-  start** in this mode unless you explicitly opt in with
-  `DREGG_ALLOW_UNVERIFIED_CONSENSUS=1` — fail-closed: an unverified node is a
-  deliberate choice, never a silent default.
-
-The one-command path that does the right thing (fetch seed → build → run →
-report which mode you got) is **`./scripts/run-node-10min.sh`**. The sections
-below are the same steps by hand. Full detail: `docs/LEAN-SEED-ARTIFACT.md` and
-`docs/BUILD-LEAN-LINKED-NODE.md`.
-
 ---
 
-## 1. Run a node (on localhost)
+## 1. Run a node (the verified Lean producer, on localhost)
 
-### The verified path (the point of dregg)
-
-```sh
-# 1. elan + the pinned Lean toolchain on PATH (installs in minutes; NO mathlib compile):
-curl https://elan.lean-lang.org/elan-init.sh -sSf | sh    # then re-open your shell
-# 2. fetch the prebuilt Lean seed for your platform (minutes, not the hours-long bootstrap):
-./scripts/fetch-lean-seed.sh
-# 3. build the node, FAILING LOUD if it would silently degrade to marshal-only:
-DREGG_REQUIRE_LEAN=1 cargo build -p dregg-node
-./target/debug/dregg-node init --data-dir /tmp/my-dregg
-./target/debug/dregg-node run  --data-dir /tmp/my-dregg --enable-faucet --port 8421 &
-```
-
-If no seed release has been cut yet, step 2 fails loud and tells you your two
-options (bootstrap from source, or cut a release — `docs/LEAN-SEED-ARTIFACT.md`).
-The `DREGG_REQUIRE_LEAN=1` in step 3 guarantees you can never *think* you built a
-verified node when you didn't — the build panics with the exact missing piece
-instead of quietly shipping the Rust executor.
-
-### The marshal-only path (un-verified, fine for UI/dev)
-
-If you just want to click around and don't need the verified executor, skip the
-seed entirely:
+The node's state producer is the Lean executor itself. Build it, initialize a
+data directory, and start it with the faucet on.
 
 ```sh
 cargo build -p dregg-node
 ./target/debug/dregg-node init --data-dir /tmp/my-dregg
-DREGG_ALLOW_UNVERIFIED_CONSENSUS=1 \
 ./target/debug/dregg-node run  --data-dir /tmp/my-dregg --enable-faucet --port 8421 &
 ```
 
-(Without the env var, a seedless build refuses to start rather than silently
-serving the un-verified executor — see the note above.)
-
-### Check it either way
+Check it:
 
 ```sh
 curl -s http://localhost:8421/status
@@ -81,11 +34,8 @@ curl -s http://localhost:8421/status
  "lean_producer":true,"full_turn_proving":false,"producer_covered_effects":21}
 ```
 
-`state_producer:"lean"` / `lean_producer:true` is the point: the node executes
-turns by calling the verified Lean function, not a Rust reimplementation. A
-marshal-only node instead reads `state_producer:"rust"` / `lean_producer:false`
-here (and logged `MARSHAL-ONLY BUILD OVERRIDDEN` on startup). (`full_turn_proving`
-is off
+`state_producer:"lean"` is the point: the node executes turns by calling the
+verified Lean function, not a Rust reimplementation. (`full_turn_proving` is off
 by default — the per-turn STARK is on the hot path; pass `--prove-turns` to turn
 it on, which is what an audit-grade node runs.)
 
@@ -179,17 +129,10 @@ export DREGG_API_TOKEN=$(curl -s -X POST http://localhost:8421/cipherclerk/unloc
 
 AGENT=$(curl -s http://localhost:8421/api/node/identity \
   | python3 -c 'import json,sys;print(json.load(sys.stdin)["agent_cell"])')
-NODE_PK=$(curl -s http://localhost:8421/api/node/identity \
-  | python3 -c 'import json,sys;print(json.load(sys.stdin)["public_key"])')
 
-# fund the operator cell so it can pay the turn's fee (skip if already funded).
-# IMPORTANT: include public_key on the FIRST faucet call that touches this cell.
-# A faucet call without it materializes the cell with a ZERO public key, the
-# faucet never rewrites an existing cell's key, and every signed turn on this
-# data dir then fails with "Ed25519 signature verification failed" — including
-# the turn below and every step of `dregg demo` (§4).
+# fund the operator cell so it can pay the turn's fee (skip if already funded):
 curl -s -X POST http://localhost:8421/api/faucet -H 'content-type: application/json' \
-  -d "{\"recipient\":\"$AGENT\",\"amount\":5000,\"public_key\":\"$NODE_PK\"}" >/dev/null
+  -d "{\"recipient\":\"$AGENT\",\"amount\":5000}" >/dev/null
 
 curl -s -X POST http://localhost:8421/api/turns/submit \
   -H "Authorization: Bearer $DREGG_API_TOKEN" -H 'content-type: application/json' \

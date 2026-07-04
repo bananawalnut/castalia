@@ -1,0 +1,22 @@
+[package]
+name = "polyana-bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "dregg ⋈ polyana — the verified-core seam, WIRED. The Rust API surface polyana consumes (docs/deos/POLYANA-ALLIANCE.md §4): polyana's per-call TraceRecord → a real chained dregg TurnReceipt (Slice 1); a polyana cap-bundle gated by the Lean-backed monotone attenuation law (Slice 3); and a provable NON-OMISSION certificate over the audit log via dregg-query. Turns the illustrative docs/deos/polyana-seam-sketch.rs into compiling, tested code against the real dregg crates."
+
+[dependencies]
+dregg-cell = { path = "../cell" }
+dregg-turn = { path = "../turn" }
+dregg-query = { path = "../dregg-query" }
+blake3 = "1"
+hex = "0.4"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+blake3 = "1"
+hex = "0.4"

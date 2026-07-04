@@ -9,12 +9,11 @@ cohort member against the rotated 25+…-limb state block — as ONE parametric 
 
   * **§1 the appended geometry** — each rotated descriptor carries, PAST its v1 layout
     (every v1 column index, constraint, and theorem untouched): a rotated BEFORE block at
-    `d.traceWidth` (169 absorption-ordered limbs · iroot · state_commit · 56 chain carriers
-    = 227 columns, the R=24 register geometry PLUS the `commitments_root` + `lifecycle_disc` +
-    `perms_digest` + `vk_digest` + `mode` + `fields_root` limbs, the v11/v12 completion octets,
-    and the v13 fields[0..7] completion lanes), a rotated AFTER block at `d.traceWidth + 227`, and the
-    WIDENED-CAVEAT region at `d.traceWidth + 454` (29-felt manifest · 9 chain carriers · caveat
-    commit · 4 DFA rc felts = 43 columns). Width: `+497`.
+    `d.traceWidth` (37 absorption-ordered limbs · iroot · state_commit · 12 chain carriers
+    = 51 columns, the R=24 register geometry PLUS the `commitments_root` + `lifecycle_disc` +
+    `perms_digest` + `vk_digest` + `mode` + `fields_root` limbs), a rotated AFTER block at `d.traceWidth + 51`, and the
+    WIDENED-CAVEAT region at `d.traceWidth + 102` (29-felt manifest · 9 chain carriers · caveat
+    commit = 39 columns). Width: `+141`.
   * **§2 col-chained sites** — the chained absorptions reference their carrier COLUMNS
     (`.col`), never `.digest k`, so the site group is POSITION-INDEPENDENT (appendable
     after any descriptor's own sites with no index shift) and graduates to the SAME wire
@@ -58,9 +57,7 @@ cohort member against the rotated 25+…-limb state block — as ONE parametric 
     the last; it GRADUATED via the new accumulator / recursive-proof-binding constraint kind
     (`DescriptorIR2.ProofBind`): the rotated `customV3` carries the `proofBind` op that ties the
     row's `custom_proof_commitment` to a VERIFYING external sub-proof of the named recursion engine
-    (the row commits to the verification, rather than trusting it), PLUS (the VK epoch) the eight
-    `customPiExposure` PI pins that PUBLISH the bound `(commit, vk)` columns so the per-turn FOLD
-    connects the custom sub-proof leaf — the binding is at the fold, not a row gate. (`RevokeCapability` (24)
+    (the row commits to the verification, rather than trusting it). (`RevokeCapability` (24)
     GRADUATED via the cap-crown `revokeCapabilityVmDescriptor2` — held-membership map-read +
     ZERO-value remove-write — rotated as `revokeCapabilityV3`.)
 
@@ -92,18 +89,6 @@ import Dregg2.Circuit.Emit.EffectVmEmitSpawn
 import Dregg2.Circuit.Emit.EffectVmEmitReceiptArchive
 import Dregg2.Circuit.Emit.EffectVmEmitCellUnseal
 import Dregg2.Circuit.Emit.EffectVmEmitEmitEvent
--- v10 faithful-8-felt cap-root: the native `node8` arity-16 tree (Digest8 root) the cap-write
--- column GROUP commits. ACYCLIC: DeployedCapTree's emit chain bottoms out at EffectVmEmitCapRoot →
--- EffectVmEmit, never reaching this Rotation layer.
-import Dregg2.Circuit.DeployedCapTree
--- v10 faithful-8-felt HEAP-root: the native `node8` heap-tree carrier + recompose spine (the SECOND
--- faithful root, the exact twin of `DeployedCapTree`'s `Cap8Scheme`). ACYCLIC: `DeployedHeapTree`
--- imports only `DeployedCapTree` + `CapMerkleGeneric`, already in this layer's closure.
-import Dregg2.Circuit.DeployedHeapTree
--- v10 faithful-8-felt FIELDS-root: the native `node8` user-field-map tree carrier + recompose spine
--- (the THIRD and LAST faithful root, the exact twin of `DeployedHeapTree`'s `Heap8Scheme`). ACYCLIC:
--- `DeployedFieldsTree` imports only `DeployedCapTree` + `CapMerkleGeneric`, already in this closure.
-import Dregg2.Circuit.DeployedFieldsTree
 
 namespace Dregg2.Circuit.Emit.EffectVmEmitRotationV3
 
@@ -118,20 +103,9 @@ open Dregg2.Circuit.Emit.EffectVmEmitRotationCaveat
 open Dregg2.Circuit.Poseidon2Binding (Poseidon2SpongeCR)
 open Dregg2.Crypto
 open Dregg2.Substrate.Heap (refSponge)
--- v10 faithful-8-felt cap-root: the native `node8` tree carrier + recompose spine.
-open Dregg2.Circuit.DeployedCapTree (Digest8 Cap8Scheme CapLeaf)
-open Dregg2.Circuit.DeployedCapTree.Cap8Scheme (recomposeUp8 capLeafDigest8 recomposeUp8_inj_of_path)
-open Dregg2.Circuit.CapMerkleGeneric (StepG)
--- v10 faithful-8-felt HEAP-root: the native `node8` heap-tree carrier + recompose spine.
-open Dregg2.Circuit.DeployedHeapTree (Heap8Scheme)
--- v10 faithful-8-felt FIELDS-root: the native `node8` user-field-map tree carrier + recompose spine.
-open Dregg2.Circuit.DeployedFieldsTree (Fields8Scheme)
 
 set_option linter.unusedVariables false
 set_option autoImplicit false
--- v13 fields-octet grow: the rotated appendix is 124 sites (was 86); the `rfl` reductions
--- over the widened `rotateV3` structure need more kernel recursion depth.
-set_option maxRecDepth 16000
 
 /-! ## §1 — the appended geometry (R = 24, offsets relative to a block base). -/
 
@@ -156,18 +130,8 @@ set_option maxRecDepth 16000
 -- AFTER fields_root sub-limb to the declared post-`fields_root` param column (the perms/VK weld shape,
 -- declared-param anchored).
 
-/-- The per-block span: 169 pre-iroot limbs + iroot + state_commit + 56 chain carriers (v13:
-NUM_PRE_LIMBS 112→169 — the FIELDS-OCTET geometry grow appends the 56 fields[0..7] COMPLETION
-lanes at offsets 112..167 (fields[i] lanes 1..7 → `112 + 7·i .. 112 + 7·i + 6`; lane 0 of each
-field stays at its existing WELDED limb `4 + i` = r3..r10, where the faithful
-`field_limbs8(fields[i])[0]` REPLACES the Horner `fold_bytes32_to_bb` — the v13 lane-0 route
-closing the LAST degraded-felt residual) plus ONE zero PAD limb at 168 (so the body
-`[4..168]` = 165 limbs = fifty-five 3-wide groups, NO arity-2 leftover — the padded-N
-discipline that picked 112 for v12). The shared projection + the encoding audit (why lane 0
-is the u64-lane lo32, NOT the LE bytes-0..4 chunk) live at
-`circuit/src/effect_vm/helpers.rs::field_limbs8`. This rides on the v12 carrier-material
-octets 88..111 and the v11 accumulator completion limbs 67..87. -/
-def B_SPAN : Nat := 227
+/-- The per-block span: 37 pre-iroot limbs + iroot + state_commit + 12 chain carriers. -/
+def B_SPAN : Nat := 51
 /-- lifecycle-disc offset inside a block (limb 32 — the WAVE-1 flag-day committed discriminant limb,
 committed BESIDE the opaque `lifecycle_felt` at 29; UNCHANGED by the perms/VK + mode/fields-root flag-days). -/
 def B_DISC : Nat := 32
@@ -183,10 +147,10 @@ def B_MODE : Nat := 35
 /-- committed `fields_root` digest offset inside a block (limb 36 — the WAVE-3 flag-day committed
 overflow named-field map root; the setFieldDyn / refusal declared-param weld limb). -/
 def B_FIELDS_ROOT : Nat := 36
-/-- iroot offset inside a block (limb 112, shifted +24 by the v12 carrier-material octets 88..111). -/
-def B_IROOT : Nat := 169
+/-- iroot offset inside a block (limb 37, shifted +2 by the mode/fields-root limbs). -/
+def B_IROOT : Nat := 37
 /-- state-commit offset inside a block (carrier `B_SPAN - 1`). -/
-def B_STATE_COMMIT : Nat := 170
+def B_STATE_COMMIT : Nat := 38
 /-- committed-height offset inside a block (limb 31, after the `commitments_root` shift — UNCHANGED
 by the disc / perms-VK flag-days, which append PAST it). -/
 def B_COMMITTED_HEIGHT : Nat := 31
@@ -201,21 +165,12 @@ def B_COMMITMENTS_ROOT : Nat := 27
 nullifier_root · commitments_root · heap_root · lifecycle · **epoch** · committed_height). The forced
 limb for `revokeDelegation`'s parent-epoch BUMP (the §14.EPOCH write-gate). -/
 def B_EPOCH : Nat := 30
-/-- The caveat region span: 29 manifest felts + 9 chain carriers + 1 commit + the 4-felt
-DFA route-commitment carrier (the dsl rc-EMIT — `C_RC_OFF`). -/
-def C_SPAN : Nat := 43
+/-- The caveat region span: 29 manifest felts + 9 chain carriers + 1 commit. -/
+def C_SPAN : Nat := 39
 /-- caveat-commit offset inside the caveat region. -/
 def C_COMMIT : Nat := 38
-/-- In-region base of the 4-felt DFA ROUTE-COMMITMENT carrier (offsets 39..42, PAST the caveat
-commit at 38 — the `caveatCommit` fold over the 29 manifest felts is untouched). Carries
-`custom_proof_pi_commitment(DfaProofWire.public_inputs)` — the 4-felt fold-bound anchor of a
-`Witnessed{Dfa}` caveat's DSL-circuit STARK (the SAME derivation as the custom carrier's
-`custom_proof_commitment`, term-for-term) — on a Dfa-gated turn, ZERO on every other turn (the
-absent sentinel; the region is producer-filled uniformly on every row). Rust twin
-`trace_rotated::C_DFA_RC_OFF`. Published as 4 TAIL PIs by `withDfaRcPins`. -/
-def C_RC_OFF : Nat := 39
-/-- The whole appendix width: two rotated blocks + the caveat region (v13: 2·227 + 43 = 497). -/
-def APPENDIX_SPAN : Nat := 497
+/-- The whole appendix width: two rotated blocks + the caveat region. -/
+def APPENDIX_SPAN : Nat := 141
 
 -- The map-root offsets ride past the R=24 probe's named columns (cap_root at probe `capRootCol 24`);
 -- the `commitments_root` limb is the +1 over the bare R=24 register shape.
@@ -226,20 +181,16 @@ def APPENDIX_SPAN : Nat := 497
 #guard B_VK == 34                    -- WAVE-2 committed vk-digest limb
 #guard B_MODE == 35                  -- WAVE-3 committed mode byte limb
 #guard B_FIELDS_ROOT == 36           -- WAVE-3 committed fields_root digest limb
-#guard B_IROOT == 169                -- 169 pre-iroot limbs (v13), then iroot
+#guard B_IROOT == 37                 -- 37 pre-iroot limbs, then iroot
 #guard B_STATE_COMMIT == B_IROOT + 1
 #guard B_COMMITTED_HEIGHT == 31      -- last SCALAR pre-iroot limb (disc/perms/vk/mode/fields-root ride past it)
-#guard B_SPAN == B_IROOT + 58        -- 169 pre-iroot + iroot + state_commit + 56 chain carriers = 227 (v13)
+#guard B_SPAN == probeWidth 24 + 8   -- +6 limbs + +2 chain carriers over the R=24 probe
 #guard APPENDIX_SPAN == 2 * B_SPAN + C_SPAN
-#guard C_RC_OFF == C_COMMIT + 1      -- the DFA rc carrier rides PAST the caveat commit
-#guard C_SPAN == C_RC_OFF + 4        -- 4 rc felts close the region
 
-/-- The pre-iroot limb list of a block at `base` (v10: 67 limbs, absorption order: cells_root ·
+/-- The pre-iroot limb list of a block at `base` (37 limbs, absorption order: cells_root ·
 r0..r23 · cap_root · nullifier_root · commitments_root · heap_root · lifecycle · epoch ·
-committed height · lifecycle_disc · perms_digest · vk_digest · **mode** · **fields_root** · then the
-30 NEW faithful-8-felt completion limbs 37..66 — the 7 extra felts each for cap_root · heap_root ·
-perms · vk · fields_root, plus the 5 repurposed headroom limbs 19..23). Literal, so every positional
-fact is `rfl`. -/
+committed height · lifecycle_disc · perms_digest · vk_digest · **mode** · **fields_root**). Literal, so
+every positional fact is `rfl`. -/
 def preLimbsAt (base : Nat) (a : Assignment) : List ℤ :=
   [ a (base + 0), a (base + 1), a (base + 2), a (base + 3), a (base + 4), a (base + 5)
   , a (base + 6), a (base + 7), a (base + 8), a (base + 9), a (base + 10), a (base + 11)
@@ -247,32 +198,10 @@ def preLimbsAt (base : Nat) (a : Assignment) : List ℤ :=
   , a (base + 18), a (base + 19), a (base + 20), a (base + 21), a (base + 22), a (base + 23)
   , a (base + 24), a (base + 25), a (base + 26), a (base + 27), a (base + 28), a (base + 29)
   , a (base + 30), a (base + 31), a (base + 32), a (base + 33), a (base + 34), a (base + 35)
-  , a (base + 36), a (base + 37), a (base + 38), a (base + 39), a (base + 40), a (base + 41)
-  , a (base + 42), a (base + 43), a (base + 44), a (base + 45), a (base + 46), a (base + 47)
-  , a (base + 48), a (base + 49), a (base + 50), a (base + 51), a (base + 52), a (base + 53)
-  , a (base + 54), a (base + 55), a (base + 56), a (base + 57), a (base + 58), a (base + 59)
-  , a (base + 60), a (base + 61), a (base + 62), a (base + 63), a (base + 64), a (base + 65)
-  , a (base + 66), a (base + 67), a (base + 68), a (base + 69), a (base + 70), a (base + 71)
-  , a (base + 72), a (base + 73), a (base + 74), a (base + 75), a (base + 76), a (base + 77)
-  , a (base + 78), a (base + 79), a (base + 80), a (base + 81), a (base + 82), a (base + 83)
-  , a (base + 84), a (base + 85), a (base + 86), a (base + 87), a (base + 88), a (base + 89)
-  , a (base + 90), a (base + 91), a (base + 92), a (base + 93), a (base + 94), a (base + 95)
-  , a (base + 96), a (base + 97), a (base + 98), a (base + 99), a (base + 100), a (base + 101)
-  , a (base + 102), a (base + 103), a (base + 104), a (base + 105), a (base + 106), a (base + 107)
-  , a (base + 108), a (base + 109), a (base + 110), a (base + 111), a (base + 112), a (base + 113)
-  , a (base + 114), a (base + 115), a (base + 116), a (base + 117), a (base + 118), a (base + 119)
-  , a (base + 120), a (base + 121), a (base + 122), a (base + 123), a (base + 124), a (base + 125)
-  , a (base + 126), a (base + 127), a (base + 128), a (base + 129), a (base + 130), a (base + 131)
-  , a (base + 132), a (base + 133), a (base + 134), a (base + 135), a (base + 136), a (base + 137)
-  , a (base + 138), a (base + 139), a (base + 140), a (base + 141), a (base + 142), a (base + 143)
-  , a (base + 144), a (base + 145), a (base + 146), a (base + 147), a (base + 148), a (base + 149)
-  , a (base + 150), a (base + 151), a (base + 152), a (base + 153), a (base + 154), a (base + 155)
-  , a (base + 156), a (base + 157), a (base + 158), a (base + 159), a (base + 160), a (base + 161)
-  , a (base + 162), a (base + 163), a (base + 164), a (base + 165), a (base + 166), a (base + 167)
-  , a (base + 168) ]
+  , a (base + 36) ]
 
 theorem preLimbsAt_length (base : Nat) (a : Assignment) :
-    (preLimbsAt base a).length = 169 := rfl
+    (preLimbsAt base a).length = 37 := rfl
 
 /-- Read the caveat manifest off a row at region base `base` (positional, 29 felts). -/
 def manifestAt (base : Nat) (a : Assignment) : RotCaveatManifest :=
@@ -288,70 +217,25 @@ def manifestAt (base : Nat) (a : Assignment) : RotCaveatManifest :=
 
 /-! ## §2 — the col-chained sites (position-independent; graduate to the probe's bytes). -/
 
-/-- The 57 chained absorption sites of a rotated block at `base` (v13): the 4-wide head, FIFTY-FIVE
-3-wide body groups (limbs 4..168 — the 165-limb body `[4..168]` is exactly fifty-five 3-wide groups, NO
-arity-2 leftover), then the iroot ALONE last onto the state-commit carrier. Chaining is by CARRIER
-COLUMNS (`.col`), which graduates to the SAME wire bytes as `.digest` chaining while keeping the group
-position-independent. Chain carriers ride `base + 171 .. base + 226` (56 carriers); the state-commit
-carrier is `base + 170`. -/
+/-- The 13 chained absorption sites of a rotated block at `base`: the 4-wide head, ELEVEN 3-wide body
+groups (limbs 4..36 — the 33-limb body `[4..36]` is exactly eleven 3-wide groups, NO arity-2 leftover),
+then the iroot ALONE last onto the state-commit carrier. Chaining is by CARRIER COLUMNS (`.col`), which
+graduates to the SAME wire bytes as `.digest` chaining while keeping the group position-independent.
+Chain carriers ride `base + 39 .. base + 50` (12 carriers); the state-commit carrier is `base + 38`. -/
 def rotV3SitesAt (base : Nat) : List VmHashSite :=
-  [ ⟨base + 171, [.col (base + 0), .col (base + 1), .col (base + 2), .col (base + 3)], 4⟩
-  , ⟨base + 172, [.col (base + 171), .col (base + 4), .col (base + 5), .col (base + 6)], 4⟩
-  , ⟨base + 173, [.col (base + 172), .col (base + 7), .col (base + 8), .col (base + 9)], 4⟩
-  , ⟨base + 174, [.col (base + 173), .col (base + 10), .col (base + 11), .col (base + 12)], 4⟩
-  , ⟨base + 175, [.col (base + 174), .col (base + 13), .col (base + 14), .col (base + 15)], 4⟩
-  , ⟨base + 176, [.col (base + 175), .col (base + 16), .col (base + 17), .col (base + 18)], 4⟩
-  , ⟨base + 177, [.col (base + 176), .col (base + 19), .col (base + 20), .col (base + 21)], 4⟩
-  , ⟨base + 178, [.col (base + 177), .col (base + 22), .col (base + 23), .col (base + 24)], 4⟩
-  , ⟨base + 179, [.col (base + 178), .col (base + 25), .col (base + 26), .col (base + 27)], 4⟩
-  , ⟨base + 180, [.col (base + 179), .col (base + 28), .col (base + 29), .col (base + 30)], 4⟩
-  , ⟨base + 181, [.col (base + 180), .col (base + 31), .col (base + 32), .col (base + 33)], 4⟩
-  , ⟨base + 182, [.col (base + 181), .col (base + 34), .col (base + 35), .col (base + 36)], 4⟩
-  , ⟨base + 183, [.col (base + 182), .col (base + 37), .col (base + 38), .col (base + 39)], 4⟩
-  , ⟨base + 184, [.col (base + 183), .col (base + 40), .col (base + 41), .col (base + 42)], 4⟩
-  , ⟨base + 185, [.col (base + 184), .col (base + 43), .col (base + 44), .col (base + 45)], 4⟩
-  , ⟨base + 186, [.col (base + 185), .col (base + 46), .col (base + 47), .col (base + 48)], 4⟩
-  , ⟨base + 187, [.col (base + 186), .col (base + 49), .col (base + 50), .col (base + 51)], 4⟩
-  , ⟨base + 188, [.col (base + 187), .col (base + 52), .col (base + 53), .col (base + 54)], 4⟩
-  , ⟨base + 189, [.col (base + 188), .col (base + 55), .col (base + 56), .col (base + 57)], 4⟩
-  , ⟨base + 190, [.col (base + 189), .col (base + 58), .col (base + 59), .col (base + 60)], 4⟩
-  , ⟨base + 191, [.col (base + 190), .col (base + 61), .col (base + 62), .col (base + 63)], 4⟩
-  , ⟨base + 192, [.col (base + 191), .col (base + 64), .col (base + 65), .col (base + 66)], 4⟩
-  , ⟨base + 193, [.col (base + 192), .col (base + 67), .col (base + 68), .col (base + 69)], 4⟩
-  , ⟨base + 194, [.col (base + 193), .col (base + 70), .col (base + 71), .col (base + 72)], 4⟩
-  , ⟨base + 195, [.col (base + 194), .col (base + 73), .col (base + 74), .col (base + 75)], 4⟩
-  , ⟨base + 196, [.col (base + 195), .col (base + 76), .col (base + 77), .col (base + 78)], 4⟩
-  , ⟨base + 197, [.col (base + 196), .col (base + 79), .col (base + 80), .col (base + 81)], 4⟩
-  , ⟨base + 198, [.col (base + 197), .col (base + 82), .col (base + 83), .col (base + 84)], 4⟩
-  , ⟨base + 199, [.col (base + 198), .col (base + 85), .col (base + 86), .col (base + 87)], 4⟩
-  , ⟨base + 200, [.col (base + 199), .col (base + 88), .col (base + 89), .col (base + 90)], 4⟩
-  , ⟨base + 201, [.col (base + 200), .col (base + 91), .col (base + 92), .col (base + 93)], 4⟩
-  , ⟨base + 202, [.col (base + 201), .col (base + 94), .col (base + 95), .col (base + 96)], 4⟩
-  , ⟨base + 203, [.col (base + 202), .col (base + 97), .col (base + 98), .col (base + 99)], 4⟩
-  , ⟨base + 204, [.col (base + 203), .col (base + 100), .col (base + 101), .col (base + 102)], 4⟩
-  , ⟨base + 205, [.col (base + 204), .col (base + 103), .col (base + 104), .col (base + 105)], 4⟩
-  , ⟨base + 206, [.col (base + 205), .col (base + 106), .col (base + 107), .col (base + 108)], 4⟩
-  , ⟨base + 207, [.col (base + 206), .col (base + 109), .col (base + 110), .col (base + 111)], 4⟩
-  , ⟨base + 208, [.col (base + 207), .col (base + 112), .col (base + 113), .col (base + 114)], 4⟩
-  , ⟨base + 209, [.col (base + 208), .col (base + 115), .col (base + 116), .col (base + 117)], 4⟩
-  , ⟨base + 210, [.col (base + 209), .col (base + 118), .col (base + 119), .col (base + 120)], 4⟩
-  , ⟨base + 211, [.col (base + 210), .col (base + 121), .col (base + 122), .col (base + 123)], 4⟩
-  , ⟨base + 212, [.col (base + 211), .col (base + 124), .col (base + 125), .col (base + 126)], 4⟩
-  , ⟨base + 213, [.col (base + 212), .col (base + 127), .col (base + 128), .col (base + 129)], 4⟩
-  , ⟨base + 214, [.col (base + 213), .col (base + 130), .col (base + 131), .col (base + 132)], 4⟩
-  , ⟨base + 215, [.col (base + 214), .col (base + 133), .col (base + 134), .col (base + 135)], 4⟩
-  , ⟨base + 216, [.col (base + 215), .col (base + 136), .col (base + 137), .col (base + 138)], 4⟩
-  , ⟨base + 217, [.col (base + 216), .col (base + 139), .col (base + 140), .col (base + 141)], 4⟩
-  , ⟨base + 218, [.col (base + 217), .col (base + 142), .col (base + 143), .col (base + 144)], 4⟩
-  , ⟨base + 219, [.col (base + 218), .col (base + 145), .col (base + 146), .col (base + 147)], 4⟩
-  , ⟨base + 220, [.col (base + 219), .col (base + 148), .col (base + 149), .col (base + 150)], 4⟩
-  , ⟨base + 221, [.col (base + 220), .col (base + 151), .col (base + 152), .col (base + 153)], 4⟩
-  , ⟨base + 222, [.col (base + 221), .col (base + 154), .col (base + 155), .col (base + 156)], 4⟩
-  , ⟨base + 223, [.col (base + 222), .col (base + 157), .col (base + 158), .col (base + 159)], 4⟩
-  , ⟨base + 224, [.col (base + 223), .col (base + 160), .col (base + 161), .col (base + 162)], 4⟩
-  , ⟨base + 225, [.col (base + 224), .col (base + 163), .col (base + 164), .col (base + 165)], 4⟩
-  , ⟨base + 226, [.col (base + 225), .col (base + 166), .col (base + 167), .col (base + 168)], 4⟩
-  , ⟨base + 170, [.col (base + 226), .col (base + 169)], 2⟩ ]
+  [ ⟨base + 39, [.col (base + 0), .col (base + 1), .col (base + 2), .col (base + 3)], 4⟩
+  , ⟨base + 40, [.col (base + 39), .col (base + 4), .col (base + 5), .col (base + 6)], 4⟩
+  , ⟨base + 41, [.col (base + 40), .col (base + 7), .col (base + 8), .col (base + 9)], 4⟩
+  , ⟨base + 42, [.col (base + 41), .col (base + 10), .col (base + 11), .col (base + 12)], 4⟩
+  , ⟨base + 43, [.col (base + 42), .col (base + 13), .col (base + 14), .col (base + 15)], 4⟩
+  , ⟨base + 44, [.col (base + 43), .col (base + 16), .col (base + 17), .col (base + 18)], 4⟩
+  , ⟨base + 45, [.col (base + 44), .col (base + 19), .col (base + 20), .col (base + 21)], 4⟩
+  , ⟨base + 46, [.col (base + 45), .col (base + 22), .col (base + 23), .col (base + 24)], 4⟩
+  , ⟨base + 47, [.col (base + 46), .col (base + 25), .col (base + 26), .col (base + 27)], 4⟩
+  , ⟨base + 48, [.col (base + 47), .col (base + 28), .col (base + 29), .col (base + 30)], 4⟩
+  , ⟨base + 49, [.col (base + 48), .col (base + 31), .col (base + 32), .col (base + 33)], 4⟩
+  , ⟨base + 50, [.col (base + 49), .col (base + 34), .col (base + 35), .col (base + 36)], 4⟩
+  , ⟨base + 38, [.col (base + 50), .col (base + 37)], 2⟩ ]
 
 /-- The 10 chained caveat sites at region base `base` (the `caveatSites` shape, positional):
 4-wide head over `[count, e0.tag, e0.dom, e0.key]`, eight (carrier+3) body groups, the
@@ -369,79 +253,36 @@ def caveatV3SitesAt (base : Nat) : List VmHashSite :=
   , ⟨base + 38, [.col (base + 37), .col (base + 28)], 2⟩ ]
 
 /-- The whole appendix site group for a descriptor of width `w`. The AFTER block rides at
-`w + B_SPAN` (= `w + 227`); the caveat region at `w + 2·B_SPAN` (= `w + 454`). -/
+`w + B_SPAN` (= `w + 51`); the caveat region at `w + 2·B_SPAN` (= `w + 102`). -/
 def rotV3Appendix (w : Nat) : List VmHashSite :=
-  rotV3SitesAt w ++ rotV3SitesAt (w + 227) ++ caveatV3SitesAt (w + 454)
+  rotV3SitesAt w ++ rotV3SitesAt (w + 51) ++ caveatV3SitesAt (w + 102)
 
 -- Arity discipline: every appendix site is arity 4 or 2 (the chip refuses 3) — checked at
 -- a concrete base; the literal arities are base-independent.
 #guard (rotV3Appendix 186).all fun s => s.arity == 4 || s.arity == 2
-#guard (rotV3Appendix 186).length == 124  -- 57 (before) + 57 (after) + 10 (caveat)
+#guard (rotV3Appendix 186).length == 36   -- 13 (before) + 13 (after) + 10 (caveat)
 
--- **THE BYTE-IDENTITY TRIPWIRE** (v10 67-limb shape): the col-chained 23-site block at base 0
+-- **THE BYTE-IDENTITY TRIPWIRE** (37-limb shape): the col-chained 13-site block at base 0
 -- graduates to the EXACT wire JSON of its DIGEST-chained twin (the running accumulator referenced
 -- as `.digest (k-1)` instead of `.col carrier`). `HashInput.toExpr` resolves `.digest k` to site
 -- `k`'s `digestCol`, which IS the chain-carrier column the col-chained form names, so the two emit
 -- byte-for-byte. This is the standalone analog of the old R=24-probe cross-check, at the deployed
--- 67-limb geometry (the R-register probe no longer matches the +30 faithful-8-felt completion limbs).
+-- 37-limb geometry (the R-register probe no longer matches the +commitments_root/disc/perms/vk/mode/
+-- fields-root shape).
 private def rotV3SitesDigestAt0 : List VmHashSite :=
-  [ ⟨171, [.col 0, .col 1, .col 2, .col 3], 4⟩
-  , ⟨172, [.digest 0, .col 4, .col 5, .col 6], 4⟩
-  , ⟨173, [.digest 1, .col 7, .col 8, .col 9], 4⟩
-  , ⟨174, [.digest 2, .col 10, .col 11, .col 12], 4⟩
-  , ⟨175, [.digest 3, .col 13, .col 14, .col 15], 4⟩
-  , ⟨176, [.digest 4, .col 16, .col 17, .col 18], 4⟩
-  , ⟨177, [.digest 5, .col 19, .col 20, .col 21], 4⟩
-  , ⟨178, [.digest 6, .col 22, .col 23, .col 24], 4⟩
-  , ⟨179, [.digest 7, .col 25, .col 26, .col 27], 4⟩
-  , ⟨180, [.digest 8, .col 28, .col 29, .col 30], 4⟩
-  , ⟨181, [.digest 9, .col 31, .col 32, .col 33], 4⟩
-  , ⟨182, [.digest 10, .col 34, .col 35, .col 36], 4⟩
-  , ⟨183, [.digest 11, .col 37, .col 38, .col 39], 4⟩
-  , ⟨184, [.digest 12, .col 40, .col 41, .col 42], 4⟩
-  , ⟨185, [.digest 13, .col 43, .col 44, .col 45], 4⟩
-  , ⟨186, [.digest 14, .col 46, .col 47, .col 48], 4⟩
-  , ⟨187, [.digest 15, .col 49, .col 50, .col 51], 4⟩
-  , ⟨188, [.digest 16, .col 52, .col 53, .col 54], 4⟩
-  , ⟨189, [.digest 17, .col 55, .col 56, .col 57], 4⟩
-  , ⟨190, [.digest 18, .col 58, .col 59, .col 60], 4⟩
-  , ⟨191, [.digest 19, .col 61, .col 62, .col 63], 4⟩
-  , ⟨192, [.digest 20, .col 64, .col 65, .col 66], 4⟩
-  , ⟨193, [.digest 21, .col 67, .col 68, .col 69], 4⟩
-  , ⟨194, [.digest 22, .col 70, .col 71, .col 72], 4⟩
-  , ⟨195, [.digest 23, .col 73, .col 74, .col 75], 4⟩
-  , ⟨196, [.digest 24, .col 76, .col 77, .col 78], 4⟩
-  , ⟨197, [.digest 25, .col 79, .col 80, .col 81], 4⟩
-  , ⟨198, [.digest 26, .col 82, .col 83, .col 84], 4⟩
-  , ⟨199, [.digest 27, .col 85, .col 86, .col 87], 4⟩
-  , ⟨200, [.digest 28, .col 88, .col 89, .col 90], 4⟩
-  , ⟨201, [.digest 29, .col 91, .col 92, .col 93], 4⟩
-  , ⟨202, [.digest 30, .col 94, .col 95, .col 96], 4⟩
-  , ⟨203, [.digest 31, .col 97, .col 98, .col 99], 4⟩
-  , ⟨204, [.digest 32, .col 100, .col 101, .col 102], 4⟩
-  , ⟨205, [.digest 33, .col 103, .col 104, .col 105], 4⟩
-  , ⟨206, [.digest 34, .col 106, .col 107, .col 108], 4⟩
-  , ⟨207, [.digest 35, .col 109, .col 110, .col 111], 4⟩
-  , ⟨208, [.digest 36, .col 112, .col 113, .col 114], 4⟩
-  , ⟨209, [.digest 37, .col 115, .col 116, .col 117], 4⟩
-  , ⟨210, [.digest 38, .col 118, .col 119, .col 120], 4⟩
-  , ⟨211, [.digest 39, .col 121, .col 122, .col 123], 4⟩
-  , ⟨212, [.digest 40, .col 124, .col 125, .col 126], 4⟩
-  , ⟨213, [.digest 41, .col 127, .col 128, .col 129], 4⟩
-  , ⟨214, [.digest 42, .col 130, .col 131, .col 132], 4⟩
-  , ⟨215, [.digest 43, .col 133, .col 134, .col 135], 4⟩
-  , ⟨216, [.digest 44, .col 136, .col 137, .col 138], 4⟩
-  , ⟨217, [.digest 45, .col 139, .col 140, .col 141], 4⟩
-  , ⟨218, [.digest 46, .col 142, .col 143, .col 144], 4⟩
-  , ⟨219, [.digest 47, .col 145, .col 146, .col 147], 4⟩
-  , ⟨220, [.digest 48, .col 148, .col 149, .col 150], 4⟩
-  , ⟨221, [.digest 49, .col 151, .col 152, .col 153], 4⟩
-  , ⟨222, [.digest 50, .col 154, .col 155, .col 156], 4⟩
-  , ⟨223, [.digest 51, .col 157, .col 158, .col 159], 4⟩
-  , ⟨224, [.digest 52, .col 160, .col 161, .col 162], 4⟩
-  , ⟨225, [.digest 53, .col 163, .col 164, .col 165], 4⟩
-  , ⟨226, [.digest 54, .col 166, .col 167, .col 168], 4⟩
-  , ⟨170, [.digest 55, .col 169], 2⟩ ]
+  [ ⟨39, [.col 0, .col 1, .col 2, .col 3], 4⟩
+  , ⟨40, [.digest 0, .col 4, .col 5, .col 6], 4⟩
+  , ⟨41, [.digest 1, .col 7, .col 8, .col 9], 4⟩
+  , ⟨42, [.digest 2, .col 10, .col 11, .col 12], 4⟩
+  , ⟨43, [.digest 3, .col 13, .col 14, .col 15], 4⟩
+  , ⟨44, [.digest 4, .col 16, .col 17, .col 18], 4⟩
+  , ⟨45, [.digest 5, .col 19, .col 20, .col 21], 4⟩
+  , ⟨46, [.digest 6, .col 22, .col 23, .col 24], 4⟩
+  , ⟨47, [.digest 7, .col 25, .col 26, .col 27], 4⟩
+  , ⟨48, [.digest 8, .col 28, .col 29, .col 30], 4⟩
+  , ⟨49, [.digest 9, .col 31, .col 32, .col 33], 4⟩
+  , ⟨50, [.digest 10, .col 34, .col 35, .col 36], 4⟩
+  , ⟨38, [.digest 11, .col 37], 2⟩ ]
 
 #guard emitVmJson2 (graduateV1
     { name := "dregg-effectvm-rotation-v3-commitments-tripwire"
@@ -520,9 +361,9 @@ def weldsAtNoCapRoot (base stateBase : Nat) : List VmConstraint :=
 rotated OLD commit (first row) · rotated NEW commit · rotated height · caveat commit (last). -/
 def rotPins (w piBase : Nat) : List VmConstraint :=
   [ .piBinding .first (w + B_STATE_COMMIT) piBase
-  , .piBinding .last (w + 227 + B_STATE_COMMIT) (piBase + 1)
-  , .piBinding .last (w + 227 + B_COMMITTED_HEIGHT) (piBase + 2)
-  , .piBinding .last (w + 454 + C_COMMIT) (piBase + 3) ]
+  , .piBinding .last (w + 51 + B_STATE_COMMIT) (piBase + 1)
+  , .piBinding .last (w + 51 + B_COMMITTED_HEIGHT) (piBase + 2)
+  , .piBinding .last (w + 102 + C_COMMIT) (piBase + 3) ]
 
 /-- **`rotateV3`** — the ONE parametric regen: append the rotated BEFORE/AFTER blocks and
 the caveat region past the descriptor's own layout; weld where the v1 block carries the
@@ -535,7 +376,7 @@ def rotateV3 (d : EffectVmDescriptor) : EffectVmDescriptor :=
   , piCount     := d.piCount + 4
   , constraints := d.constraints
       ++ (weldsAt d.traceWidth STATE_BEFORE_BASE
-          ++ weldsAt (d.traceWidth + 227) STATE_AFTER_BASE
+          ++ weldsAt (d.traceWidth + 51) STATE_AFTER_BASE
           ++ rotPins d.traceWidth d.piCount)
   , hashSites   := d.hashSites ++ rotV3Appendix d.traceWidth
   , ranges      := d.ranges }
@@ -553,7 +394,7 @@ def rotateV3CapWrite (d : EffectVmDescriptor) : EffectVmDescriptor :=
   , piCount     := d.piCount + 4
   , constraints := d.constraints
       ++ (weldsAtNoCapRoot d.traceWidth STATE_BEFORE_BASE
-          ++ weldsAtNoCapRoot (d.traceWidth + 227) STATE_AFTER_BASE
+          ++ weldsAtNoCapRoot (d.traceWidth + 51) STATE_AFTER_BASE
           ++ rotPins d.traceWidth d.piCount)
   , hashSites   := d.hashSites ++ rotV3Appendix d.traceWidth
   , ranges      := d.ranges }
@@ -626,7 +467,7 @@ theorem go_append_left (hash : List ℤ → ℤ) (env : VmRowEnv) :
 theorem rotV3SitesAt_colOnly (base : Nat) : ∀ s ∈ rotV3SitesAt base, colOnly s = true := by
   intro s hs
   simp only [rotV3SitesAt, List.mem_cons, List.not_mem_nil, or_false] at hs
-  rcases hs with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
+  rcases hs with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 /-- Every caveat site is col-only (10 literal cases). -/
 theorem caveatV3SitesAt_colOnly (base : Nat) :
@@ -636,297 +477,77 @@ theorem caveatV3SitesAt_colOnly (base : Nat) :
   rcases hs with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
 set_option maxHeartbeats 6400000 in
-/-- **The block pin, parametric in `base`** (v13): the fifty-seven col-chained site equations compose
-into the chained rotated commitment — the row's state-commit carrier at `base + 170` IS
-`wireCommitR` of the row's OWN 169 limbs and iroot (the fields-octet completion shape). -/
+/-- **The block pin, parametric in `base`**: the thirteen col-chained site equations compose
+into the chained rotated commitment — the row's state-commit carrier at `base + 38` IS
+`wireCommitR` of the row's OWN 37 limbs and iroot (the mode/fields-root flag-day shape). -/
 theorem rotV3SitesAt_pin (hash : List ℤ → ℤ) (env : VmRowEnv) (base : Nat)
     (h : ∀ s ∈ rotV3SitesAt base, env.loc s.digestCol = hash (s.resolvedInputs env [])) :
-    env.loc (base + 170)
-      = wireCommitR hash (preLimbsAt base env.loc) (env.loc (base + 169)) := by
-  have h0 : env.loc (base + 171) = hash [env.loc (base + 0), env.loc (base + 1),
+    env.loc (base + 38)
+      = wireCommitR hash (preLimbsAt base env.loc) (env.loc (base + 37)) := by
+  have h0 : env.loc (base + 39) = hash [env.loc (base + 0), env.loc (base + 1),
       env.loc (base + 2), env.loc (base + 3)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 171, [.col (base + 0), .col (base + 1), .col (base + 2), .col (base + 3)], 4⟩
+      h ⟨base + 39, [.col (base + 0), .col (base + 1), .col (base + 2), .col (base + 3)], 4⟩
         (by simp [rotV3SitesAt])
-  have h1 : env.loc (base + 172) = hash [env.loc (base + 171), env.loc (base + 4),
+  have h1 : env.loc (base + 40) = hash [env.loc (base + 39), env.loc (base + 4),
       env.loc (base + 5), env.loc (base + 6)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 172, [.col (base + 171), .col (base + 4), .col (base + 5),
-        .col (base + 6)], 4⟩ (by simp [rotV3SitesAt])
-  have h2 : env.loc (base + 173) = hash [env.loc (base + 172), env.loc (base + 7),
+      h ⟨base + 40, [.col (base + 39), .col (base + 4), .col (base + 5), .col (base + 6)], 4⟩
+        (by simp [rotV3SitesAt])
+  have h2 : env.loc (base + 41) = hash [env.loc (base + 40), env.loc (base + 7),
       env.loc (base + 8), env.loc (base + 9)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 173, [.col (base + 172), .col (base + 7), .col (base + 8),
-        .col (base + 9)], 4⟩ (by simp [rotV3SitesAt])
-  have h3 : env.loc (base + 174) = hash [env.loc (base + 173), env.loc (base + 10),
+      h ⟨base + 41, [.col (base + 40), .col (base + 7), .col (base + 8), .col (base + 9)], 4⟩
+        (by simp [rotV3SitesAt])
+  have h3 : env.loc (base + 42) = hash [env.loc (base + 41), env.loc (base + 10),
       env.loc (base + 11), env.loc (base + 12)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 174, [.col (base + 173), .col (base + 10), .col (base + 11),
+      h ⟨base + 42, [.col (base + 41), .col (base + 10), .col (base + 11),
         .col (base + 12)], 4⟩ (by simp [rotV3SitesAt])
-  have h4 : env.loc (base + 175) = hash [env.loc (base + 174), env.loc (base + 13),
+  have h4 : env.loc (base + 43) = hash [env.loc (base + 42), env.loc (base + 13),
       env.loc (base + 14), env.loc (base + 15)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 175, [.col (base + 174), .col (base + 13), .col (base + 14),
+      h ⟨base + 43, [.col (base + 42), .col (base + 13), .col (base + 14),
         .col (base + 15)], 4⟩ (by simp [rotV3SitesAt])
-  have h5 : env.loc (base + 176) = hash [env.loc (base + 175), env.loc (base + 16),
+  have h5 : env.loc (base + 44) = hash [env.loc (base + 43), env.loc (base + 16),
       env.loc (base + 17), env.loc (base + 18)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 176, [.col (base + 175), .col (base + 16), .col (base + 17),
+      h ⟨base + 44, [.col (base + 43), .col (base + 16), .col (base + 17),
         .col (base + 18)], 4⟩ (by simp [rotV3SitesAt])
-  have h6 : env.loc (base + 177) = hash [env.loc (base + 176), env.loc (base + 19),
+  have h6 : env.loc (base + 45) = hash [env.loc (base + 44), env.loc (base + 19),
       env.loc (base + 20), env.loc (base + 21)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 177, [.col (base + 176), .col (base + 19), .col (base + 20),
+      h ⟨base + 45, [.col (base + 44), .col (base + 19), .col (base + 20),
         .col (base + 21)], 4⟩ (by simp [rotV3SitesAt])
-  have h7 : env.loc (base + 178) = hash [env.loc (base + 177), env.loc (base + 22),
+  have h7 : env.loc (base + 46) = hash [env.loc (base + 45), env.loc (base + 22),
       env.loc (base + 23), env.loc (base + 24)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 178, [.col (base + 177), .col (base + 22), .col (base + 23),
+      h ⟨base + 46, [.col (base + 45), .col (base + 22), .col (base + 23),
         .col (base + 24)], 4⟩ (by simp [rotV3SitesAt])
-  have h8 : env.loc (base + 179) = hash [env.loc (base + 178), env.loc (base + 25),
+  have h8 : env.loc (base + 47) = hash [env.loc (base + 46), env.loc (base + 25),
       env.loc (base + 26), env.loc (base + 27)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 179, [.col (base + 178), .col (base + 25), .col (base + 26),
+      h ⟨base + 47, [.col (base + 46), .col (base + 25), .col (base + 26),
         .col (base + 27)], 4⟩ (by simp [rotV3SitesAt])
-  have h9 : env.loc (base + 180) = hash [env.loc (base + 179), env.loc (base + 28),
+  have h9 : env.loc (base + 48) = hash [env.loc (base + 47), env.loc (base + 28),
       env.loc (base + 29), env.loc (base + 30)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 180, [.col (base + 179), .col (base + 28), .col (base + 29),
+      h ⟨base + 48, [.col (base + 47), .col (base + 28), .col (base + 29),
         .col (base + 30)], 4⟩ (by simp [rotV3SitesAt])
-  have h10 : env.loc (base + 181) = hash [env.loc (base + 180), env.loc (base + 31),
+  have h10 : env.loc (base + 49) = hash [env.loc (base + 48), env.loc (base + 31),
       env.loc (base + 32), env.loc (base + 33)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 181, [.col (base + 180), .col (base + 31), .col (base + 32),
+      h ⟨base + 49, [.col (base + 48), .col (base + 31), .col (base + 32),
         .col (base + 33)], 4⟩ (by simp [rotV3SitesAt])
-  have h11 : env.loc (base + 182) = hash [env.loc (base + 181), env.loc (base + 34),
+  have h11 : env.loc (base + 50) = hash [env.loc (base + 49), env.loc (base + 34),
       env.loc (base + 35), env.loc (base + 36)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 182, [.col (base + 181), .col (base + 34), .col (base + 35),
+      h ⟨base + 50, [.col (base + 49), .col (base + 34), .col (base + 35),
         .col (base + 36)], 4⟩ (by simp [rotV3SitesAt])
-  have h12 : env.loc (base + 183) = hash [env.loc (base + 182), env.loc (base + 37),
-      env.loc (base + 38), env.loc (base + 39)] := by
+  have h12 : env.loc (base + 38) = hash [env.loc (base + 50), env.loc (base + 37)] := by
     simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 183, [.col (base + 182), .col (base + 37), .col (base + 38),
-        .col (base + 39)], 4⟩ (by simp [rotV3SitesAt])
-  have h13 : env.loc (base + 184) = hash [env.loc (base + 183), env.loc (base + 40),
-      env.loc (base + 41), env.loc (base + 42)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 184, [.col (base + 183), .col (base + 40), .col (base + 41),
-        .col (base + 42)], 4⟩ (by simp [rotV3SitesAt])
-  have h14 : env.loc (base + 185) = hash [env.loc (base + 184), env.loc (base + 43),
-      env.loc (base + 44), env.loc (base + 45)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 185, [.col (base + 184), .col (base + 43), .col (base + 44),
-        .col (base + 45)], 4⟩ (by simp [rotV3SitesAt])
-  have h15 : env.loc (base + 186) = hash [env.loc (base + 185), env.loc (base + 46),
-      env.loc (base + 47), env.loc (base + 48)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 186, [.col (base + 185), .col (base + 46), .col (base + 47),
-        .col (base + 48)], 4⟩ (by simp [rotV3SitesAt])
-  have h16 : env.loc (base + 187) = hash [env.loc (base + 186), env.loc (base + 49),
-      env.loc (base + 50), env.loc (base + 51)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 187, [.col (base + 186), .col (base + 49), .col (base + 50),
-        .col (base + 51)], 4⟩ (by simp [rotV3SitesAt])
-  have h17 : env.loc (base + 188) = hash [env.loc (base + 187), env.loc (base + 52),
-      env.loc (base + 53), env.loc (base + 54)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 188, [.col (base + 187), .col (base + 52), .col (base + 53),
-        .col (base + 54)], 4⟩ (by simp [rotV3SitesAt])
-  have h18 : env.loc (base + 189) = hash [env.loc (base + 188), env.loc (base + 55),
-      env.loc (base + 56), env.loc (base + 57)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 189, [.col (base + 188), .col (base + 55), .col (base + 56),
-        .col (base + 57)], 4⟩ (by simp [rotV3SitesAt])
-  have h19 : env.loc (base + 190) = hash [env.loc (base + 189), env.loc (base + 58),
-      env.loc (base + 59), env.loc (base + 60)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 190, [.col (base + 189), .col (base + 58), .col (base + 59),
-        .col (base + 60)], 4⟩ (by simp [rotV3SitesAt])
-  have h20 : env.loc (base + 191) = hash [env.loc (base + 190), env.loc (base + 61),
-      env.loc (base + 62), env.loc (base + 63)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 191, [.col (base + 190), .col (base + 61), .col (base + 62),
-        .col (base + 63)], 4⟩ (by simp [rotV3SitesAt])
-  have h21 : env.loc (base + 192) = hash [env.loc (base + 191), env.loc (base + 64),
-      env.loc (base + 65), env.loc (base + 66)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 192, [.col (base + 191), .col (base + 64), .col (base + 65),
-        .col (base + 66)], 4⟩ (by simp [rotV3SitesAt])
-  have h22 : env.loc (base + 193) = hash [env.loc (base + 192), env.loc (base + 67),
-      env.loc (base + 68), env.loc (base + 69)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 193, [.col (base + 192), .col (base + 67), .col (base + 68),
-        .col (base + 69)], 4⟩ (by simp [rotV3SitesAt])
-  have h23 : env.loc (base + 194) = hash [env.loc (base + 193), env.loc (base + 70),
-      env.loc (base + 71), env.loc (base + 72)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 194, [.col (base + 193), .col (base + 70), .col (base + 71),
-        .col (base + 72)], 4⟩ (by simp [rotV3SitesAt])
-  have h24 : env.loc (base + 195) = hash [env.loc (base + 194), env.loc (base + 73),
-      env.loc (base + 74), env.loc (base + 75)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 195, [.col (base + 194), .col (base + 73), .col (base + 74),
-        .col (base + 75)], 4⟩ (by simp [rotV3SitesAt])
-  have h25 : env.loc (base + 196) = hash [env.loc (base + 195), env.loc (base + 76),
-      env.loc (base + 77), env.loc (base + 78)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 196, [.col (base + 195), .col (base + 76), .col (base + 77),
-        .col (base + 78)], 4⟩ (by simp [rotV3SitesAt])
-  have h26 : env.loc (base + 197) = hash [env.loc (base + 196), env.loc (base + 79),
-      env.loc (base + 80), env.loc (base + 81)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 197, [.col (base + 196), .col (base + 79), .col (base + 80),
-        .col (base + 81)], 4⟩ (by simp [rotV3SitesAt])
-  have h27 : env.loc (base + 198) = hash [env.loc (base + 197), env.loc (base + 82),
-      env.loc (base + 83), env.loc (base + 84)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 198, [.col (base + 197), .col (base + 82), .col (base + 83),
-        .col (base + 84)], 4⟩ (by simp [rotV3SitesAt])
-  have h28 : env.loc (base + 199) = hash [env.loc (base + 198), env.loc (base + 85),
-      env.loc (base + 86), env.loc (base + 87)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 199, [.col (base + 198), .col (base + 85), .col (base + 86),
-        .col (base + 87)], 4⟩ (by simp [rotV3SitesAt])
-  have h29 : env.loc (base + 200) = hash [env.loc (base + 199), env.loc (base + 88),
-      env.loc (base + 89), env.loc (base + 90)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 200, [.col (base + 199), .col (base + 88), .col (base + 89),
-        .col (base + 90)], 4⟩ (by simp [rotV3SitesAt])
-  have h30 : env.loc (base + 201) = hash [env.loc (base + 200), env.loc (base + 91),
-      env.loc (base + 92), env.loc (base + 93)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 201, [.col (base + 200), .col (base + 91), .col (base + 92),
-        .col (base + 93)], 4⟩ (by simp [rotV3SitesAt])
-  have h31 : env.loc (base + 202) = hash [env.loc (base + 201), env.loc (base + 94),
-      env.loc (base + 95), env.loc (base + 96)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 202, [.col (base + 201), .col (base + 94), .col (base + 95),
-        .col (base + 96)], 4⟩ (by simp [rotV3SitesAt])
-  have h32 : env.loc (base + 203) = hash [env.loc (base + 202), env.loc (base + 97),
-      env.loc (base + 98), env.loc (base + 99)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 203, [.col (base + 202), .col (base + 97), .col (base + 98),
-        .col (base + 99)], 4⟩ (by simp [rotV3SitesAt])
-  have h33 : env.loc (base + 204) = hash [env.loc (base + 203), env.loc (base + 100),
-      env.loc (base + 101), env.loc (base + 102)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 204, [.col (base + 203), .col (base + 100), .col (base + 101),
-        .col (base + 102)], 4⟩ (by simp [rotV3SitesAt])
-  have h34 : env.loc (base + 205) = hash [env.loc (base + 204), env.loc (base + 103),
-      env.loc (base + 104), env.loc (base + 105)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 205, [.col (base + 204), .col (base + 103), .col (base + 104),
-        .col (base + 105)], 4⟩ (by simp [rotV3SitesAt])
-  have h35 : env.loc (base + 206) = hash [env.loc (base + 205), env.loc (base + 106),
-      env.loc (base + 107), env.loc (base + 108)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 206, [.col (base + 205), .col (base + 106), .col (base + 107),
-        .col (base + 108)], 4⟩ (by simp [rotV3SitesAt])
-  have h36 : env.loc (base + 207) = hash [env.loc (base + 206), env.loc (base + 109),
-      env.loc (base + 110), env.loc (base + 111)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 207, [.col (base + 206), .col (base + 109), .col (base + 110),
-        .col (base + 111)], 4⟩ (by simp [rotV3SitesAt])
-  have h37 : env.loc (base + 208) = hash [env.loc (base + 207), env.loc (base + 112),
-      env.loc (base + 113), env.loc (base + 114)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 208, [.col (base + 207), .col (base + 112), .col (base + 113),
-        .col (base + 114)], 4⟩ (by simp [rotV3SitesAt])
-  have h38 : env.loc (base + 209) = hash [env.loc (base + 208), env.loc (base + 115),
-      env.loc (base + 116), env.loc (base + 117)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 209, [.col (base + 208), .col (base + 115), .col (base + 116),
-        .col (base + 117)], 4⟩ (by simp [rotV3SitesAt])
-  have h39 : env.loc (base + 210) = hash [env.loc (base + 209), env.loc (base + 118),
-      env.loc (base + 119), env.loc (base + 120)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 210, [.col (base + 209), .col (base + 118), .col (base + 119),
-        .col (base + 120)], 4⟩ (by simp [rotV3SitesAt])
-  have h40 : env.loc (base + 211) = hash [env.loc (base + 210), env.loc (base + 121),
-      env.loc (base + 122), env.loc (base + 123)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 211, [.col (base + 210), .col (base + 121), .col (base + 122),
-        .col (base + 123)], 4⟩ (by simp [rotV3SitesAt])
-  have h41 : env.loc (base + 212) = hash [env.loc (base + 211), env.loc (base + 124),
-      env.loc (base + 125), env.loc (base + 126)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 212, [.col (base + 211), .col (base + 124), .col (base + 125),
-        .col (base + 126)], 4⟩ (by simp [rotV3SitesAt])
-  have h42 : env.loc (base + 213) = hash [env.loc (base + 212), env.loc (base + 127),
-      env.loc (base + 128), env.loc (base + 129)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 213, [.col (base + 212), .col (base + 127), .col (base + 128),
-        .col (base + 129)], 4⟩ (by simp [rotV3SitesAt])
-  have h43 : env.loc (base + 214) = hash [env.loc (base + 213), env.loc (base + 130),
-      env.loc (base + 131), env.loc (base + 132)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 214, [.col (base + 213), .col (base + 130), .col (base + 131),
-        .col (base + 132)], 4⟩ (by simp [rotV3SitesAt])
-  have h44 : env.loc (base + 215) = hash [env.loc (base + 214), env.loc (base + 133),
-      env.loc (base + 134), env.loc (base + 135)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 215, [.col (base + 214), .col (base + 133), .col (base + 134),
-        .col (base + 135)], 4⟩ (by simp [rotV3SitesAt])
-  have h45 : env.loc (base + 216) = hash [env.loc (base + 215), env.loc (base + 136),
-      env.loc (base + 137), env.loc (base + 138)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 216, [.col (base + 215), .col (base + 136), .col (base + 137),
-        .col (base + 138)], 4⟩ (by simp [rotV3SitesAt])
-  have h46 : env.loc (base + 217) = hash [env.loc (base + 216), env.loc (base + 139),
-      env.loc (base + 140), env.loc (base + 141)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 217, [.col (base + 216), .col (base + 139), .col (base + 140),
-        .col (base + 141)], 4⟩ (by simp [rotV3SitesAt])
-  have h47 : env.loc (base + 218) = hash [env.loc (base + 217), env.loc (base + 142),
-      env.loc (base + 143), env.loc (base + 144)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 218, [.col (base + 217), .col (base + 142), .col (base + 143),
-        .col (base + 144)], 4⟩ (by simp [rotV3SitesAt])
-  have h48 : env.loc (base + 219) = hash [env.loc (base + 218), env.loc (base + 145),
-      env.loc (base + 146), env.loc (base + 147)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 219, [.col (base + 218), .col (base + 145), .col (base + 146),
-        .col (base + 147)], 4⟩ (by simp [rotV3SitesAt])
-  have h49 : env.loc (base + 220) = hash [env.loc (base + 219), env.loc (base + 148),
-      env.loc (base + 149), env.loc (base + 150)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 220, [.col (base + 219), .col (base + 148), .col (base + 149),
-        .col (base + 150)], 4⟩ (by simp [rotV3SitesAt])
-  have h50 : env.loc (base + 221) = hash [env.loc (base + 220), env.loc (base + 151),
-      env.loc (base + 152), env.loc (base + 153)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 221, [.col (base + 220), .col (base + 151), .col (base + 152),
-        .col (base + 153)], 4⟩ (by simp [rotV3SitesAt])
-  have h51 : env.loc (base + 222) = hash [env.loc (base + 221), env.loc (base + 154),
-      env.loc (base + 155), env.loc (base + 156)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 222, [.col (base + 221), .col (base + 154), .col (base + 155),
-        .col (base + 156)], 4⟩ (by simp [rotV3SitesAt])
-  have h52 : env.loc (base + 223) = hash [env.loc (base + 222), env.loc (base + 157),
-      env.loc (base + 158), env.loc (base + 159)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 223, [.col (base + 222), .col (base + 157), .col (base + 158),
-        .col (base + 159)], 4⟩ (by simp [rotV3SitesAt])
-  have h53 : env.loc (base + 224) = hash [env.loc (base + 223), env.loc (base + 160),
-      env.loc (base + 161), env.loc (base + 162)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 224, [.col (base + 223), .col (base + 160), .col (base + 161),
-        .col (base + 162)], 4⟩ (by simp [rotV3SitesAt])
-  have h54 : env.loc (base + 225) = hash [env.loc (base + 224), env.loc (base + 163),
-      env.loc (base + 164), env.loc (base + 165)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 225, [.col (base + 224), .col (base + 163), .col (base + 164),
-        .col (base + 165)], 4⟩ (by simp [rotV3SitesAt])
-  have h55 : env.loc (base + 226) = hash [env.loc (base + 225), env.loc (base + 166),
-      env.loc (base + 167), env.loc (base + 168)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 226, [.col (base + 225), .col (base + 166), .col (base + 167),
-        .col (base + 168)], 4⟩ (by simp [rotV3SitesAt])
-  have h56 : env.loc (base + 170) = hash [env.loc (base + 226), env.loc (base + 169)] := by
-    simpa [VmHashSite.resolvedInputs, HashInput.resolve] using
-      h ⟨base + 170, [.col (base + 226), .col (base + 169)], 2⟩ (by simp [rotV3SitesAt])
-  rw [h56, h55, h54, h53, h52, h51, h50, h49, h48, h47, h46, h45, h44, h43, h42, h41, h40, h39, h38, h37, h36, h35, h34, h33, h32, h31, h30, h29, h28, h27, h26, h25, h24, h23, h22, h21, h20, h19, h18, h17, h16, h15, h14, h13, h12, h11, h10, h9, h8, h7, h6, h5, h4, h3, h2, h1, h0]
+      h ⟨base + 38, [.col (base + 50), .col (base + 37)], 2⟩ (by simp [rotV3SitesAt])
+  rw [h12, h11, h10, h9, h8, h7, h6, h5, h4, h3, h2, h1, h0]
   rfl
 
 set_option maxHeartbeats 6400000 in
@@ -1007,13 +628,13 @@ commitment of the row's OWN limbs. -/
 theorem rotateV3_pins_commits (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
     (env : VmRowEnv) (isFirst isLast : Bool)
     (h : satisfiedVm hash (rotateV3 d) env isFirst isLast) :
-    env.loc (d.traceWidth + 170)
-      = wireCommitR hash (preLimbsAt d.traceWidth env.loc) (env.loc (d.traceWidth + 169))
-    ∧ env.loc (d.traceWidth + 227 + 170)
-      = wireCommitR hash (preLimbsAt (d.traceWidth + 227) env.loc)
-          (env.loc (d.traceWidth + 227 + 169))
-    ∧ env.loc (d.traceWidth + 454 + 38)
-      = caveatCommit hash (manifestAt (d.traceWidth + 454) env.loc) := by
+    env.loc (d.traceWidth + 38)
+      = wireCommitR hash (preLimbsAt d.traceWidth env.loc) (env.loc (d.traceWidth + 37))
+    ∧ env.loc (d.traceWidth + 51 + 38)
+      = wireCommitR hash (preLimbsAt (d.traceWidth + 51) env.loc)
+          (env.loc (d.traceWidth + 51 + 37))
+    ∧ env.loc (d.traceWidth + 102 + 38)
+      = caveatCommit hash (manifestAt (d.traceWidth + 102) env.loc) := by
   have hsites := h.2.1
   have heq := go_colOnly_mem hash env [] _ hsites
   have hmem : ∀ s ∈ rotV3Appendix d.traceWidth, s ∈ (rotateV3 d).hashSites :=
@@ -1022,10 +643,10 @@ theorem rotateV3_pins_commits (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
   · exact rotV3SitesAt_pin hash env d.traceWidth fun s hs =>
       heq s (hmem s (List.mem_append_left _ (List.mem_append_left _ hs)))
         (rotV3SitesAt_colOnly _ s hs)
-  · exact rotV3SitesAt_pin hash env (d.traceWidth + 227) fun s hs =>
+  · exact rotV3SitesAt_pin hash env (d.traceWidth + 51) fun s hs =>
       heq s (hmem s (List.mem_append_left _ (List.mem_append_right _ hs)))
         (rotV3SitesAt_colOnly _ s hs)
-  · exact caveatV3SitesAt_pin hash env (d.traceWidth + 454) fun s hs =>
+  · exact caveatV3SitesAt_pin hash env (d.traceWidth + 102) fun s hs =>
       heq s (hmem s (List.mem_append_right _ hs)) (caveatV3SitesAt_colOnly _ s hs)
 
 /-- A weld of the rotated descriptor holds on every satisfying TRANSITION row (`isLast = false`).
@@ -1036,7 +657,7 @@ theorem rotateV3_weld (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
     (h : satisfiedVm hash (rotateV3 d) env isFirst isLast)
     {a b : Nat}
     (hw : colEq a b ∈ weldsAt d.traceWidth STATE_BEFORE_BASE
-        ∨ colEq a b ∈ weldsAt (d.traceWidth + 227) STATE_AFTER_BASE) :
+        ∨ colEq a b ∈ weldsAt (d.traceWidth + 51) STATE_AFTER_BASE) :
     env.loc a = env.loc b := by
   have hc := h.1 (colEq a b) (List.mem_append_right _ (by
     rcases hw with hw | hw
@@ -1053,9 +674,9 @@ theorem rotateV3_welds_named (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
     env.loc (d.traceWidth + 1) = env.loc (sbCol state.BALANCE_LO)
     ∧ env.loc (d.traceWidth + 2) = env.loc (sbCol state.NONCE)
     ∧ env.loc (d.traceWidth + B_CAP_ROOT) = env.loc (sbCol state.CAP_ROOT)
-    ∧ env.loc (d.traceWidth + 227 + 1) = env.loc (saCol state.BALANCE_LO)
-    ∧ env.loc (d.traceWidth + 227 + 2) = env.loc (saCol state.NONCE)
-    ∧ env.loc (d.traceWidth + 227 + B_CAP_ROOT) = env.loc (saCol state.CAP_ROOT) := by
+    ∧ env.loc (d.traceWidth + 51 + 1) = env.loc (saCol state.BALANCE_LO)
+    ∧ env.loc (d.traceWidth + 51 + 2) = env.loc (saCol state.NONCE)
+    ∧ env.loc (d.traceWidth + 51 + B_CAP_ROOT) = env.loc (saCol state.CAP_ROOT) := by
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · exact rotateV3_weld hash d env isFirst isLast hlast h (Or.inl (by simp [weldsAt, sbCol]))
   · exact rotateV3_weld hash d env isFirst isLast hlast h (Or.inl (by simp [weldsAt, sbCol]))
@@ -1134,7 +755,7 @@ theorem graduable_rotateV3 {d : EffectVmDescriptor} (h : graduable d = true) :
     rcases List.mem_append.mp hs with hs' | hs'
     · rcases List.mem_append.mp hs' with hs'' | hs'' <;>
       · simp only [rotV3SitesAt, List.mem_cons, List.not_mem_nil, or_false] at hs''
-        rcases hs'' with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
+        rcases hs'' with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
     · simp only [caveatV3SitesAt, List.mem_cons, List.not_mem_nil, or_false] at hs'
       rcases hs' with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
 
@@ -1168,14 +789,14 @@ theorem rotV3_pins (permOut : List ℤ → List ℤ) (hash : List ℤ → ℤ) (
     (hgrad : graduable d = true)
     (hf : Satisfied2Faithful permOut hash (v3Of d) minit mfin maddrs t)
     (i : Nat) (hi : i < t.rows.length) :
-    (envAt t i).loc (d.traceWidth + 170)
+    (envAt t i).loc (d.traceWidth + 38)
       = wireCommitR hash (preLimbsAt d.traceWidth (envAt t i).loc)
-          ((envAt t i).loc (d.traceWidth + 169))
-    ∧ (envAt t i).loc (d.traceWidth + 227 + 170)
-      = wireCommitR hash (preLimbsAt (d.traceWidth + 227) (envAt t i).loc)
-          ((envAt t i).loc (d.traceWidth + 227 + 169))
-    ∧ (envAt t i).loc (d.traceWidth + 454 + 38)
-      = caveatCommit hash (manifestAt (d.traceWidth + 454) (envAt t i).loc) :=
+          ((envAt t i).loc (d.traceWidth + 37))
+    ∧ (envAt t i).loc (d.traceWidth + 51 + 38)
+      = wireCommitR hash (preLimbsAt (d.traceWidth + 51) (envAt t i).loc)
+          ((envAt t i).loc (d.traceWidth + 51 + 37))
+    ∧ (envAt t i).loc (d.traceWidth + 102 + 38)
+      = caveatCommit hash (manifestAt (d.traceWidth + 102) (envAt t i).loc) :=
   rotateV3_pins_commits hash d _ _ _
     (satisfied2Faithful_satisfiedVm permOut hash (rotateV3 d) minit mfin maddrs t
       (graduable_rotateV3 hgrad) hf i hi)
@@ -1190,21 +811,21 @@ theorem rotV3_publishes (permOut : List ℤ → List ℤ) (hash : List ℤ → �
     ((i == 0) = true →
       (envAt t i).loc (d.traceWidth + B_STATE_COMMIT) = (envAt t i).pub d.piCount)
     ∧ ((i + 1 == t.rows.length) = true →
-      (envAt t i).loc (d.traceWidth + 227 + B_STATE_COMMIT) = (envAt t i).pub (d.piCount + 1)
-      ∧ (envAt t i).loc (d.traceWidth + 227 + B_COMMITTED_HEIGHT)
+      (envAt t i).loc (d.traceWidth + 51 + B_STATE_COMMIT) = (envAt t i).pub (d.piCount + 1)
+      ∧ (envAt t i).loc (d.traceWidth + 51 + B_COMMITTED_HEIGHT)
           = (envAt t i).pub (d.piCount + 2)
-      ∧ (envAt t i).loc (d.traceWidth + 454 + C_COMMIT) = (envAt t i).pub (d.piCount + 3)) := by
+      ∧ (envAt t i).loc (d.traceWidth + 102 + C_COMMIT) = (envAt t i).pub (d.piCount + 3)) := by
   have h := satisfied2Faithful_satisfiedVm permOut hash (rotateV3 d) minit mfin maddrs t
     (graduable_rotateV3 hgrad) hf i hi
   have hmem : ∀ c ∈ rotPins d.traceWidth d.piCount, c ∈ (rotateV3 d).constraints :=
     fun c hc => List.mem_append_right _ (List.mem_append_right _ hc)
   have h0 := h.1 _ (hmem (.piBinding .first (d.traceWidth + B_STATE_COMMIT) d.piCount)
     (by simp [rotPins]))
-  have h1 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 227 + B_STATE_COMMIT)
+  have h1 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 51 + B_STATE_COMMIT)
     (d.piCount + 1)) (by simp [rotPins]))
-  have h2 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 227 + B_COMMITTED_HEIGHT)
+  have h2 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 51 + B_COMMITTED_HEIGHT)
     (d.piCount + 2)) (by simp [rotPins]))
-  have h3 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 454 + C_COMMIT) (d.piCount + 3))
+  have h3 := h.1 _ (hmem (.piBinding .last (d.traceWidth + 102 + C_COMMIT) (d.piCount + 3))
     (by simp [rotPins]))
   simp only [VmConstraint.holdsVm] at h0 h1 h2 h3
   exact ⟨h0, fun hl => ⟨h1 hl, h2 hl, h3 hl⟩⟩
@@ -1233,13 +854,13 @@ theorem rotV3_binds_published (permOut : List ℤ → List ℤ) (hash : List ℤ
     (hpubNew : (envAt t k).pub (d.piCount + 1) = (envAt t' l).pub (d.piCount + 1))
     (hpubCav : (envAt t k).pub (d.piCount + 3) = (envAt t' l).pub (d.piCount + 3)) :
     (preLimbsAt d.traceWidth (envAt t i).loc = preLimbsAt d.traceWidth (envAt t' j).loc
-      ∧ (envAt t i).loc (d.traceWidth + 169) = (envAt t' j).loc (d.traceWidth + 169))
-    ∧ (preLimbsAt (d.traceWidth + 227) (envAt t k).loc
-        = preLimbsAt (d.traceWidth + 227) (envAt t' l).loc
-      ∧ (envAt t k).loc (d.traceWidth + 227 + 169) = (envAt t' l).loc (d.traceWidth + 227 + 169)
+      ∧ (envAt t i).loc (d.traceWidth + 37) = (envAt t' j).loc (d.traceWidth + 37))
+    ∧ (preLimbsAt (d.traceWidth + 51) (envAt t k).loc
+        = preLimbsAt (d.traceWidth + 51) (envAt t' l).loc
+      ∧ (envAt t k).loc (d.traceWidth + 51 + 37) = (envAt t' l).loc (d.traceWidth + 51 + 37)
       ∧ (envAt t k).pub (d.piCount + 2) = (envAt t' l).pub (d.piCount + 2))
-    ∧ manifestAt (d.traceWidth + 454) (envAt t k).loc
-        = manifestAt (d.traceWidth + 454) (envAt t' l).loc := by
+    ∧ manifestAt (d.traceWidth + 102) (envAt t k).loc
+        = manifestAt (d.traceWidth + 102) (envAt t' l).loc := by
   have hp := rotV3_pins permOut hash d minit mfin maddrs t hgrad hf
   have hp' := rotV3_pins permOut hash d minit' mfin' maddrs' t' hgrad hf'
   have hq := rotV3_publishes permOut hash d minit mfin maddrs t hgrad hf
@@ -1249,9 +870,9 @@ theorem rotV3_binds_published (permOut : List ℤ → List ℤ) (hash : List ℤ
     have hc := (hq i hi).1 hfirst
     have hc' := (hq' j hj).1 hfirst'
     have hwire : wireCommitR hash (preLimbsAt d.traceWidth (envAt t i).loc)
-        ((envAt t i).loc (d.traceWidth + 169))
+        ((envAt t i).loc (d.traceWidth + 37))
         = wireCommitR hash (preLimbsAt d.traceWidth (envAt t' j).loc)
-            ((envAt t' j).loc (d.traceWidth + 169)) := by
+            ((envAt t' j).loc (d.traceWidth + 37)) := by
       rw [← (hp i hi).1, ← (hp' j hj).1]
       show (envAt t i).loc (d.traceWidth + B_STATE_COMMIT)
         = (envAt t' j).loc (d.traceWidth + B_STATE_COMMIT)
@@ -1261,13 +882,13 @@ theorem rotV3_binds_published (permOut : List ℤ → List ℤ) (hash : List ℤ
   · -- the after block, via the last-row pins
     obtain ⟨hc, hh, -⟩ := (hq k hk).2 hlast
     obtain ⟨hc', hh', -⟩ := (hq' l hl).2 hlast'
-    have hwire : wireCommitR hash (preLimbsAt (d.traceWidth + 227) (envAt t k).loc)
-        ((envAt t k).loc (d.traceWidth + 227 + 169))
-        = wireCommitR hash (preLimbsAt (d.traceWidth + 227) (envAt t' l).loc)
-            ((envAt t' l).loc (d.traceWidth + 227 + 169)) := by
+    have hwire : wireCommitR hash (preLimbsAt (d.traceWidth + 51) (envAt t k).loc)
+        ((envAt t k).loc (d.traceWidth + 51 + 37))
+        = wireCommitR hash (preLimbsAt (d.traceWidth + 51) (envAt t' l).loc)
+            ((envAt t' l).loc (d.traceWidth + 51 + 37)) := by
       rw [← (hp k hk).2.1, ← (hp' l hl).2.1]
-      show (envAt t k).loc (d.traceWidth + 227 + B_STATE_COMMIT)
-        = (envAt t' l).loc (d.traceWidth + 227 + B_STATE_COMMIT)
+      show (envAt t k).loc (d.traceWidth + 51 + B_STATE_COMMIT)
+        = (envAt t' l).loc (d.traceWidth + 51 + B_STATE_COMMIT)
       rw [hc, hc', hpubNew]
     obtain ⟨hpre, hir⟩ := wireCommitR_binds hash hCR
       (by rw [preLimbsAt_length, preLimbsAt_length]) hwire
@@ -1277,11 +898,11 @@ theorem rotV3_binds_published (permOut : List ℤ → List ℤ) (hash : List ℤ
   · -- the caveat manifest, via the last-row pin
     obtain ⟨-, -, hk1⟩ := (hq k hk).2 hlast
     obtain ⟨-, -, hk2⟩ := (hq' l hl).2 hlast'
-    have hcc : caveatCommit hash (manifestAt (d.traceWidth + 454) (envAt t k).loc)
-        = caveatCommit hash (manifestAt (d.traceWidth + 454) (envAt t' l).loc) := by
+    have hcc : caveatCommit hash (manifestAt (d.traceWidth + 102) (envAt t k).loc)
+        = caveatCommit hash (manifestAt (d.traceWidth + 102) (envAt t' l).loc) := by
       rw [← (hp k hk).2.2, ← (hp' l hl).2.2]
-      show (envAt t k).loc (d.traceWidth + 454 + C_COMMIT)
-        = (envAt t' l).loc (d.traceWidth + 454 + C_COMMIT)
+      show (envAt t k).loc (d.traceWidth + 102 + C_COMMIT)
+        = (envAt t' l).loc (d.traceWidth + 102 + C_COMMIT)
       rw [hk1, hk2, hpubCav]
     exact caveatCommit_binds hash hCR hcc
 
@@ -1423,10 +1044,10 @@ opens against the new tree; the paired authority membership-open (the cap-open a
 the delegator's held cap. Guarded by the cap-graph-row selector. -/
 def insertWriteOp : MapOp :=
   { guard   := .var EffectVmEmitAttenuateA.selA.ATTENUATE
-  , root    := fun _ => .var (sbCol state.CAP_ROOT)
+  , root    := .var (sbCol state.CAP_ROOT)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol KEEP_MASK)
-  , newRoot := fun _ => .var (saCol state.CAP_ROOT)
+  , newRoot := .var (saCol state.CAP_ROOT)
   , op      := .insert }
 
 /-! ### The ROTATED-LIMB cap-write ops (the v1-state continuity-collision close — note-spend-shaped).
@@ -1451,293 +1072,9 @@ free to move before≠after and folds into the committed rotated state-commit. -
 cap accumulator's PRE root the membership-open + write-gate open against — note-spend-shaped, NOT col 65. -/
 def beforeCapRootCol (w : Nat) : Nat := w + B_CAP_ROOT
 
-/-- The rotated AFTER-block `cap_root` limb column (limb 25 of the after block at `base = w + 227`). The
+/-- The rotated AFTER-block `cap_root` limb column (limb 25 of the after block at `base = w + 51`). The
 deployed cap accumulator's POST root — the write-gate's `newRoot`, witness-carried (no v1-state continuity). -/
-def afterCapRootCol (w : Nat) : Nat := w + 227 + B_CAP_ROOT
-
-/-! ### v10 — the FAITHFUL 8-felt cap-root column GROUP + the native-`node8` write relation `writesTo8`.
-
-The scalar `writesTo` on the lane-0 cap-root limb (`beforeCapRootCol`/`afterCapRootCol`, limb 25) is only
-the ~31-bit lane-0 PROJECTION of the deployed 8-felt cap root. v10 commits the FULL 8-felt root: limb 25
-(lane 0) ‖ the seven completion limbs 51..57 (lanes 1..7) — both blocks — absorbed into the wide state
-commit. The GROUP readers below pin those eight columns to a `Digest8`; `writesTo8` is the native
-arity-16 `node8` UPDATE-AT-KEY over the FULL 8-felt root (`recomposeUp8`, ~124-bit), NEVER a lane-0
-squeeze (the soundness downgrade the GENTIAN tooth closes). The anti-forge tooth is the recompose
-injectivity (`recomposeUp8_inj_of_path`): a forged high-felt post-root forces a different post-leaf. -/
-
-/-- The cap-root 8-felt column at lane `i` in the block based at `blockBase` (limb `B_CAP_ROOT` = 25 for
-lane 0; the seven completion limbs 51..57 for lanes 1..7). `blockBase = w` (BEFORE) / `w + 227` (AFTER). -/
-def capRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (if i = 0 then B_CAP_ROOT else 50 + (i : Nat))
-
-/-- The BEFORE-block 8-felt cap-root digest read off the row env (lane 0 = `beforeCapRootCol`). -/
-def beforeCapRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (capRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block 8-felt cap-root digest read off the row env (lane 0 = `afterCapRootCol`). -/
-def afterCapRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (capRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- Lane 0 of the BEFORE group IS the existing scalar cap-root limb (the projection the scalar `writesTo`
-forces) — so the 8-felt relation REFINES the lane-0 write rather than replacing it. -/
-theorem beforeCapRootCols_lane0 (env : VmRowEnv) :
-    beforeCapRootCols env 0 = env.loc (beforeCapRootCol EFFECT_VM_WIDTH) := by
-  simp [beforeCapRootCols, capRootGroupCol, beforeCapRootCol]
-
-/-- Lane 0 of the AFTER group IS the existing scalar post cap-root limb. -/
-theorem afterCapRootCols_lane0 (env : VmRowEnv) :
-    afterCapRootCols env 0 = env.loc (afterCapRootCol EFFECT_VM_WIDTH) := by
-  simp [afterCapRootCols, capRootGroupCol, afterCapRootCol]
-
-/-- **`writesTo8 S8 oldRoot k v newRoot`** — the native-`node8` cap-tree UPDATE-AT-KEY over the FULL
-8-felt root: some sibling/direction `path` recomposes `oldRoot` from a leaf keyed `k`, and recomposes
-`newRoot` from the in-place-narrowed leaf (same key `k`, rights felt `v`) along the SAME path. The
-faithful 8-felt twin of the scalar `writesTo` (which is the lane-0 projection); the `(k,v) ↔ CapLeaf`
-other-field encoding is the named faithful-encoding residual the cap-family consumers carry. -/
-def writesTo8 (S8 : Cap8Scheme) (oldRoot : Digest8) (k v : ℤ) (newRoot : Digest8) : Prop :=
-  ∃ (oldLeaf newLeaf : CapLeaf) (path : List (StepG Digest8)),
-    oldLeaf.slot_hash = k ∧ newLeaf.slot_hash = k ∧ newLeaf.mask_lo = v ∧
-    recomposeUp8 S8 (capLeafDigest8 S8 oldLeaf) path = oldRoot ∧
-    recomposeUp8 S8 (capLeafDigest8 S8 newLeaf) path = newRoot
-
-/-- **The 8-felt anti-forge tooth.** Along a FIXED sibling path the post-root pins the post-leaf digest
-(`recomposeUp8` injective at the full ~124-bit width). A forged `newRoot` cannot be reached with the
-genuine post-leaf along the genuine path — the GENTIAN close at full width, NOT lane-0. -/
-theorem writesTo8_forces_postleaf (S8 : Cap8Scheme) (path : List (StepG Digest8))
-    {a b : Digest8} (h : recomposeUp8 S8 a path = recomposeUp8 S8 b path) : a = b :=
-  recomposeUp8_inj_of_path S8 path h
-
-/-! ### v10 — the FAITHFUL 8-felt HEAP-root column GROUP + the native-`node8` heap-write relation
-`heapWritesTo8` (the SECOND faithful root, the exact twin of the cap-root group above).
-
-The scalar heap `writesTo` on the lane-0 heap-root limb (limb `B_HEAP_ROOT = 28`) is only the ~31-bit
-lane-0 PROJECTION of the deployed 8-felt heap root. v10 commits the FULL 8-felt root: limb 28 (lane 0) ‖
-the seven completion limbs 58..64 (lanes 1..7) — both blocks — absorbed into the wide state commit. The
-GROUP readers below pin those eight columns to a `Digest8`; `heapWritesTo8` is the native arity-16 `node8`
-UPDATE-AT-KEY over the FULL 8-felt heap root (`Heap8Scheme.recomposeUp8`, ~124-bit), NEVER a lane-0 squeeze
-(the soundness downgrade the heap GENTIAN tooth closes). The anti-forge tooth is the recompose injectivity
-(`recomposeUp8_inj_of_path`): a forged high-felt post-root forces a different post-leaf. -/
-
-/-- The heap-root limb in the rotated block (the fourth faithful-root limb, after `cap_root`=25,
-`nullifier_root`=26, `commitments_root`=27). Lane 0 of the 8-felt heap-root group. -/
-def B_HEAP_ROOT : Nat := 28
-
-/-- The BEFORE-block scalar heap-root column (lane 0 = limb `B_HEAP_ROOT` = 28). -/
-def beforeHeapRootCol (w : Nat) : Nat := w + B_HEAP_ROOT
-
-/-- The AFTER-block scalar heap-root column. -/
-def afterHeapRootCol (w : Nat) : Nat := w + 227 + B_HEAP_ROOT
-
-/-- The heap-root 8-felt column at lane `i` in the block based at `blockBase` (limb `B_HEAP_ROOT` = 28 for
-lane 0; the seven completion limbs 58..64 for lanes 1..7 — the cap completions 51..57 shifted by 7). The
-cap/heap/fields groups SHARE the ONE `node8` lane by design; heap's completions sit ABOVE cap's. -/
-def heapRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (if i = 0 then B_HEAP_ROOT else 50 + (i : Nat) + 7)
-
-/-- The BEFORE-block 8-felt heap-root digest read off the row env (lane 0 = `beforeHeapRootCol`). -/
-def beforeHeapRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (heapRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block 8-felt heap-root digest read off the row env (lane 0 = `afterHeapRootCol`). -/
-def afterHeapRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (heapRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-! ### `MapOp.root`/`newRoot` 8-felt groups (Phase H-HEAP-8 / the cap-analog emit widening).
-
-`MapOp.root`/`newRoot` are now `Fin 8 → EmittedExpr` (matching the deployed Rust `MapOpSpec` `[8]`).
-For the 8-felt-WELDED families (cap · heap) the group IS the real `…RootGroupCol` lanes (lane 0 the
-scalar limb, lanes 1..7 the completion limbs) — the deployed `map_ops` chip recomposes the faithful
-~124-bit root and the after-spine keystone (`CapOpenEmit` / `HeapOpenEmit`) trace-forces it. For a
-family NOT yet 8-felt-welded (`nullifier` · `commitments` · `cells` · `fields`, until its own
-campaign) the group is the scalar limb CARRIED across all 8 lanes (`scalarRootGroup`) — the root is
-still a single ~31-bit felt, denotation is lane 0, and no keystone forces the extra lanes. -/
-
-/-- The BEFORE-block cap-root 8-felt column group (lane 0 = `beforeCapRootCol`, lanes 1..7 the cap
-completion limbs 51..57). -/
-def beforeCapRootGroup : Fin 8 → EmittedExpr := fun i => .var (capRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block cap-root 8-felt column group (lane 0 = `afterCapRootCol`). -/
-def afterCapRootGroup : Fin 8 → EmittedExpr := fun i => .var (capRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- The BEFORE-block heap-root 8-felt column group (lane 0 = `beforeHeapRootCol`, lanes 1..7 the heap
-completion limbs 58..64). -/
-def beforeHeapRootGroup : Fin 8 → EmittedExpr := fun i => .var (heapRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block heap-root 8-felt column group (lane 0 = `afterHeapRootCol`). -/
-def afterHeapRootGroup : Fin 8 → EmittedExpr := fun i => .var (heapRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- A not-yet-8-felt-welded root as a `MapOp` group: the scalar limb `col` carried across all 8
-lanes (denotation is lane 0; no after-spine keystone forces lanes 1..7 — the root stays ~31-bit
-until that family's own weld). -/
-def scalarRootGroup (col : Nat) : Fin 8 → EmittedExpr := fun _ => .var col
-
-/-- Lane 0 of the BEFORE heap group IS the existing scalar heap-root limb (the projection the scalar
-`writesTo` forces) — the 8-felt relation REFINES the lane-0 write rather than replacing it. -/
-theorem beforeHeapRootCols_lane0 (env : VmRowEnv) :
-    beforeHeapRootCols env 0 = env.loc (beforeHeapRootCol EFFECT_VM_WIDTH) := by
-  simp [beforeHeapRootCols, heapRootGroupCol, beforeHeapRootCol]
-
-/-- Lane 0 of the AFTER heap group IS the existing scalar post heap-root limb. -/
-theorem afterHeapRootCols_lane0 (env : VmRowEnv) :
-    afterHeapRootCols env 0 = env.loc (afterHeapRootCol EFFECT_VM_WIDTH) := by
-  simp [afterHeapRootCols, heapRootGroupCol, afterHeapRootCol]
-
-/-- **`heapWritesTo8 S8 oldRoot k v newRoot`** — the native-`node8` heap-tree UPDATE-AT-KEY over the FULL
-8-felt root: some sibling/direction `path` recomposes `oldRoot` from the heap leaf `(k, oldVal)`, and
-recomposes `newRoot` from the in-place-updated leaf `(k, v)` along the SAME path. The faithful 8-felt twin
-of the scalar heap `writesTo` (which is the lane-0 projection). Heap leaves are `(addr, value)`, so the
-key IS the address and the written value is the leaf's second field — no `CapLeaf` re-encoding residual. -/
-def heapWritesTo8 (S8 : Heap8Scheme) (oldRoot : Digest8) (k v : ℤ) (newRoot : Digest8) : Prop :=
-  ∃ (oldVal : ℤ) (path : List (StepG Digest8)),
-    Heap8Scheme.recomposeUp8 S8 (Heap8Scheme.heapLeafDigest8 S8 (k, oldVal)) path = oldRoot ∧
-    Heap8Scheme.recomposeUp8 S8 (Heap8Scheme.heapLeafDigest8 S8 (k, v)) path = newRoot
-
-/-- **The 8-felt heap anti-forge tooth.** Along a FIXED sibling path the post-root pins the post-leaf digest
-(`Heap8Scheme.recomposeUp8` injective at the full ~124-bit width). A forged `newRoot` cannot be reached with
-the genuine post-leaf along the genuine path — the heap GENTIAN close at full width, NOT lane-0. -/
-theorem heapWritesTo8_forces_postleaf (S8 : Heap8Scheme) (path : List (StepG Digest8))
-    {a b : Digest8} (h : Heap8Scheme.recomposeUp8 S8 a path = Heap8Scheme.recomposeUp8 S8 b path) : a = b :=
-  Heap8Scheme.recomposeUp8_inj_of_path S8 path h
-
-/-! ### v10 — the FAITHFUL 8-felt FIELDS-root column GROUP + the native-`node8` fields-write relation
-`fieldsWritesTo8` (the THIRD and LAST faithful root, the exact twin of the cap/heap-root groups above).
-
-The scalar fields `writesTo` on the lane-0 fields-root limb (limb `B_FIELDS_ROOT = 36`) is only the
-~31-bit lane-0 PROJECTION of the deployed 8-felt user-field-map root. v10 commits the FULL 8-felt root:
-limb 36 (lane 0) ‖ the seven completion limbs 65,66,19,20,21,22,23 (lanes 1..7 — NON-contiguous: 65,66
-are past the heap completions, 19..23 are the repurposed register-headroom limbs) — both blocks —
-absorbed into the wide state commit. The GROUP readers below pin those eight columns to a `Digest8`;
-`fieldsWritesTo8` is the native arity-16 `node8` UPDATE-AT-KEY over the FULL 8-felt fields root
-(`Fields8Scheme.recomposeUp8`, ~124-bit), NEVER a lane-0 squeeze (the soundness downgrade the fields
-GENTIAN tooth `circuit/tests/fields_root_gentian_weld.rs` closes). The anti-forge tooth is the recompose
-injectivity (`recomposeUp8_inj_of_path`): a forged high-felt post-root forces a different post-leaf. -/
-
-/-- The fields-root 8-felt column at lane `i` in the block based at `blockBase`: lane 0 = limb
-`B_FIELDS_ROOT` = 36; the seven completion limbs are NON-contiguous — 65,66 (past heap's 58..64) for
-lanes 1,2 and the repurposed register-headroom limbs 19,20,21,22,23 for lanes 3..7. The cap/heap/fields
-groups SHARE the ONE `node8` lane by design. -/
-def fieldsRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (match i with
-    | 0 => B_FIELDS_ROOT
-    | 1 => 65
-    | 2 => 66
-    | 3 => 19
-    | 4 => 20
-    | 5 => 21
-    | 6 => 22
-    | 7 => 23)
-
-/-- The BEFORE-block 8-felt fields-root digest read off the row env (lane 0 = limb `B_FIELDS_ROOT`=36). -/
-def beforeFieldsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (fieldsRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block 8-felt fields-root digest read off the row env (lane 0 at the AFTER block base). -/
-def afterFieldsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (fieldsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- The BEFORE-block fields-root 8-felt column group (lane 0 = limb 36, lanes 1..7 the fields completion
-limbs 65,66,19..23). -/
-def beforeFieldsRootGroup : Fin 8 → EmittedExpr := fun i => .var (fieldsRootGroupCol EFFECT_VM_WIDTH i)
-
-/-- The AFTER-block fields-root 8-felt column group (lane 0 at the AFTER block base). -/
-def afterFieldsRootGroup : Fin 8 → EmittedExpr := fun i => .var (fieldsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- Lane 0 of the BEFORE fields group IS the existing scalar fields-root limb (limb `B_FIELDS_ROOT`=36),
-the projection the scalar `writesTo` forces — the 8-felt relation REFINES the lane-0 write. -/
-theorem beforeFieldsRootCols_lane0 (env : VmRowEnv) :
-    beforeFieldsRootCols env 0 = env.loc (EFFECT_VM_WIDTH + B_FIELDS_ROOT) := by
-  simp [beforeFieldsRootCols, fieldsRootGroupCol]
-
-/-- Lane 0 of the AFTER fields group IS the existing scalar post fields-root limb. -/
-theorem afterFieldsRootCols_lane0 (env : VmRowEnv) :
-    afterFieldsRootCols env 0 = env.loc (EFFECT_VM_WIDTH + 227 + B_FIELDS_ROOT) := by
-  simp [afterFieldsRootCols, fieldsRootGroupCol]
-
-/-! ### v11 — the FAITHFUL 8-felt ACCUMULATOR root column GROUPS (nullifier@26 · commitments@27 ·
-cells@0), the exact twins of the cap/heap/fields groups above, over the 21 NEW DEDICATED completion
-limbs 67..87 (never shared with another family — a shared block would break OLD/NEW commit continuity
-cross-turn). Each accumulator's genuine node8 `root8` rides lane 0 (its historical scalar limb) ‖ 7
-dedicated completion limbs. The deployed Rust producer fills all 8 lanes via `CanonicalHeapTree8`, and
-the map-op node8 AIR binds them lane-for-lane (deployed-faithful, ~124-bit — NEVER the lane-0 squeeze). -/
-
-/-- The nullifier-root 8-felt column at lane `i` (lane 0 = limb `B_NULLIFIER_ROOT_OFF` = 26; the seven
-DEDICATED completion limbs 67..73 for lanes 1..7). -/
-def nullifierRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (if i = 0 then B_NULLIFIER_ROOT_OFF else 66 + (i : Nat))
-
-/-- The commitments-root 8-felt column at lane `i` (lane 0 = limb `B_COMMITMENTS_ROOT` = 27; the seven
-DEDICATED completion limbs 74..80 for lanes 1..7). -/
-def commitmentsRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (if i = 0 then B_COMMITMENTS_ROOT else 73 + (i : Nat))
-
-/-- The cells-root 8-felt column at lane `i` (lane 0 = limb 0 = accounts root; the seven DEDICATED
-completion limbs 81..87 for lanes 1..7). -/
-def cellsRootGroupCol (blockBase : Nat) (i : Fin 8) : Nat :=
-  blockBase + (if i = 0 then 0 else 80 + (i : Nat))
-
-/-- The BEFORE/AFTER-block nullifier-root 8-felt column groups (lane 0 = the scalar limb 26). -/
-def beforeNullifierRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (nullifierRootGroupCol EFFECT_VM_WIDTH i)
-def afterNullifierRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (nullifierRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- The BEFORE/AFTER-block commitments-root 8-felt column groups (lane 0 = the scalar limb 27). -/
-def beforeCommitmentsRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (commitmentsRootGroupCol EFFECT_VM_WIDTH i)
-def afterCommitmentsRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (commitmentsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- The BEFORE/AFTER-block cells-root 8-felt column groups (lane 0 = the scalar limb 0). -/
-def beforeCellsRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (cellsRootGroupCol EFFECT_VM_WIDTH i)
-def afterCellsRootGroup : Fin 8 → EmittedExpr :=
-  fun i => .var (cellsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- Lane 0 of each accumulator group IS the existing scalar limb (the projection the scalar `writesTo`
-forces) — the 8-felt group REFINES the lane-0 write. -/
-theorem nullifierRootGroupCol_lane0 (bb : Nat) :
-    nullifierRootGroupCol bb 0 = bb + B_NULLIFIER_ROOT_OFF := by simp [nullifierRootGroupCol]
-theorem commitmentsRootGroupCol_lane0 (bb : Nat) :
-    commitmentsRootGroupCol bb 0 = bb + B_COMMITMENTS_ROOT := by simp [commitmentsRootGroupCol]
-theorem cellsRootGroupCol_lane0 (bb : Nat) :
-    cellsRootGroupCol bb 0 = bb + 0 := by simp [cellsRootGroupCol]
-
-/-- The BEFORE/AFTER-block 8-felt accumulator-root digests read off the row env (lane 0 = the scalar limb;
-lanes 1..7 the dedicated completion limbs 67..87). The `Digest8` twins of `beforeFieldsRootCols`, one per
-accumulator family — the `AccumulatorOpenEmit` after-spine keystone forces `heapWritesTo8` over exactly
-these committed groups (the assurance-case reads the consumer trio quantifies over). -/
-def beforeNullifierRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (nullifierRootGroupCol EFFECT_VM_WIDTH i)
-def afterNullifierRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (nullifierRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-def beforeCommitmentsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (commitmentsRootGroupCol EFFECT_VM_WIDTH i)
-def afterCommitmentsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (commitmentsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-def beforeCellsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (cellsRootGroupCol EFFECT_VM_WIDTH i)
-def afterCellsRootCols (env : VmRowEnv) : Digest8 :=
-  fun i => env.loc (cellsRootGroupCol (EFFECT_VM_WIDTH + 227) i)
-
-/-- **`fieldsWritesTo8 S8 oldRoot k v newRoot`** — the native-`node8` fields-tree UPDATE-AT-KEY over the
-FULL 8-felt root: some sibling/direction `path` recomposes `oldRoot` from the fields leaf `(k, oldVal)`,
-and recomposes `newRoot` from the in-place-updated leaf `(k, v)` along the SAME path. The faithful 8-felt
-twin of the scalar fields `writesTo` (which is the lane-0 projection). Fields leaves are `(addr, value)`
-(addr = `field_key_hash key`), so the key IS the address and the written value is the leaf's second
-field — no re-encoding residual. -/
-def fieldsWritesTo8 (S8 : Fields8Scheme) (oldRoot : Digest8) (k v : ℤ) (newRoot : Digest8) : Prop :=
-  ∃ (oldVal : ℤ) (path : List (StepG Digest8)),
-    Fields8Scheme.recomposeUp8 S8 (Fields8Scheme.fieldsLeafDigest8 S8 (k, oldVal)) path = oldRoot ∧
-    Fields8Scheme.recomposeUp8 S8 (Fields8Scheme.fieldsLeafDigest8 S8 (k, v)) path = newRoot
-
-/-- **The 8-felt fields anti-forge tooth.** Along a FIXED sibling path the post-root pins the post-leaf
-digest (`Fields8Scheme.recomposeUp8` injective at the full ~124-bit width). A forged `newRoot` cannot be
-reached with the genuine post-leaf along the genuine path — the fields GENTIAN close at full width, NOT
-lane-0. -/
-theorem fieldsWritesTo8_forces_postleaf (S8 : Fields8Scheme) (path : List (StepG Digest8))
-    {a b : Digest8}
-    (h : Fields8Scheme.recomposeUp8 S8 a path = Fields8Scheme.recomposeUp8 S8 b path) : a = b :=
-  Fields8Scheme.recomposeUp8_inj_of_path S8 path h
+def afterCapRootCol (w : Nat) : Nat := w + 51 + B_CAP_ROOT
 
 /-- The held-capability MEMBERSHIP read on the ROTATED before-block cap-root limb (limb 25). The before
 `cap_root` (rotated limb) opens at `param[CAP_KEY]` to `param[HELD_MASK]` (root unchanged — a read). The
@@ -1747,10 +1084,10 @@ runtime selector column `s`** — the column the trace generator sets to `1` on 
 selector that fires on the cap-write row, else the map_op never fires and the AFTER cap-root rides unbound. -/
 def heldReadOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := beforeCapRootGroup
+  , root    := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol HELD_MASK)
-  , newRoot := beforeCapRootGroup
+  , newRoot := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , op      := .read }
 
 /-- The held/anchor MEMBERSHIP read for the INSERT cap-write wrappers, on the ROTATED before-block cap-root
@@ -1765,10 +1102,10 @@ per-effect runtime selector column `s`** (the column the trace sets to `1` on TH
 never fires, leaving the AFTER cap-root unbound. -/
 def anchorReadOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := beforeCapRootGroup
+  , root    := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol ANCHOR_KEY)
   , value   := .var (prmCol ANCHOR_MASK)
-  , newRoot := beforeCapRootGroup
+  , newRoot := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , op      := .read }
 
 /-- The delegate/grant/introduce INSERT on the ROTATED limbs: the AFTER rotated cap-root (limb 25 of the
@@ -1780,10 +1117,10 @@ cap-write row — `sel.GRANT_CAP`/`sel.INTRODUCE`); the forge close re-points it
 `selA.ATTENUATE = 2`, so the AFTER cap-root (`afterCapRootCol`) is GENUINELY bound. -/
 def insertWriteOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := beforeCapRootGroup
+  , root    := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol KEEP_MASK)
-  , newRoot := afterCapRootGroup
+  , newRoot := .var (afterCapRootCol EFFECT_VM_WIDTH)
   , op      := .insert }
 
 /-- The revokeDelegation REMOVE on the ROTATED limbs: the AFTER rotated cap-root is the genuine sorted
@@ -1794,10 +1131,10 @@ revokeDelegation row); the forge close re-points it off the never-firing `selA.A
 AFTER cap-root is GENUINELY bound to the sorted REMOVE. -/
 def removeWriteOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := beforeCapRootGroup
+  , root    := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .const 0
-  , newRoot := afterCapRootGroup
+  , newRoot := .var (afterCapRootCol EFFECT_VM_WIDTH)
   , op      := .write }
 
 /-- The attenuate IN-PLACE UPDATE-AT-KEY on the ROTATED limbs: the AFTER rotated cap-root (limb 25 of the
@@ -1812,10 +1149,10 @@ never-firing `selA.ATTENUATE = 2` (the SET_FIELD column), so the AFTER cap-root 
 GENUINELY bound — the var2-guarded V1-state `keepWriteOp` (col 65/87) silent-forge is closed. -/
 def keepWriteOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := beforeCapRootGroup
+  , root    := .var (beforeCapRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol KEEP_MASK)
-  , newRoot := afterCapRootGroup
+  , newRoot := .var (afterCapRootCol EFFECT_VM_WIDTH)
   , op      := .write }
 
 /-! ### The SILENT-FORGE close for attenuate / revokeCapability (the cap-WRITE wrapper rebase, applied).
@@ -1838,45 +1175,41 @@ NARROWED rights onto the rotated AFTER cap-root limb), and the `granted ⊑ held
 `sel.ATTENUATE_CAPABILITY = 48` (the FIRING selector), so var 264 is GENUINELY bound. -/
 def attenuateV3 : EffectVmDescriptor2 :=
   v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
-    [.lookup submaskLookup]
+    [.mapOp (heldReadOpRot sel.ATTENUATE_CAPABILITY),
+     .mapOp (keepWriteOpRot sel.ATTENUATE_CAPABILITY), .lookup submaskLookup]
 
-/-- The rotated REVOKE-CAPABILITY (sel 24): the arity-2 map-ops DROPPED (the REMOVE-shaped after-spine
-deploy — mirroring `revokeDelegationWriteV3`'s remove drop). The cap-tree REMOVE is FORCED by the deployed
-`effCapRemoveV3` wrap (`CapRemoveEmit.effCapRemoveV3_forces_write8`: the removed-leaf membership in BEFORE
-is TRACE-FORCED over the FULL committed 8-felt cap-root groups; the AFTER root is the deployed tombstone
-zero-fold `cap_root.rs::CanonicalCapTree::remove_witness` — exactly the executor's `capabilities.revoke`
-tombstone semantics), not the scalar `heldReadOpRot`/`removeWriteOpRot` pair (whose arity-2 heap fold is
-UNSAT against the deployed arity-7 `CanonicalCapTree` and whose scalar root left the seven high felts
-unbound). NO submask — revoke deletes a slot, it does not narrow rights; NO epoch gate — revokeCapability
-does not bump the delegation epoch (unlike revokeDelegation). -/
+/-- The rotated REVOKE-CAPABILITY (sel 24) WITH the cap-crown circuit leg, on the ROTATED-limb write path:
+held-membership map read (`heldReadOpRot`) + the ZERO-value REMOVE-write (`removeWriteOpRot` — the slot deleted
+on the rotated AFTER cap-root limb; NO submask — revoke deletes a slot, it does not narrow rights). Guarded on
+`sel.REVOKE_CAPABILITY = 24` (the FIRING selector), so var 264 is GENUINELY bound. -/
 def revokeCapabilityV3 : EffectVmDescriptor2 :=
-  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick []
+  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
+    [.mapOp (heldReadOpRot sel.REVOKE_CAPABILITY),
+     .mapOp (removeWriteOpRot sel.REVOKE_CAPABILITY)]
 
-/-- The rotated DELEGATE (the unattenuated cross-vat grant), on the ROTATED-limb write path with the
-arity-2 map-ops DROPPED (the INSERT-shaped after-spine deploy): the faithful 8-felt cap-tree INSERT is
-FORCED by the deployed insert-shaped cap-open wrap (`CapInsertEmit.effCapInsertV3_forces_write8` — the
-spliced-leaf membership in the REBUILT AFTER tree over the FULL committed 8-felt cap-root groups), NOT
-the arity-2 scalar `insertWriteOpRot` (which is UNSAT against the deployed arity-7
-`CanonicalCapTree::insert_witness` — the update-at-key `writesTo` shape does not fit a fresh-key splice,
-and its scalar root left the seven high felts unbound). The delegate base IS the attenuate-A moving face
-(`delegateVmDescriptor := attenuateVmDescriptor`). NO submask lookup — an unattenuated delegate confers
-the held edge as-is. -/
+/-- The rotated DELEGATE (the unattenuated cross-vat grant) WITH the cap-crown circuit leg: the held
+authority membership-read (REUSED `heldReadOp`) + the conferred-grant INSERT-write. The delegate base
+IS the attenuate-A moving face (`delegateVmDescriptor := attenuateVmDescriptor`), whose `gCapMove` lets
+`cap_root` move on-row; `insertWriteOp` FORCES that move to be the genuine sorted insert. NO submask
+lookup — an unattenuated delegate confers the held edge as-is (the recipient's authority is bounded by
+the delegator's held cap, authenticated by the membership read). -/
 def delegateV3 : EffectVmDescriptor2 :=
-  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick []
+  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
+    [.mapOp (anchorReadOpRot sel.GRANT_CAP), .mapOp (insertWriteOpRot sel.GRANT_CAP)]
 
-/-- The rotated DELEGATE-ATTEN (the attenuated grant): the arity-2 map-ops DROPPED (the INSERT-shaped
-after-spine deploy — see `delegateV3`); ONLY the `granted ⊑ held` submask lookup (the non-amplification
-tooth, REUSED from attenuate) survives. The cap-tree INSERT is FORCED by the deployed
-`effCapInsertV3` wrap. Shares the moving attenuate-A face. -/
+/-- The rotated DELEGATE-ATTEN (the attenuated grant) WITH the cap-crown circuit leg: held-membership
+read + the conferred (attenuated) INSERT-write + the submask lookup (`granted ⊑ held` — the
+non-amplification tooth, REUSED from attenuate). Shares the moving attenuate-A face. -/
 def delegateAttenV3 : EffectVmDescriptor2 :=
   v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
-    [.lookup submaskLookup]
+    [.mapOp (anchorReadOpRot sel.GRANT_CAP), .mapOp (insertWriteOpRot sel.GRANT_CAP),
+     .lookup submaskLookup]
 
-/-- The rotated GRANT-CAP (the bare cap grant): the arity-2 map-ops DROPPED (the INSERT-shaped
-after-spine deploy — the cap-tree INSERT rides the deployed `effCapInsertV3` wrap, see `delegateV3`).
-Shares the moving attenuate-A face (the deployed grantCap base). -/
+/-- The rotated GRANT-CAP (the bare cap grant) WITH the cap-crown circuit leg: held-membership read +
+the conferred INSERT-write. Shares the moving attenuate-A face (the deployed grantCap base). -/
 def grantCapWriteV3 : EffectVmDescriptor2 :=
-  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick []
+  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
+    [.mapOp (anchorReadOpRot sel.GRANT_CAP), .mapOp (insertWriteOpRot sel.GRANT_CAP)]
 
 /-! ### The FROZEN-FACE cap-family WRITE rebase (introduce / revokeDelegation) — guarantee A closed.
 
@@ -1903,13 +1236,10 @@ map-ops-bound write column on the deployed wire — the genuine obstruction repo
 cap-crown circuit leg: the held authority membership-read + the conferred-grant INSERT-write. The genuine
 recompute frees `cap_root` to carry the move; `insertWriteOp` FORCES it to be the genuine sorted insert of
 the conferred rights (`param[KEEP_MASK]`) at the new edge key (`param[CAP_KEY]`). NO submask lookup — an
-introduce grants the held edge as-is (the recipient is bounded by the introducer's membership-read cap).
-
-INSERT-shaped after-spine deploy: the arity-2 map-ops are DROPPED (mirroring `delegateV3`) — the
-cap-tree INSERT is FORCED by the deployed `effCapInsertV3` wrap (`CapInsertEmit.effCapInsertV3_forces_write8`),
-not the scalar `insertWriteOpRot` (UNSAT against the deployed arity-7 fresh-key splice). -/
+introduce grants the held edge as-is (the recipient is bounded by the introducer's membership-read cap). -/
 def introduceWriteV3 : EffectVmDescriptor2 :=
-  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick []
+  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
+    [.mapOp (anchorReadOpRot sel.INTRODUCE), .mapOp (insertWriteOpRot sel.INTRODUCE)]
 
 /-! ### §14.EPOCH — the revokeDelegation parent-epoch BUMP write-gate (the freshness-forgery close).
 
@@ -1949,26 +1279,21 @@ theorem epochBumpGate_forces (env : VmRowEnv) (isFirst isLast : Bool) (hlast : i
 /-- The rotated BEFORE-block `delegation_epoch` limb column (limb 30 of the before block at `base = w`). -/
 def beforeEpochCol (w : Nat) : Nat := w + B_EPOCH
 
-/-- The rotated AFTER-block `delegation_epoch` limb column (limb 30 of the after block at `base = w + 227`). -/
-def afterEpochCol (w : Nat) : Nat := w + 227 + B_EPOCH
+/-- The rotated AFTER-block `delegation_epoch` limb column (limb 30 of the after block at `base = w + 51`). -/
+def afterEpochCol (w : Nat) : Nat := w + 51 + B_EPOCH
 
 /-- The rotated REVOKE-DELEGATION on the MOVING `revokeVmDescriptorGenuine` face (no `gCapPass` freeze) WITH
 the cap-crown circuit leg: held-membership read + the ZERO-value REMOVE-write (`removeWriteOp`, reused from
 `revokeCapabilityV3` — revoke deletes a slot, NO submask) AND the §14.EPOCH parent-epoch BUMP gate
 (`epochBumpGate` on the rotated `B_EPOCH = 30` limbs). The genuine recompute frees `cap_root`;
-`epochBumpGate` FORCES the committed AFTER epoch to be the BEFORE epoch + 1 (the freshness tick that
-stales every child snapshot — the `RevokeDelegationEpochResidual` `delegationEpoch += 1` clause, now
-in-circuit-forced).
-
-REMOVE-shaped after-spine deploy: the arity-2 map-ops are DROPPED (mirroring `delegateV3`'s insert
-drop) — the cap-tree REMOVE is FORCED by the deployed `effCapRemoveV3` wrap
-(`CapRemoveEmit.effCapRemoveV3_forces_write8`: the removed-leaf membership in BEFORE is TRACE-FORCED
-over the FULL committed 8-felt cap-root groups; the AFTER root is the deployed tombstone zero-fold),
-not the scalar `removeWriteOpRot` (whose update-at-key shape cannot express the ZERO-digest tombstone
-leaf and whose scalar root left the seven high felts unbound). Only the §14.EPOCH bump gate survives. -/
+`removeWriteOp` FORCES the post root to the genuine sorted REMOVE (the ZERO sentinel write) at the revoked
+edge key against the membership-opened before root, and `epochBumpGate` FORCES the committed AFTER epoch to
+be the BEFORE epoch + 1 (the freshness tick that stales every child snapshot — the
+`RevokeDelegationEpochResidual` `delegationEpoch += 1` clause, now in-circuit-forced). -/
 def revokeDelegationWriteV3 : EffectVmDescriptor2 :=
   v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
-    [.base (epochBumpGate sel.REVOKE_DELEGATION
+    [.mapOp (heldReadOpRot sel.REVOKE_DELEGATION), .mapOp (removeWriteOpRot sel.REVOKE_DELEGATION),
+     .base (epochBumpGate sel.REVOKE_DELEGATION
         (beforeEpochCol EFFECT_VM_WIDTH) (afterEpochCol EFFECT_VM_WIDTH))]
 
 /-! ### The DELEGATIONS-tree WRITE op (refreshDelegation — the `DELEG` system-root move, in-circuit).
@@ -2004,10 +1329,10 @@ read). Refresh is an UPDATE-AT-KEY, so the child key is PRESENT; this read authe
 with the update-write at the SAME key (read+update consistent, the proven revoke-shaped template). -/
 def delegReadOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := scalarRootGroup (beforeDelegRootCol EFFECT_VM_WIDTH)
+  , root    := .var (beforeDelegRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol HELD_MASK)
-  , newRoot := scalarRootGroup (beforeDelegRootCol EFFECT_VM_WIDTH)
+  , newRoot := .var (beforeDelegRootCol EFFECT_VM_WIDTH)
   , op      := .read }
 
 /-- The refreshDelegation UPDATE-AT-KEY on the ROTATED DELEG-root limbs: the AFTER rotated DELEG-root IS
@@ -2017,62 +1342,34 @@ an overwrite), `writesTo` FUNCTIONAL under CR — a forged after-root is UNSAT. 
 accumulator folds into the committed rotated state-commit, no v1-state continuity collision. -/
 def delegUpdateWriteOpRot (s : Nat) : MapOp :=
   { guard   := .var s
-  , root    := scalarRootGroup (beforeDelegRootCol EFFECT_VM_WIDTH)
+  , root    := .var (beforeDelegRootCol EFFECT_VM_WIDTH)
   , key     := .var (prmCol CAP_KEY)
   , value   := .var (prmCol KEEP_MASK)
-  , newRoot := scalarRootGroup (afterDelegRootCol EFFECT_VM_WIDTH)
+  , newRoot := .var (afterDelegRootCol EFFECT_VM_WIDTH)
   , op      := .write }
 
 /-- The rotated REFRESH-DELEGATION on the MOVING genuine face (no `gCapPass` freeze — the rotated limb is
-free to carry the deleg move): the arity-2 map-ops DROPPED (the UPDATE-shaped after-spine deploy —
-mirroring `attenuateV3`'s update drop). The faithful 8-felt DELEG-tree UPDATE-AT-KEY is FORCED by the
-deployed `effCapOpenWriteV3` wrap (`CapOpenEmit.effCapOpenWriteV3_forces_write8` — the update-at-key
-after-spine over the FULL committed 8-felt root groups; the rotated cap-root group carries the DELEG
-accumulator on a refresh row, refresh freezes `caps` on the v1 column), not the scalar
-`delegReadOpRot`/`delegUpdateWriteOpRot` pair (whose arity-2 heap fold is UNSAT against the deployed
-native-8-felt witness heaps and whose scalar root left the seven high felts unbound). The DELEG WRITE
-stays in-circuit-forced (never the `delegRoot_runtime_column_pending` supplied digest). NO submask —
-refresh re-arms an existing delegation (`granted = held`, non-amplification reflexive). -/
+free to carry the deleg move) WITH the DELEG-tree circuit leg: the child-key membership-read + the
+snapshot UPDATE-write. The genuine face frees the rotated cap-root limb; `delegUpdateWriteOpRot` FORCES it
+to be the genuine sorted update of the child's snapshot at the child key against the membership-opened
+before DELEG-root. The v1-state `cap_root` column stays FROZEN (refresh's `caps` unchanged); the DELEG
+WRITE is now in-circuit-forced (no longer the `delegRoot_runtime_column_pending` supplied digest). NO
+submask — refresh re-arms an existing delegation (`granted = held`, non-amplification reflexive). -/
 def refreshDelegationWriteV3 : EffectVmDescriptor2 :=
-  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick []
+  v3OfWithCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick
+    [.mapOp (delegReadOpRot sel.REFRESH_DELEGATION),
+     .mapOp (delegUpdateWriteOpRot sel.REFRESH_DELEGATION)]
 
 /-- The rotated dynamic setField WITH its memory ops (the Blum write→read transport). -/
 def setFieldDynV3 : EffectVmDescriptor2 :=
   v3OfWith setFieldDynV1Face [.memOp fieldWriteOp, .memOp fieldReadbackOp]
 
-/-- **The VK-epoch PI exposure for the rotated Custom member.** Eight `.piBinding .first`
-constraints publishing the `proofBind` op's bound columns as PUBLIC INPUTS of the descriptor:
-the four `custom_proof_commitment` limbs (`prmCol (CUSTOM_COMMIT + k)` = cols 72..75) at IR2 PI
-slots `46..49` (the first slots past the four rotated commit pins, `rotateV3` produces
-`piCount = 46`), and the four low `custom_program_vk_hash` limbs (`prmCol (CUSTOM_VK + k)` =
-cols 68..71) at slots `50..53`, all pinned on the FIRST (the lead Custom) row — the row the
-`generate_rotated_custom_wide` generator lays the bound `(vk, commit)` on. Exposing these
-columns as PIs is THE change that lets the per-turn FOLD connect the custom sub-proof leaf's
-4-felt PI-commitment to the descriptor: the binding (a verifying sub-proof of `E` whose PI
-commitment EQUALS this column) is enforced at the FOLD via these PIs + the custom-leaf recursion
-(`StarkSoundCustom` / `EngineBinding`, the Lean model in `CustomApex`, axiom-clean), NOT by a
-row-local in-AIR gate — so the per-row `proofBind` denotation stays `True` like `memOp`/`umemOp`
-(`DescriptorIR2.VmConstraint2.holdsAt`). The full 8-felt `vk_hash` is carried by the wide host
-PI (`pi.rs::CUSTOM_PROOFS_BASE`) / the turn hash; the descriptor exposes only the four vk-hash
-limbs that exist as trace columns (`columns.rs::CUSTOM_VK_HASH_BASE = 4 elements`). -/
-def customPiExposure : List VmConstraint2 :=
-  (List.range 4).map (fun k =>
-    .base (.piBinding .first (prmCol (CUSTOM_COMMIT + k)) (46 + k)))
-  ++ (List.range 4).map (fun k =>
-    .base (.piBinding .first (prmCol (CUSTOM_VK + k)) (50 + k)))
-
 /-- The rotated CUSTOM (sel 8) WITH the recursive-proof-binding leg: the runtime passthrough face
 lifted through `rotateV3`, carrying the `proofBind` op (`customProofBind`) that ties the row's
 `custom_proof_commitment` to a verifying external sub-proof — the accumulator constraint the
-per-row IR gained — PLUS (the VK epoch) the eight `customPiExposure` PI bindings that publish the
-bound `(commit, vk)` columns so the per-turn FOLD can connect the custom sub-proof leaf. The
-`proofBind` row gate stays `True`; the binding is enforced at the fold (see `customPiExposure`).
-This is THE last rotation-cohort member: with it the HONEST RESIDUE is EMPTY. -/
+per-row IR gained. This is THE last rotation-cohort member: with it the HONEST RESIDUE is EMPTY. -/
 def customV3 : EffectVmDescriptor2 :=
-  let d := v3OfWith customV1Face [.proofBind customProofBind]
-  { d with
-    piCount     := d.piCount + 8
-    constraints := d.constraints ++ customPiExposure }
+  v3OfWith customV1Face [.proofBind customProofBind]
 
 /-! ### The note-spend nullifier PI weld (the C4 last-flip-gate close).
 
@@ -2163,9 +1460,9 @@ sorted-Poseidon2 root the grow-gate opens against. -/
 def beforeNullifierRootCol (w : Nat) : Nat := w + 26
 
 /-- The rotated AFTER-block `nullifier_root` limb column (limb 26 of the after block at
-`base = traceWidth + 227`). The deployed nullifier accumulator's POST root — the grow-gate's
+`base = traceWidth + 51`). The deployed nullifier accumulator's POST root — the grow-gate's
 `newRoot`. -/
-def afterNullifierRootCol (w : Nat) : Nat := w + 227 + 26
+def afterNullifierRootCol (w : Nat) : Nat := w + 51 + 26
 
 /-! ## §5.N — the noteSpend KERNEL-SET GROW-GATE (the deployment-real set-insert + double-spend
 tooth).
@@ -2200,10 +1497,10 @@ so the gate's key IS the same nullifier the apex reads. -/
 NON-MEMBER of the BEFORE nullifier tree (limb 26); the root is unchanged by an absent read. -/
 def nullifierFreshOp : MapOp :=
   { guard   := .var EffectVmEmitNoteSpend.SEL_NOTE_SPEND
-  , root    := beforeNullifierRootGroup
+  , root    := .var (beforeNullifierRootCol EFFECT_VM_WIDTH)
   , key     := .var NULLIFIER_PARAM_COL
   , value   := .const 0
-  , newRoot := beforeNullifierRootGroup
+  , newRoot := .var (beforeNullifierRootCol EFFECT_VM_WIDTH)
   , op      := .absent }
 
 /-- The SET-INSERT (the deployed `gNoteGrow` face): the AFTER nullifier root (limb 26 of the
@@ -2211,10 +1508,10 @@ after block) IS the genuine sorted write of `param0` into the BEFORE root. The n
 (`param::NOTE_VALUE_LO`) rides as the leaf value so a spent nullifier carries its note datum. -/
 def nullifierInsertOp : MapOp :=
   { guard   := .var EffectVmEmitNoteSpend.SEL_NOTE_SPEND
-  , root    := beforeNullifierRootGroup
+  , root    := .var (beforeNullifierRootCol EFFECT_VM_WIDTH)
   , key     := .var NULLIFIER_PARAM_COL
   , value   := .var (prmCol EffectVmEmitNoteSpend.param.NOTE_VALUE_LO)
-  , newRoot := afterNullifierRootGroup
+  , newRoot := .var (afterNullifierRootCol EFFECT_VM_WIDTH)
   , op      := .insert }
 
 /-- **`noteSpendV3`** — the rotated note-spend WITH the nullifier PI weld AND the KERNEL-SET
@@ -2384,9 +1681,9 @@ def COMMITMENT_KEY_PARAM_COL : Nat := prmCol 0
 def beforeCommitmentsRootCol (w : Nat) : Nat := w + B_COMMITMENTS_ROOT
 
 /-- The rotated AFTER-block `commitments_root` limb column (limb 27 of the after block at
-`base = traceWidth + 227`). The deployed commitments accumulator's POST root — the grow-gate's
+`base = traceWidth + 51`). The deployed commitments accumulator's POST root — the grow-gate's
 `newRoot`. -/
-def afterCommitmentsRootCol (w : Nat) : Nat := w + 227 + B_COMMITMENTS_ROOT
+def afterCommitmentsRootCol (w : Nat) : Nat := w + 51 + B_COMMITMENTS_ROOT
 
 /-- **`rotateV3WithCommitmentKeyPin`** — `rotateV3` PLUS the fifth appended PI pin welding the note
 commitment (`prmCol 0`) to `ROT_COMMITMENT_KEY_PI = 38` on the FIRST row. Structurally identical to
@@ -2403,10 +1700,10 @@ write of the note commitment (`param0`) into the BEFORE root, with the note valu
 leaf value. Guarded by the noteCreate selector. -/
 def commitmentsInsertOp : MapOp :=
   { guard   := .var EffectVmEmitNoteCreate.SEL_NOTE_CREATE
-  , root    := beforeCommitmentsRootGroup
+  , root    := .var (beforeCommitmentsRootCol EFFECT_VM_WIDTH)
   , key     := .var COMMITMENT_KEY_PARAM_COL
   , value   := .var (prmCol EffectVmEmitNoteCreate.param.NOTE_VALUE_LO)
-  , newRoot := afterCommitmentsRootGroup
+  , newRoot := .var (afterCommitmentsRootCol EFFECT_VM_WIDTH)
   , op      := .insert }
 
 /-- **`noteCreateV3`** — the rotated noteCreate WITH the commitment PI weld AND the KERNEL-SET
@@ -2451,7 +1748,7 @@ theorem noteCreateV3_grow_gate_forces_set_insert (hash : List ℤ → ℤ)
 #guard noteCreateV3.piCount == 47
 #guard (mapOpsOf noteCreateV3).length == 1
 #guard beforeCommitmentsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 27
-#guard afterCommitmentsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 27
+#guard afterCommitmentsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 27
 
 /-! ## §5.C — the createCell / factory / spawn KERNEL-SET GROW-GATE (the deployment-real
 ACCOUNTS set-insert).
@@ -2496,9 +1793,9 @@ sorted-Poseidon2 root the grow-gate opens against. -/
 def beforeCellsRootCol (w : Nat) : Nat := w + 0
 
 /-- The rotated AFTER-block `cells_root` limb column (limb 0 of the after block at
-`base = traceWidth + 227`). The deployed accounts accumulator's POST root — the grow-gate's
+`base = traceWidth + 51`). The deployed accounts accumulator's POST root — the grow-gate's
 `newRoot`. -/
-def afterCellsRootCol (w : Nat) : Nat := w + 227 + 0
+def afterCellsRootCol (w : Nat) : Nat := w + 51 + 0
 
 /-- **`rotateV3WithNewCellKeyPin`** — `rotateV3` PLUS the fifth appended PI pin welding the
 new-cell key (column `keyCol`) to `ROT_NEW_CELL_KEY_PI = 38` on the FIRST row. Structurally identical
@@ -2516,10 +1813,10 @@ runtime selector column `sel`. `keyCol` is `param0` for createCell/spawn (the ne
 for factory (the derived child VK). -/
 def cellsFreshOp (sel keyCol : Nat) : MapOp :=
   { guard   := .var sel
-  , root    := beforeCellsRootGroup
+  , root    := .var (beforeCellsRootCol EFFECT_VM_WIDTH)
   , key     := .var keyCol
   , value   := .const 0
-  , newRoot := beforeCellsRootGroup
+  , newRoot := .var (beforeCellsRootCol EFFECT_VM_WIDTH)
   , op      := .absent }
 
 /-- The SET-INSERT: the AFTER cells root (limb 0 of the after block) IS the genuine sorted write of
@@ -2527,10 +1824,10 @@ the new-cell key (`keyCol`) into the BEFORE root. The key rides as its own leaf 
 cell). -/
 def cellsInsertOp (sel keyCol : Nat) : MapOp :=
   { guard   := .var sel
-  , root    := beforeCellsRootGroup
+  , root    := .var (beforeCellsRootCol EFFECT_VM_WIDTH)
   , key     := .var keyCol
   , value   := .var keyCol
-  , newRoot := afterCellsRootGroup
+  , newRoot := .var (afterCellsRootCol EFFECT_VM_WIDTH)
   , op      := .insert }
 
 /-- The factory's new-cell key column (`param1`, the derived child VK — `CHILD_VK_DERIVED`); factory's
@@ -2591,20 +1888,19 @@ cap to the child (`spawnCapsMap k actor child target := child ↦ [heldCapTo k.c
 INSERT into the cap-tree). This descriptor FORCES that handoff in-circuit on TWO limbs that coexist:
 - limb 0 (cells-tree): the accounts grow-gate (`cellsFreshOp` + `cellsInsertOp`) — the child id INSERTed
   into accounts, EXACTLY as `spawnV3` (the cells-tree weld is untouched by `weldsAtNoCapRoot`);
-- limb 25 (cap-tree): the cap handoff INSERT-shaped after-spine deploy — the arity-2 map-ops
-  (`anchorReadOpRot` + `insertWriteOpRot`) are DROPPED (mirroring `delegateV3`); the cap-tree INSERT is
-  FORCED by the deployed `effCapInsertV3` wrap (`CapInsertEmit.effCapInsertV3_forces_write8` — the
-  spliced-leaf membership in the REBUILT AFTER tree over the FULL committed 8-felt cap-root groups),
-  not the scalar pair (UNSAT against the deployed arity-7 `CanonicalCapTree::insert_witness`).
+- limb 25 (cap-tree): the cap handoff (`anchorReadOpRot` + `insertWriteOpRot`) — the parent's held cap to
+  `target` membership-read at a PRESENT anchor, then the conferred edge sorted-INSERTed at the child key.
 
 The cap handoff (the parent→child CAPABILITY confer) was the named PHASE-D residual on `spawnV3` (frozen
-`cap_root`/gCapPass); freeing limb 25 and riding the keystone wrap FORCES it, exactly as `delegateV3`. -/
+`cap_root`/gCapPass); freeing limb 25 and driving the insert FORCES it, exactly as `delegateV3`. -/
 def spawnWriteV3 : EffectVmDescriptor2 :=
   let base := graduateV1 (rotateV3WithNewCellKeyPinCapWrite NEW_CELL_KEY_PARAM_COL
     EffectVmEmitSpawn.spawnActorVmDescriptor)
   { base with constraints := base.constraints
       ++ [.mapOp (cellsFreshOp EffectVmEmitSpawn.SEL_SPAWN_RT NEW_CELL_KEY_PARAM_COL),
-          .mapOp (cellsInsertOp EffectVmEmitSpawn.SEL_SPAWN_RT NEW_CELL_KEY_PARAM_COL)] }
+          .mapOp (cellsInsertOp EffectVmEmitSpawn.SEL_SPAWN_RT NEW_CELL_KEY_PARAM_COL),
+          .mapOp (anchorReadOpRot EffectVmEmitSpawn.SEL_SPAWN_RT),
+          .mapOp (insertWriteOpRot EffectVmEmitSpawn.SEL_SPAWN_RT)] }
 
 /-- **`createCellV3_grow_gate_forces_set_insert` — the live descriptor FORCES the accounts
 set-insert + freshness.** On a satisfying `createCellV3` witness whose createCell selector fires, the
@@ -2693,15 +1989,34 @@ theorem spawnWriteV3_grow_gate_forces_set_insert (hash : List ℤ → ℤ)
     NEW_CELL_KEY_PARAM_COL)) (by simp [spawnWriteV3])
   exact ⟨(hfresh hspawn).1, hins hspawn⟩
 
--- (`spawnWriteV3_forces_write` — the arity-2 map-op cap-handoff theorem — is DELETED: the scalar
--- `anchorReadOpRot`/`insertWriteOpRot` pair was shape-UNSAT against the deployed arity-7
--- `CanonicalCapTree::insert_witness`. The cap handoff is now FORCED by the deployed `effCapInsertV3`
--- wrap: `CapInsertEmit.effCapInsertV3_forces_write8`, consumed by `RotatedKernelRefinementBirth`.)
+/-- **`spawnWriteV3_forces_write` — the spawn parent→child cap-tree INSERT is FORCED in-circuit.** On an
+active spawn row of a `Satisfied2 spawnWriteV3` witness: the parent's held cap to `target` is
+membership-read against the before cap-root (a PRESENT anchor at `param[ANCHOR_KEY]` → `param[ANCHOR_MASK]`),
+and the post `cap_root` is the GENUINE sorted insert of the conferred edge (`param[KEEP_MASK]`) at the
+child key (`param[CAP_KEY]`). Mirrors `delegateV3_forces_write` EXACTLY over the spawn selector — this is
+the cap handoff that was the named PHASE-D residual, now FORCED. -/
+theorem spawnWriteV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash spawnWriteV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc EffectVmEmitSpawn.SEL_SPAWN_RT = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol ANCHOR_KEY)) (some ((envAt t i).loc (prmCol ANCHOR_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hread := hrowc (.mapOp (anchorReadOpRot EffectVmEmitSpawn.SEL_SPAWN_RT))
+    (by simp [spawnWriteV3])
+  have hwrite := hrowc (.mapOp (insertWriteOpRot EffectVmEmitSpawn.SEL_SPAWN_RT))
+    (by simp [spawnWriteV3])
+  exact ⟨(hread hactive).1, hwrite hactive⟩
 
 #assert_axioms createCellV3_grow_gate_forces_set_insert
 #assert_axioms factoryV3_grow_gate_forces_set_insert
 #assert_axioms spawnV3_grow_gate_forces_set_insert
 #assert_axioms spawnWriteV3_grow_gate_forces_set_insert
+#assert_axioms spawnWriteV3_forces_write
 
 -- The new-cell-key pin lands at PI slot 46; each rotated create-family descriptor publishes 39 PIs.
 #guard ROT_NEW_CELL_KEY_PI == 42 + 4
@@ -2858,75 +2173,8 @@ the single felt folding ALL authority-bearing cell state including the `permissi
 slots (`trace_rotated.rs::B_AUTHORITY_DIGEST`). The forced limb for `setPermissions` / `setVK`. -/
 def B_RECORD_DIGEST : Nat := 24
 
-/-- The rotated AFTER-block base offset (past the v1 layout + the BEFORE block, `B_SPAN = 91`). -/
-def AFTER_BLOCK_OFF : Nat := 227
-
-/-- **H1: the 7 headroom authority limb offsets** (offsets 12..=18 = r11..r17) carrying limb-1..7 of
-the faithful 8-felt authority digest (`compute_authority_digest_8`), beside limb-0 at
-`B_RECORD_DIGEST = 24`. These previously-unwelded headroom limbs now ride the absorption chain and are
-WELDED (continuity freeze for value effects / record-pin8 for movers) so all 8 limbs are forced. -/
-def authorityHeadroomOffs : List Nat := [12, 13, 14, 15, 16, 17, 18]
-
-/-- The 7 continuity `colEq` freezes welding each headroom authority limb BEFORE↔AFTER (value cohort). -/
-def authorityHeadroomFreezes (w : Nat) : List VmConstraint :=
-  authorityHeadroomOffs.map (fun off => colEq (w + off) (w + AFTER_BLOCK_OFF + off))
-
-/-- **v10: the 14 faithful-8-felt completion-limb offsets** — the 7 perms extras (pre-iroot limbs
-37..=43 = `permsHash[1..7]`) and the 7 vk extras (44..=50 = `vkHash[1..7]`). For a VALUE turn the
-permissions / VK are UNCHANGED, so each completion limb is frozen BEFORE↔AFTER — closing the GENTIAN
-fail-open for the perms/vk halves (no unwelded wide-open limb can smuggle a ~31-bit-colliding authority
-into NEW_COMMIT during an innocuous value move). -/
-def permsVKCompletionOffs : List Nat :=
-  [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]
-
-/-- The 14 continuity `colEq` freezes welding each v10 perms/vk completion limb BEFORE↔AFTER. -/
-def permsVKCompletionFreezes (w : Nat) : List VmConstraint :=
-  permsVKCompletionOffs.map (fun off => colEq (w + off) (w + AFTER_BLOCK_OFF + off))
-
-/-- **All 56 fields[0..7] completion-lane offsets** (`112..167`) — the eight flat fields' lanes 1..7
-of the faithful `field_limbs8` split (`fields[j]` lanes 1..7 → `112 + 7·j .. +6`; lane 0 rides the
-welded limb `4 + j`). These previously-absent lanes now carry the genuine higher bytes of each 32-byte
-record field, so the deployed state commitment binds ALL 32 bytes of every field (the v13 fields-octet
-grow closing the LAST degraded-felt residual). An explicit literal list (like `permsVKCompletionOffs`)
-so the non-vacuity `fin_cases` discharge reduces. -/
-def fieldsCompletionOffs : List Nat :=
-  [112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127,
-   128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143,
-   144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159,
-   160, 161, 162, 163, 164, 165, 166, 167]
-
-/-- The 56 continuity `colEq` freezes welding each fields[0..7] completion lane BEFORE↔AFTER. For a
-VALUE turn that does NOT write a flat field (transfer/burn/mint/bridgeMint/incrementNonce/emitEvent/
-noteSpend/…) EVERY flat field is UNCHANGED, so each completion lane is frozen — closing the GENTIAN
-fail-open for the fields halves (no unwelded wide-open completion can smuggle a forged higher-byte
-field into NEW_COMMIT during an innocuous value move). -/
-def fieldsCompletionFreezes (w : Nat) : List VmConstraint :=
-  fieldsCompletionOffs.map (fun off => colEq (w + off) (w + AFTER_BLOCK_OFF + off))
-
-/-- The fields completion freezes EXCLUDING the written slot `slot`'s 7 lanes — setField[0..7]'s 49
-freezes (the SEVEN OTHER flat fields × 7 completion lanes each; the written slot's block is `112 + 7·slot
-.. +6`). The written slot's lane 0 is FORCED by `gFieldWriteP1`; its seven completion lanes 1..7 are the
-ONE named residual (the setField VALUE8 weld — forcing them to the declared value8 params — is the
-deliberately-gated follow-on). Freezing them here would be UNSOUND: a large-value write
-(`FieldElement = [u8;32]`) moves them off zero, and `colEq (before = after)` would reject the honest
-write. -/
-def fieldsCompletionFreezesExcept (slot : Fin 8) (w : Nat) : List VmConstraint :=
-  (fieldsCompletionOffs.filter
-      (fun off => decide (off < 112 + 7 * slot.val ∨ 112 + 7 * slot.val + 7 ≤ off))).map
-    (fun off => colEq (w + off) (w + AFTER_BLOCK_OFF + off))
-
-/-- The full appended authority-continuity weld list: the six dedicated-sub-limb freezes (r23 ·
-lifecycle · perms · vk · mode · fields-root) PLUS the seven H1 headroom freezes — ONE right-operand of
-the single `++` so the v1 constraints stay the left operand (the keystones compose verbatim). -/
-def frozenAuthorityColEqs (w : Nat) : List VmConstraint :=
-  [ colEq (w + B_RECORD_DIGEST) (w + AFTER_BLOCK_OFF + B_RECORD_DIGEST)
-  , colEq (w + B_LIFECYCLE)     (w + AFTER_BLOCK_OFF + B_LIFECYCLE)
-  , colEq (w + B_PERMS)         (w + AFTER_BLOCK_OFF + B_PERMS)
-  , colEq (w + B_VK)            (w + AFTER_BLOCK_OFF + B_VK)
-  , colEq (w + B_MODE)          (w + AFTER_BLOCK_OFF + B_MODE)
-  , colEq (w + B_FIELDS_ROOT)   (w + AFTER_BLOCK_OFF + B_FIELDS_ROOT) ]
-  ++ authorityHeadroomFreezes w
-  ++ permsVKCompletionFreezes w
+/-- The rotated AFTER-block base offset (past the v1 layout + the BEFORE block, `B_SPAN = 51`). -/
+def AFTER_BLOCK_OFF : Nat := 51
 
 /-! ### THE AUTHORITY-FROZEN CONTINUITY WELD (the value cohort's light-client close, #1 WAVE 0).
 
@@ -2949,22 +2197,26 @@ MOVERS (setPermissions/setVK/seal/unseal/destroy/refusal/receiptArchive/makeSove
 which legitimately change `r23`/lifecycle and keep their record-pin / future in-circuit recompute. -/
 def rotateV3FrozenAuthority (d : EffectVmDescriptor) : EffectVmDescriptor :=
   let r := rotateV3 d
-  -- The six dedicated-sub-limb freezes PLUS the seven H1 headroom freezes (all 8 authority limbs
-  -- WELDED for a VALUE turn — the GENTIAN law: no unwelded limb can smuggle a 31-bit-colliding
-  -- wide-open authority into NEW_COMMIT) PLUS the 56 v13 fields[0..7] completion-lane freezes (every
-  -- flat field UNCHANGED on a non-field-writing value turn — no forged higher-byte field can ride an
-  -- innocuous value move). ONE appended right-operand so v1 stays the left operand.
-  { r with constraints :=
-      r.constraints ++ (frozenAuthorityColEqs d.traceWidth ++ fieldsCompletionFreezes d.traceWidth) }
+  { r with constraints := r.constraints
+      ++ [ colEq (d.traceWidth + B_RECORD_DIGEST) (d.traceWidth + AFTER_BLOCK_OFF + B_RECORD_DIGEST)
+         , colEq (d.traceWidth + B_LIFECYCLE)     (d.traceWidth + AFTER_BLOCK_OFF + B_LIFECYCLE)
+         , colEq (d.traceWidth + B_PERMS)         (d.traceWidth + AFTER_BLOCK_OFF + B_PERMS)
+         , colEq (d.traceWidth + B_VK)            (d.traceWidth + AFTER_BLOCK_OFF + B_VK)
+         , colEq (d.traceWidth + B_MODE)          (d.traceWidth + AFTER_BLOCK_OFF + B_MODE)
+         , colEq (d.traceWidth + B_FIELDS_ROOT)   (d.traceWidth + AFTER_BLOCK_OFF + B_FIELDS_ROOT) ] }
 
-/-- The continuity welds (r23 · lifecycle · perms · vk · mode · fields-root + the seven H1 headroom
-authority limbs + the 56 v13 fields[0..7] completion lanes) are the only constraints past
-`rotateV3`'s — so a VALUE turn cannot smuggle an authority-shape OR a forged field-completion change
-into NEW_COMMIT. -/
+/-- The six continuity welds (r23 · lifecycle · perms-digest · vk-digest · mode · fields-root) are the
+only constraints past `rotateV3`'s — the WAVE-2 perms/VK split + the WAVE-3 mode/fields-root split add
+the sub-limb welds so a VALUE turn cannot smuggle an authority-shape change into NEW_COMMIT. -/
 theorem rotateV3FrozenAuthority_constraints (d : EffectVmDescriptor) :
     (rotateV3FrozenAuthority d).constraints
       = (rotateV3 d).constraints
-          ++ (frozenAuthorityColEqs d.traceWidth ++ fieldsCompletionFreezes d.traceWidth) := rfl
+        ++ [ colEq (d.traceWidth + B_RECORD_DIGEST) (d.traceWidth + AFTER_BLOCK_OFF + B_RECORD_DIGEST)
+           , colEq (d.traceWidth + B_LIFECYCLE)     (d.traceWidth + AFTER_BLOCK_OFF + B_LIFECYCLE)
+           , colEq (d.traceWidth + B_PERMS)         (d.traceWidth + AFTER_BLOCK_OFF + B_PERMS)
+           , colEq (d.traceWidth + B_VK)            (d.traceWidth + AFTER_BLOCK_OFF + B_VK)
+           , colEq (d.traceWidth + B_MODE)          (d.traceWidth + AFTER_BLOCK_OFF + B_MODE)
+           , colEq (d.traceWidth + B_FIELDS_ROOT)   (d.traceWidth + AFTER_BLOCK_OFF + B_FIELDS_ROOT) ] := rfl
 
 /-- Continuity welds are CONSTRAINTS; `graduable` reads only sites/ranges (`rotateV3`'s verbatim). -/
 theorem graduable_rotateV3FrozenAuthority {d : EffectVmDescriptor}
@@ -2988,13 +2240,11 @@ theorem rotateV3FrozenAuthority_freezes (hash : List ℤ → ℤ) (d : EffectVmD
   refine ⟨?_, ?_⟩
   · have hmem : colEq (d.traceWidth + B_RECORD_DIGEST)
         (d.traceWidth + AFTER_BLOCK_OFF + B_RECORD_DIGEST) ∈ (rotateV3FrozenAuthority d).constraints := by
-      rw [rotateV3FrozenAuthority_constraints]
-      exact List.mem_append_right _ (List.mem_append_left _ (by simp [frozenAuthorityColEqs]))
+      rw [rotateV3FrozenAuthority_constraints]; exact List.mem_append_right _ (by simp)
     exact (colEq_holds_iff env isFirst isLast _ _ hlast).mp (hc _ hmem)
   · have hmem : colEq (d.traceWidth + B_LIFECYCLE)
         (d.traceWidth + AFTER_BLOCK_OFF + B_LIFECYCLE) ∈ (rotateV3FrozenAuthority d).constraints := by
-      rw [rotateV3FrozenAuthority_constraints]
-      exact List.mem_append_right _ (List.mem_append_left _ (by simp [frozenAuthorityColEqs]))
+      rw [rotateV3FrozenAuthority_constraints]; exact List.mem_append_right _ (by simp)
     exact (colEq_holds_iff env isFirst isLast _ _ hlast).mp (hc _ hmem)
 
 /-- **(authority drift ⇒ UNSAT)** — the NEGATIVE TOOTH: a row whose AFTER `r23` differs from the BEFORE
@@ -3007,37 +2257,6 @@ theorem rotateV3FrozenAuthority_rejects_drift (hash : List ℤ → ℤ) (d : Eff
         ≠ env.loc (d.traceWidth + AFTER_BLOCK_OFF + B_RECORD_DIGEST)) :
     ¬ satisfiedVm hash (rotateV3FrozenAuthority d) env isFirst isLast :=
   fun h => hdrift (rotateV3FrozenAuthority_freezes hash d env isFirst isLast hlast h).1
-
-/-- **The fields[0..7] completion lanes are FROZEN on a satisfying TRANSITION row of the shared value
-wrap.** For any of the 56 fields completion offsets, a row satisfying `rotateV3FrozenAuthority d` (a
-non-field-writing VALUE turn) carries AFTER completion = BEFORE completion — the v13 fields GENTIAN
-weld: no forged higher-byte field can ride an innocuous value move into NEW_COMMIT. -/
-theorem rotateV3FrozenAuthority_freezes_fields (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
-    (env : VmRowEnv) (isFirst isLast : Bool) (hlast : isLast = false)
-    (h : satisfiedVm hash (rotateV3FrozenAuthority d) env isFirst isLast)
-    (off : Nat) (hoff : off ∈ fieldsCompletionOffs) :
-    env.loc (d.traceWidth + off) = env.loc (d.traceWidth + AFTER_BLOCK_OFF + off) := by
-  obtain ⟨hc, _, _⟩ := h
-  have hmem : colEq (d.traceWidth + off) (d.traceWidth + AFTER_BLOCK_OFF + off)
-      ∈ (rotateV3FrozenAuthority d).constraints := by
-    rw [rotateV3FrozenAuthority_constraints]
-    exact List.mem_append_right _ (List.mem_append_right _
-      (List.mem_map.mpr ⟨off, hoff, rfl⟩))
-  exact (colEq_holds_iff env isFirst isLast _ _ hlast).mp (hc _ hmem)
-
-/-- **TOOTH (fields-completion forge ⇒ UNSAT)** — a VALUE turn whose AFTER field completion lane
-differs from BEFORE (a forged higher-byte field smuggled into NEW_COMMIT during an innocuous value
-move) does NOT satisfy the shared value wrap. The light-client bite for the fields halves:
-`verify_vm_descriptor2` alone rejects it, no trusted post-cell needed. -/
-theorem rotateV3FrozenAuthority_rejects_fields_forge (hash : List ℤ → ℤ) (d : EffectVmDescriptor)
-    (env : VmRowEnv) (isFirst isLast : Bool) (hlast : isLast = false)
-    (off : Nat) (hoff : off ∈ fieldsCompletionOffs)
-    (hforge : env.loc (d.traceWidth + off) ≠ env.loc (d.traceWidth + AFTER_BLOCK_OFF + off)) :
-    ¬ satisfiedVm hash (rotateV3FrozenAuthority d) env isFirst isLast :=
-  fun h => hforge (rotateV3FrozenAuthority_freezes_fields hash d env isFirst isLast hlast h off hoff)
-
-#assert_axioms rotateV3FrozenAuthority_freezes_fields
-#assert_axioms rotateV3FrozenAuthority_rejects_fields_forge
 
 /-- The v1 denotation survives the added continuity welds (the per-effect faithfulness theorems
 compose through, exactly as for the record / nullifier pins). -/
@@ -3097,71 +2316,9 @@ theorem rotV3Frozen_sound_v1 (permOut : List ℤ → List ℤ) (hash : List ℤ 
     (satisfied2Faithful_satisfiedVm permOut hash (rotateV3FrozenAuthority d) minit mfin maddrs t
       (graduable_rotateV3FrozenAuthority hgrad) hf i hi)
 
-/-! ### The setField[0..7] frozen wrap — fields freezes EXCLUDING the written slot.
-
-setField[0..7] WRITES its flat field, so the shared `rotateV3FrozenAuthority` (which freezes all 56
-fields completion lanes) would over-freeze the written slot and reject an honest large-value write
-(`FieldElement = [u8;32]`). This wrap keeps the authority freezes verbatim but swaps the fields
-freezes for `fieldsCompletionFreezesExcept slot` (the OTHER seven flat fields, 49 lanes). The written
-slot's lane 0 is FORCED by `gFieldWriteP1`; its seven completion lanes 1..7 are the ONE named residual
-(the setField VALUE8 weld — forcing them to the declared value8 params — is the deliberately-gated
-follow-on). Structurally identical to `rotateV3FrozenAuthority` (additive over `rotateV3`), so the
-per-effect setField keystones lift verbatim. -/
-def rotateV3FrozenAuthoritySetField (slot : Fin 8) (d : EffectVmDescriptor) : EffectVmDescriptor :=
-  let r := rotateV3 d
-  { r with constraints :=
-      r.constraints
-        ++ (frozenAuthorityColEqs d.traceWidth ++ fieldsCompletionFreezesExcept slot d.traceWidth) }
-
-theorem rotateV3FrozenAuthoritySetField_constraints (slot : Fin 8) (d : EffectVmDescriptor) :
-    (rotateV3FrozenAuthoritySetField slot d).constraints
-      = (rotateV3 d).constraints
-          ++ (frozenAuthorityColEqs d.traceWidth ++ fieldsCompletionFreezesExcept slot d.traceWidth) := rfl
-
-theorem graduable_rotateV3FrozenAuthoritySetField {slot : Fin 8} {d : EffectVmDescriptor}
-    (h : graduable d = true) : graduable (rotateV3FrozenAuthoritySetField slot d) = true := by
-  have hr := graduable_rotateV3 h
-  unfold rotateV3FrozenAuthoritySetField
-  unfold graduable at hr ⊢
-  simpa using hr
-
-/-- The v1 denotation survives the setField continuity welds (the per-effect setField faithfulness
-lifts through, exactly as for the shared authority wrap). -/
-theorem rotateV3FrozenAuthoritySetField_satisfiedVm_v1 (slot : Fin 8) (hash : List ℤ → ℤ)
-    (d : EffectVmDescriptor) (env : VmRowEnv) (isFirst isLast : Bool)
-    (h : satisfiedVm hash (rotateV3FrozenAuthoritySetField slot d) env isFirst isLast) :
-    satisfiedVm hash d env isFirst isLast := by
-  apply rotateV3_satisfiedVm_v1 hash d env isFirst isLast
-  obtain ⟨hc, hsites, hr⟩ := h
-  refine ⟨fun c hc' => hc c ?_, hsites, hr⟩
-  rw [rotateV3FrozenAuthoritySetField_constraints]
-  exact List.mem_append_left _ hc'
-
-/-- **`v3OfFrozenSetField slot d`** — the graduated setField[0..7] descriptor (the fields-freeze-except
-variant of `v3OfFrozen`). Same width/piCount/graduability (the freezes are appended `colEq`s, no new
-column), so every setField `#guard` and per-effect value theorem lifts verbatim. -/
-def v3OfFrozenSetField (slot : Fin 8) (d : EffectVmDescriptor) : EffectVmDescriptor2 :=
-  graduateV1 (rotateV3FrozenAuthoritySetField slot d)
-
-/-- A `Satisfied2` witness of the setField frozen graduation yields the full v1 denotation on every
-row (the setField analog of `rotV3Frozen_sound_v1`). -/
-theorem rotV3FrozenSetField_sound_v1 (slot : Fin 8) (permOut : List ℤ → List ℤ) (hash : List ℤ → ℤ)
-    (d : EffectVmDescriptor)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (hgrad : graduable d = true)
-    (hf : Satisfied2Faithful permOut hash (v3OfFrozenSetField slot d) minit mfin maddrs t) :
-    ∀ i, i < t.rows.length →
-      satisfiedVm hash d (envAt t i) (i == 0) (i + 1 == t.rows.length) := by
-  intro i hi
-  exact rotateV3FrozenAuthoritySetField_satisfiedVm_v1 slot hash d _ _ _
-    (satisfied2Faithful_satisfiedVm permOut hash (rotateV3FrozenAuthoritySetField slot d) minit mfin maddrs t
-      (graduable_rotateV3FrozenAuthoritySetField hgrad) hf i hi)
-
 /-- **`setFieldV3 slot`** — the rotated tick-faced setField (the registry member). setField[0..7] is a
-VALUE effect, so it carries the authority-frame freeze AND the v13 fields completion freezes for the
-seven OTHER flat fields (`v3OfFrozenSetField`); its own written slot's lane 0 is `gFieldWriteP1`-forced
-and its 7 completion lanes are the named VALUE8 residual. -/
-def setFieldV3 (slot : Fin 8) : EffectVmDescriptor2 := v3OfFrozenSetField slot (setFieldTickFace slot)
+VALUE effect, so it carries the authority-frame freeze (`v3OfFrozen`): AFTER-r23 == BEFORE-r23 (+ lifecycle). -/
+def setFieldV3 (slot : Fin 8) : EffectVmDescriptor2 := v3OfFrozen (setFieldTickFace slot)
 
 /-- **The nonce TICK holds on a satisfying non-NoOp setField row.** A row satisfying the rotated
 tick-faced setField, with `s_noop = 0`, carries `after_nonce = before_nonce + 1` (the runtime
@@ -3670,13 +2827,6 @@ def afterVKCol (w : Nat) : Nat := w + AFTER_BLOCK_OFF + B_VK
 `vkHash[0]` into (`params[0]`, `prmCol 0`) — itself bound (all 8 limbs) into the PI-anchored
 `effects_hash`. -/
 def declaredParamCol : Nat := prmCol 0
-
-/-- **v10**: the FIRST faithful-8-felt completion column for the perms digest in the AFTER block (the
-new pre-iroot limb 37, carrying `permsHash[1]`; the felts 2..7 follow at +1..+6, limbs 38..=43). -/
-def afterPermsExtraCol (w : Nat) : Nat := w + AFTER_BLOCK_OFF + 37
-/-- **v10**: the FIRST faithful-8-felt completion column for the vk digest (pre-iroot limb 44, carrying
-`vkHash[1]`; felts 2..7 at +1..+6, limbs 45..=50). -/
-def afterVKExtraCol (w : Nat) : Nat := w + AFTER_BLOCK_OFF + 44
 
 /-- **`rotateV3WithPermsVKGate sel afterCol d`** — `rotateV3WithRecordPin B_RECORD_DIGEST d` PLUS the
 LIVE perms/VK weld: the AFTER authority sub-limb `afterCol` (perms-digest for setPerms, vk-digest for
@@ -4222,165 +3372,6 @@ def cellDestroyV3 : EffectVmDescriptor2 :=
   graduateV1 (rotateV3WithLifecyclePayloadGate EffectVmEmitCellDestroy.SEL_CELLDESTROY none discDestroyed
     EffectVmEmitCellDestroy.cellDestroyVmDescriptor)
 
-/-- **H1 MOVER WELD — `withRecordPin8Headroom2` (post-graduation).** A record-digest mover's EXISTING
-limb-0 record pin (`B_RECORD_DIGEST` → PI 46) forces ONLY limb-0; this appends 7 last-row PI pins binding
-the 7 HEADROOM authority limbs (AFTER-block offsets 12..=18 = limb-1..7 of the faithful 8-felt
-`compute_authority_digest_8`) to the next 7 PIs (47..53), bumping `piCount 47→54`. The deployed verifier
-anchors `PI[46..53] = compute_authority_digest_8(post_cell)[0..7]` (step-6b, the 8-felt generalization of
-the single-felt anchor), so a mover that forges a 31-bit-colliding wide-open authority into ANY of the 8
-limbs is UNSAT — the GENTIAN fail-open ("a wider-but-unwelded limb") is CLOSED for movers, just as the
-value cohort's continuity freeze closed it for value turns. Additive (mirrors the `refusalFieldsWriteV3`
-/ Custom-exposure post-graduation append): every existing column/site/range and constraint is untouched,
-so the per-mover forcing keystones compose verbatim (the limb-0 pin + the gate weld stay members). -/
-def withRecordPin8Headroom2 (g : EffectVmDescriptor2) : EffectVmDescriptor2 :=
-  { g with
-    piCount := g.piCount + 7
-    constraints := g.constraints ++ (List.range 7).map (fun i =>
-      VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (12 + i)) (g.piCount + i))) }
-
-/-- The 7 H1 headroom pins are the ONLY constraints past the inner descriptor's; the inner descriptor's
-constraints stay the left operand of the single `++` (so every per-mover membership / forcing lemma lifts
-verbatim — `List.mem_append_left`). -/
-theorem withRecordPin8Headroom2_constraints (g : EffectVmDescriptor2) :
-    (withRecordPin8Headroom2 g).constraints
-      = g.constraints ++ (List.range 7).map (fun i =>
-          VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (12 + i)) (g.piCount + i))) :=
-  rfl
-
-/-- The 7 H1 headroom pins are `.piBinding`s, so they contribute NO mem-op (the mem log is unchanged). -/
-theorem memOpsOf_withRecordPin8Headroom2 (g : EffectVmDescriptor2) :
-    memOpsOf (withRecordPin8Headroom2 g) = memOpsOf g := by
-  simp [memOpsOf, withRecordPin8Headroom2, List.filterMap_append, List.filterMap_map]
-
-/-- The 7 H1 headroom pins contribute NO map-op (the map log is unchanged). -/
-theorem mapOpsOf_withRecordPin8Headroom2 (g : EffectVmDescriptor2) :
-    mapOpsOf (withRecordPin8Headroom2 g) = mapOpsOf g := by
-  simp [mapOpsOf, withRecordPin8Headroom2, List.filterMap_append, List.filterMap_map]
-
-/-- **THE PEEL — `Satisfied2 (withRecordPin8Headroom2 g) ⟹ Satisfied2 g`.** The H1 mover wrap only
-APPENDS `.piBinding` constraints (and bumps `piCount`): the inner descriptor's constraints stay members
-(`List.mem_append_left`), the hash sites / ranges are unchanged, and the mem/map logs are unchanged (the
-pins are not mem/map ops). So every existing per-mover soundness lemma (which consumes `Satisfied2` of the
-graduated GATE) lifts to the wrapped deployed descriptor by peeling the wrap first. -/
-theorem satisfied2_of_withRecordPin8Headroom2 (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withRecordPin8Headroom2 g) minit mfin maddrs t) :
-    Satisfied2 hash g minit mfin maddrs t := by
-  have hmem : memLog (withRecordPin8Headroom2 g) t = memLog g t := by
-    simp [memLog, memOpsOf_withRecordPin8Headroom2]
-  have hmap : mapLog (withRecordPin8Headroom2 g) t = mapLog g t := by
-    simp [mapLog, mapOpsOf_withRecordPin8Headroom2]
-  exact
-    { rowConstraints := fun i hi c hc => h.rowConstraints i hi c (by
-        rw [withRecordPin8Headroom2_constraints]; exact List.mem_append_left _ hc)
-    , rowHashes := h.rowHashes
-    , rowRanges := h.rowRanges
-    , memAddrsNodup := h.memAddrsNodup
-    , memClosed := fun op hop => h.memClosed op (by rw [hmem]; exact hop)
-    , memDisciplined := by rw [← hmem]; exact h.memDisciplined
-    , memBalanced := by rw [← hmem]; exact h.memBalanced
-    , memTableFaithful := by rw [← hmem]; exact h.memTableFaithful
-    , mapTableFaithful := by rw [← hmap]; exact h.mapTableFaithful }
-
-/-- **v10 PERMS/VK FAITHFUL-8-FELT WELD — `withPermsVK8Weld` (post-graduation).** The limb-0 perms/vk
-weld (`rotateV3WithPermsVKGate`) forces ONLY `B_PERMS`/`B_VK` (limb-0 of the deployed `hash_to_8`
-`permissions_hash`/`vk_hash`) to `prmCol 0`. This appends the SEVEN completion-felt welds: the AFTER-block
-faithful-8-felt extras (`extra0 .. extra0+6`, the new pre-iroot limbs 37..=43 for perms / 44..=50 for vk,
-carrying `permsHash[1..7]` / `vkHash[1..7]`) are EACH welded to `prmCol 1..7` — the remaining 7 felts of
-the deployed 8-felt declared param, ALL already PI-anchored through the SAME `effects_hash` chain (so
-`piCount` is UNCHANGED — NO new verifier PI, which is why perms/vk are the TRACTABLE pair). With the
-limb-0 weld this forces the FULL 8-felt faithful digest, so a mover that forges a ~31-bit-colliding
-wide-open authority into ANY of the 8 perms/vk limbs is UNSAT — the GENTIAN fail-open ("a wider-but-
-unwelded limb") is CLOSED for the perms/vk movers. Additive (mirrors `withRecordPin8Headroom2`): every
-existing column/site/range/constraint is untouched, so the per-mover keystones compose verbatim
-(`List.mem_append_left`). -/
-def withPermsVK8Weld (sel extra0 : Nat) (g : EffectVmDescriptor2) : EffectVmDescriptor2 :=
-  { g with
-    constraints := g.constraints ++ (List.range 7).map (fun i =>
-      VmConstraint2.base (permsVKWeldGate sel (extra0 + i) (prmCol (i + 1)))) }
-
-/-- The 7 completion-felt welds are the ONLY constraints past the inner descriptor's — the inner stays
-the left operand of the single `++` (every per-mover membership / forcing lemma lifts verbatim). -/
-theorem withPermsVK8Weld_constraints (sel extra0 : Nat) (g : EffectVmDescriptor2) :
-    (withPermsVK8Weld sel extra0 g).constraints
-      = g.constraints ++ (List.range 7).map (fun i =>
-          VmConstraint2.base (permsVKWeldGate sel (extra0 + i) (prmCol (i + 1)))) :=
-  rfl
-
-/-- The 7 completion-felt welds are `.gate`s, so they contribute NO mem-op (the mem log is unchanged). -/
-theorem memOpsOf_withPermsVK8Weld (sel extra0 : Nat) (g : EffectVmDescriptor2) :
-    memOpsOf (withPermsVK8Weld sel extra0 g) = memOpsOf g := by
-  simp [memOpsOf, withPermsVK8Weld, List.filterMap_append, List.filterMap_map]
-
-/-- The 7 completion-felt welds contribute NO map-op (the map log is unchanged). -/
-theorem mapOpsOf_withPermsVK8Weld (sel extra0 : Nat) (g : EffectVmDescriptor2) :
-    mapOpsOf (withPermsVK8Weld sel extra0 g) = mapOpsOf g := by
-  simp [mapOpsOf, withPermsVK8Weld, List.filterMap_append, List.filterMap_map]
-
-/-- **THE PEEL — `Satisfied2 (withPermsVK8Weld sel extra0 g) ⟹ Satisfied2 g`.** The v10 weld only
-APPENDS `.gate` constraints: the inner constraints stay members (`List.mem_append_left`), hash sites /
-ranges and the mem/map logs are unchanged. So every existing per-mover soundness lemma (consuming
-`Satisfied2` of the inner descriptor) lifts to the deployed descriptor by peeling this wrap first. -/
-theorem satisfied2_of_withPermsVK8Weld (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    {sel extra0 : Nat} {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withPermsVK8Weld sel extra0 g) minit mfin maddrs t) :
-    Satisfied2 hash g minit mfin maddrs t := by
-  have hmem : memLog (withPermsVK8Weld sel extra0 g) t = memLog g t := by
-    simp [memLog, memOpsOf_withPermsVK8Weld]
-  have hmap : mapLog (withPermsVK8Weld sel extra0 g) t = mapLog g t := by
-    simp [mapLog, mapOpsOf_withPermsVK8Weld]
-  exact
-    { rowConstraints := fun i hi c hc => h.rowConstraints i hi c (by
-        rw [withPermsVK8Weld_constraints]; exact List.mem_append_left _ hc)
-    , rowHashes := h.rowHashes
-    , rowRanges := h.rowRanges
-    , memAddrsNodup := h.memAddrsNodup
-    , memClosed := fun op hop => h.memClosed op (by rw [hmem]; exact hop)
-    , memDisciplined := by rw [← hmem]; exact h.memDisciplined
-    , memBalanced := by rw [← hmem]; exact h.memBalanced
-    , memTableFaithful := by rw [← hmem]; exact h.memTableFaithful
-    , mapTableFaithful := by rw [← hmap]; exact h.mapTableFaithful }
-
-/-- **`withPermsVK8Weld_forces` — the SEVEN completion-felt welds BITE.** On a TRANSITION row
-(`row + 1 ≠ t.rows.length`) of a `Satisfied2 hash (withPermsVK8Weld sel extra0 g)` witness whose `sel` is
-hot, EACH AFTER completion-felt limb `extra0 + i` (`i < 7`) EQUALS `prmCol (i + 1)`. Combined with the
-limb-0 weld (the inner `rotateV3WithPermsVKGate`) this forces all 8 felts of the faithful digest. -/
-theorem withPermsVK8Weld_forces (hash : List ℤ → ℤ) (sel extra0 : Nat) (g : EffectVmDescriptor2)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withPermsVK8Weld sel extra0 g) minit mfin maddrs t)
-    (row : Nat) (hrow : row < t.rows.length) (hnotlast : row + 1 ≠ t.rows.length)
-    (hsel : (envAt t row).loc sel = 1)
-    (i : Nat) (hi : i < 7) :
-    (envAt t row).loc (extra0 + i) = (envAt t row).loc (prmCol (i + 1)) := by
-  have hmemc : VmConstraint2.base (permsVKWeldGate sel (extra0 + i) (prmCol (i + 1)))
-      ∈ (withPermsVK8Weld sel extra0 g).constraints := by
-    rw [withPermsVK8Weld_constraints]
-    exact List.mem_append_right _ (List.mem_map.mpr ⟨i, List.mem_range.mpr hi, rfl⟩)
-  have hgate : (permsVKWeldGate sel (extra0 + i) (prmCol (i + 1))).holdsVm
-      (envAt t row) (row == 0) (row + 1 == t.rows.length) :=
-    h.rowConstraints row hrow _ hmemc
-  have hlastf : (row + 1 == t.rows.length) = false := by
-    simp only [beq_eq_false_iff_ne]; exact hnotlast
-  rw [hlastf] at hgate
-  exact permsVKWeldGate_forces (envAt t row) (row == 0) false rfl _ _ _ hsel hgate
-
-/-- **TOOTH — `withPermsVK8Weld_rejects_forged`.** A TRANSITION row whose committed AFTER completion-felt
-limb `extra0 + i` is NOT the declared `prmCol (i + 1)` (a forge whose faithful 8-felt diverges from the
-PI-anchored declared one in ANY of the 7 completion felts) does NOT satisfy the weld — UNSAT for a
-ledgerless client, no trusted post-cell. -/
-theorem withPermsVK8Weld_rejects_forged (hash : List ℤ → ℤ) (sel extra0 : Nat) (g : EffectVmDescriptor2)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (row : Nat) (hrow : row < t.rows.length) (hnotlast : row + 1 ≠ t.rows.length)
-    (hsel : (envAt t row).loc sel = 1)
-    (i : Nat) (hi : i < 7)
-    (hforged : (envAt t row).loc (extra0 + i) ≠ (envAt t row).loc (prmCol (i + 1))) :
-    ¬ Satisfied2 hash (withPermsVK8Weld sel extra0 g) minit mfin maddrs t :=
-  fun h => hforged (withPermsVK8Weld_forces hash sel extra0 g h row hrow hnotlast hsel i hi)
-
-#assert_axioms withPermsVK8Weld_forces
-#assert_axioms satisfied2_of_withPermsVK8Weld
-#assert_axioms withPermsVK8Weld_rejects_forged
-
 /-- **`setPermsV3`** — the LIVE rotated setPermissions WITH the record-digest-forcing pin AND the LIVE
 perms gate (WAVE 2): the AFTER block's committed PERMS-DIGEST sub-limb (`B_PERMS = 33`) is welded to the
 in-circuit declared-param column `prmCol 0` (= `permsHash[0]`, anchored to a light-client PI via
@@ -4390,11 +3381,9 @@ declared param) is now UNSAT via the in-circuit weld ALONE — no trusted post-c
 `RotatedKernelRefinementPermsVK.setPermissions_slot_forced`. The record pin on `B_RECORD_DIGEST` (PI 46)
 stays as belt-and-suspenders for the opaque full authority residue. -/
 def setPermsV3 : EffectVmDescriptor2 :=
-  withPermsVK8Weld EffectVmEmitSetPermissions.SEL_SET_PERMS
-    (afterPermsExtraCol EffectVmEmitSetPermissions.setPermsVmDescriptor.traceWidth)
-    (withRecordPin8Headroom2 (graduateV1 (rotateV3WithPermsVKGate EffectVmEmitSetPermissions.SEL_SET_PERMS
-      (afterPermsCol EffectVmEmitSetPermissions.setPermsVmDescriptor.traceWidth)
-      EffectVmEmitSetPermissions.setPermsVmDescriptor)))
+  graduateV1 (rotateV3WithPermsVKGate EffectVmEmitSetPermissions.SEL_SET_PERMS
+    (afterPermsCol EffectVmEmitSetPermissions.setPermsVmDescriptor.traceWidth)
+    EffectVmEmitSetPermissions.setPermsVmDescriptor)
 
 /-- **`setVKV3`** — the LIVE rotated setVK WITH the record-digest-forcing pin AND the LIVE vk gate
 (WAVE 2): the AFTER block's committed VK-DIGEST sub-limb (`B_VK = 34`) is welded to the in-circuit
@@ -4403,44 +3392,9 @@ declared-param column `prmCol 0` (= `vkHash[0]`, PI-anchored via `effects_hash`)
 UNSAT via the in-circuit weld ALONE, no trusted post-cell — the LIVE realization of
 `RotatedKernelRefinementPermsVK.setVK_slot_forced`. -/
 def setVKV3 : EffectVmDescriptor2 :=
-  withPermsVK8Weld EffectVmEmitSetVK.SEL_SET_VK
-    (afterVKExtraCol EffectVmEmitSetVK.setVKVmDescriptor.traceWidth)
-    (withRecordPin8Headroom2 (graduateV1 (rotateV3WithPermsVKGate EffectVmEmitSetVK.SEL_SET_VK
-      (afterVKCol EffectVmEmitSetVK.setVKVmDescriptor.traceWidth)
-      EffectVmEmitSetVK.setVKVmDescriptor)))
-
-/-- **FORCE-LEMMA #1 (perms) — `setPermsV3_forces8_extras`.** On an ACTIVE TRANSITION setPermissions row
-of a `Satisfied2 hash setPermsV3` witness, EACH of the 7 committed AFTER perms COMPLETION limbs
-(`afterPermsExtraCol … + i` = limb 37..=43, the faithful `permsHash[1..7]`) EQUALS its declared param
-`prmCol (i + 1)`. With the limb-0 weld (`setPermissions_forced_sat`) this is the full 8-felt close: a
-forge with the wrong faithful 8-felt is UNSAT. -/
-theorem setPermsV3_forces8_extras (hash : List ℤ → ℤ)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash setPermsV3 minit mfin maddrs t)
-    (row : Nat) (hrow : row < t.rows.length) (hnotlast : row + 1 ≠ t.rows.length)
-    (hsel : (envAt t row).loc EffectVmEmitSetPermissions.SEL_SET_PERMS = 1)
-    (i : Nat) (hi : i < 7) :
-    (envAt t row).loc
-        (afterPermsExtraCol EffectVmEmitSetPermissions.setPermsVmDescriptor.traceWidth + i)
-      = (envAt t row).loc (prmCol (i + 1)) :=
-  withPermsVK8Weld_forces hash _ _ _ h row hrow hnotlast hsel i hi
-
-/-- **FORCE-LEMMA #2 (vk) — `setVKV3_forces8_extras`.** On an ACTIVE TRANSITION setVK row of a
-`Satisfied2 hash setVKV3` witness, EACH of the 7 committed AFTER vk COMPLETION limbs
-(`afterVKExtraCol … + i` = limb 44..=50, the faithful `vkHash[1..7]`) EQUALS its declared param
-`prmCol (i + 1)` — the full 8-felt close for setVK. -/
-theorem setVKV3_forces8_extras (hash : List ℤ → ℤ)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash setVKV3 minit mfin maddrs t)
-    (row : Nat) (hrow : row < t.rows.length) (hnotlast : row + 1 ≠ t.rows.length)
-    (hsel : (envAt t row).loc EffectVmEmitSetVK.SEL_SET_VK = 1)
-    (i : Nat) (hi : i < 7) :
-    (envAt t row).loc (afterVKExtraCol EffectVmEmitSetVK.setVKVmDescriptor.traceWidth + i)
-      = (envAt t row).loc (prmCol (i + 1)) :=
-  withPermsVK8Weld_forces hash _ _ _ h row hrow hnotlast hsel i hi
-
-#assert_axioms setPermsV3_forces8_extras
-#assert_axioms setVKV3_forces8_extras
+  graduateV1 (rotateV3WithPermsVKGate EffectVmEmitSetVK.SEL_SET_VK
+    (afterVKCol EffectVmEmitSetVK.setVKVmDescriptor.traceWidth)
+    EffectVmEmitSetVK.setVKVmDescriptor)
 
 /-- **`refusalV3`** — the LIVE rotated refusal WITH the record-digest-forcing pin. The `.refusalA`
 arm sets the cell record's `"refusal"` audit slot to `1` (`TurnExecutorFull.refusalField`,
@@ -4517,10 +3471,10 @@ since the audit slot is a RESERVED, present key — an update, not a fresh inser
 into the BEFORE `fields_root`. -/
 def refusalFieldsWriteOp : MapOp :=
   { guard   := .var EffectVmEmitRefusal.SEL_REFUSAL
-  , root    := beforeFieldsRootGroup
+  , root    := .var (beforeFieldsRootCol EFFECT_VM_WIDTH)
   , key     := .const refusalAuditKeyFelt
   , value   := .var REFUSAL_AUDIT_FELT_COL
-  , newRoot := afterFieldsRootGroup
+  , newRoot := .var (afterFieldsRootCol EFFECT_VM_WIDTH)
   , op      := .write }
 
 /-- **`refusalFieldsWriteV3`** — the LIVE rotated refusal WITH the record-digest pin (belt) AND the
@@ -4529,8 +3483,7 @@ the graduated `rotateV3WithRecordPin` descriptor (the `refusalV3` base) it appen
 FORCES the audit write on limb 36, repointing it from a record-pin-only (light-client-vacuous) limb into a
 FORCED, written `fields_root`. -/
 def refusalFieldsWriteV3 : EffectVmDescriptor2 :=
-  let base := withRecordPin8Headroom2
-    (graduateV1 (rotateV3WithRecordPin B_RECORD_DIGEST EffectVmEmitRefusal.refusalVmDescriptor))
+  let base := graduateV1 (rotateV3WithRecordPin B_RECORD_DIGEST EffectVmEmitRefusal.refusalVmDescriptor)
   { base with
     constraints := base.constraints ++ [.mapOp refusalFieldsWriteOp] }
 
@@ -4574,12 +3527,12 @@ theorem refusalFieldsWriteV3_satisfiedVm_v1 (hash : List ℤ → ℤ)
 #assert_axioms refusalFieldsWriteV3_satisfiedVm_v1
 
 -- The audit-write gate is the ONLY constraint past `refusalV3`'s, and it is a `.write` map-op on limb 36.
-#guard refusalFieldsWriteV3.constraints.length == refusalV3.constraints.length + 8
+#guard refusalFieldsWriteV3.constraints.length == refusalV3.constraints.length + 1
 #guard (mapOpsOf refusalFieldsWriteV3).length == 1
 #guard refusalFieldsWriteOp.op == MapOpKind.write
 #guard REFUSAL_AUDIT_FELT_COL == 70                          -- PARAM_BASE (68) + param2 (spare)
 #guard beforeFieldsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 36
-#guard afterFieldsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 36
+#guard afterFieldsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 36
 -- BOTH POLARITIES of the write tooth's GUARD on the toy environment: the write fires under the refusal
 -- selector (col 52 = 1) and is inert without it (the gate contributes nothing on a non-refusal pad row).
 #guard (let env : VmRowEnv := ⟨fun c => if c == 52 then 1 else 0, fun _ => 0, fun _ => 0⟩;
@@ -4609,10 +3562,6 @@ freeze), so its v1 face is `EffectVmEmitSetVK.setVKVmDescriptor`. (The deployed 
 own `sel::SET_PROGRAM`; giving SetProgram its OWN runtime selector + its own actionTag is the named
 executor-side residual — see `Dregg2.Circuit.Spec.cellstateprogram` / the
 `RotatedKernelRefinementProgram` rung.) -/
--- H1 NOTE: setProgram rides the setVK runtime FACE (`trace.rs` maps it to `sel::SET_VERIFICATION_KEY`)
--- and is the named actionTag residual — the rotated record-pin PRODUCER (`record_pin_offset`) does NOT
--- yet pin it, so it stays limb-0-pinned (the record-pin8 headroom wrap lands when its producer path goes
--- live, alongside setFieldDyn). No regression: limb-0 ~31-bit, exactly its pre-H1 strength.
 def setProgramV3 : EffectVmDescriptor2 :=
   graduateV1 (rotateV3WithRecordPin B_RECORD_DIGEST EffectVmEmitSetVK.setVKVmDescriptor)
 
@@ -4623,8 +3572,8 @@ selector-gated on `SEL_MAKE_SOVEREIGN_RT`. A makeSovereign whose committed AFTER
 (`rotateV3WithModeGate_rejects_unpromoted`). The record pin on `B_RECORD_DIGEST` (PI 46) stays as
 belt-and-suspenders for the opaque authority residue. -/
 def makeSovereignV3 : EffectVmDescriptor2 :=
-  withRecordPin8Headroom2 (graduateV1 (rotateV3WithModeGate EffectVmEmitMakeSovereign.SEL_MAKE_SOVEREIGN_RT
-    modeSovereign EffectVmEmitMakeSovereign.makeSovereignRuntimeVmDescriptor))
+  graduateV1 (rotateV3WithModeGate EffectVmEmitMakeSovereign.SEL_MAKE_SOVEREIGN_RT modeSovereign
+    EffectVmEmitMakeSovereign.makeSovereignRuntimeVmDescriptor)
 
 /-- **`setFieldDynForcedV3`** — the LIVE rotated DYNAMIC setField WITH its memory ops AND the LIVE
 fields-root weld (WAVE 3): the AFTER block's committed `fields_root` sub-limb (`B_FIELDS_ROOT = 36`) is
@@ -4632,9 +3581,6 @@ welded to the declared post-`fields_root` param column, selector-gated on `SEL_S
 post-`fields_root` (committed ≠ declared) is now UNSAT via the in-circuit weld ALONE
 (`rotateV3WithFieldsRootGate_rejects_forged`). The Blum write→read transport (`setFieldDynV3`) rides
 unchanged. -/
--- H1 NOTE: dynamic setField uses its OWN rotated trace generator (not the `record_pin_offset` builder),
--- so its record-pin8 headroom wrap lands when that producer emits the 7 headroom pins. Limb-0-pinned for
--- now (no regression — its fields-root sub-limb `B_FIELDS_ROOT` is independently welded by the gate).
 def setFieldDynForcedV3 : EffectVmDescriptor2 :=
   let g := graduateV1 (rotateV3WithFieldsRootGate EffectVmEmitSetField.SEL_SET_FIELD
     (afterFieldsRootCol setFieldDynV1Face.traceWidth) setFieldDynV1Face)
@@ -4852,16 +3798,16 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 #assert_axioms makeSovereignV3_rejects_unpromoted
 #assert_axioms setFieldDynV3_rejects_forged
 
--- The mode / fields-root force-cols land at AFTER limb 35 / 36 (= traceWidth + 227 + 35 / +36).
-#guard afterModeCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 35
-#guard afterFieldsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 36
+-- The mode / fields-root force-cols land at AFTER limb 35 / 36 (= traceWidth + 51 + 35 / +36).
+#guard afterModeCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 35
+#guard afterFieldsRootCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 36
 #guard beforeModeCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 35
 #guard declaredFieldsRootCol == prmCol 0
 #guard decide (modeHosted ≠ modeSovereign)
 
--- The perms/vk force-cols land at AFTER limb 33 / 34 (= traceWidth + 227 + 33 / +34).
-#guard afterPermsCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 33
-#guard afterVKCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 34
+-- The perms/vk force-cols land at AFTER limb 33 / 34 (= traceWidth + 51 + 33 / +34).
+#guard afterPermsCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 33
+#guard afterVKCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 34
 #guard declaredParamCol == prmCol 0
 
 -- The disc discriminants are pairwise distinct (the gate distinguishes lifecycle states).
@@ -4869,8 +3815,8 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 #guard decide (discSealed ≠ discDestroyed)
 #guard decide (discDestroyed ≠ discArchived)
 #guard decide (discLive ≠ discArchived)
--- The disc force-cols land at AFTER limb 32 (= traceWidth + 227 + 32) and BEFORE limb 32.
-#guard afterDiscCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 227 + 32
+-- The disc force-cols land at AFTER limb 32 (= traceWidth + 51 + 32) and BEFORE limb 32.
+#guard afterDiscCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 51 + 32
 #guard beforeDiscCol EFFECT_VM_WIDTH == EFFECT_VM_WIDTH + 32
 
 #assert_axioms graduable_rotateV3WithRecordPin
@@ -4884,8 +3830,8 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 #guard cellSealV3.piCount == 47
 #guard cellUnsealV3.piCount == 47
 #guard cellDestroyV3.piCount == 47
-#guard setPermsV3.piCount == 54
-#guard setVKV3.piCount == 54
+#guard setPermsV3.piCount == 47
+#guard setVKV3.piCount == 47
 #guard refusalV3.piCount == 47
 #guard receiptArchiveV3.piCount == 47
 #guard graduable (rotateV3WithRecordPin B_RECORD_DIGEST EffectVmEmitRefusal.refusalVmDescriptor)
@@ -4931,12 +3877,10 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 -- cellDestroy: record pin (1) + after-disc (1, no before-pin) + lifecycle-payload weld (1) = +3.
 #guard cellDestroyV3.constraints.length
         == (v3Of EffectVmEmitCellDestroy.cellDestroyVmDescriptor).constraints.length + 3
--- setPerms / setVK: record pin (1) + perms/vk limb-0 weld (1) + 7 H1 headroom pins + the v10
--- 7 completion-felt welds (`withPermsVK8Weld`) = +16.
 #guard setPermsV3.constraints.length
-        == (v3Of EffectVmEmitSetPermissions.setPermsVmDescriptor).constraints.length + 16
+        == (v3Of EffectVmEmitSetPermissions.setPermsVmDescriptor).constraints.length + 2
 #guard setVKV3.constraints.length
-        == (v3Of EffectVmEmitSetVK.setVKVmDescriptor).constraints.length + 16
+        == (v3Of EffectVmEmitSetVK.setVKVmDescriptor).constraints.length + 2
 -- The WAVE-3 movers: makeSovereign carries the record pin + the mode gate (+2 over bare rotateV3);
 -- refusal carries the record pin ALONE (+1) — its deployed `param0`/`param1` carry the refusal
 -- target/reason, not a post-`fields_root` digest, so there is no in-circuit declared-param weld for
@@ -4945,7 +3889,7 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 -- single in-circuit close. setFieldDynForced carries the record pin + the fields-root weld + its 2
 -- mem ops.
 #guard makeSovereignV3.constraints.length
-        == (v3Of EffectVmEmitMakeSovereign.makeSovereignRuntimeVmDescriptor).constraints.length + 9
+        == (v3Of EffectVmEmitMakeSovereign.makeSovereignRuntimeVmDescriptor).constraints.length + 2
 #guard refusalV3.constraints.length
         == (v3Of EffectVmEmitRefusal.refusalVmDescriptor).constraints.length + 1
 -- The forced AFTER limbs are the lifecycle limb (col tw+51+29) and the record-digest limb (col
@@ -4957,373 +3901,19 @@ theorem setFieldDynV3_rejects_forged (hash : List ℤ → ℤ) (env : VmRowEnv) 
 -- tw+47+29; with tw = 186 that is col 262; PI 46 carries the recomputed post felt). A row whose AFTER
 -- limb equals PI[46] PASSES the pin; a frozen / wrong one FAILS it (the forgery is rejected).
 #guard (let off := B_LIFECYCLE; let tw := (186 : Nat);
-        let env : VmRowEnv := ⟨fun c => if c == tw + 227 + off then 1 else 0, fun _ => 0, fun k => if k == 46 then 1 else 0⟩;
-        decide (env.loc (tw + 227 + off) = env.pub 46))   -- sealed (1) == PI[46] ⇒ pin holds
+        let env : VmRowEnv := ⟨fun c => if c == tw + 51 + off then 1 else 0, fun _ => 0, fun k => if k == 46 then 1 else 0⟩;
+        decide (env.loc (tw + 51 + off) = env.pub 46))   -- sealed (1) == PI[46] ⇒ pin holds
 #guard (let off := B_LIFECYCLE; let tw := (186 : Nat);
-        let env : VmRowEnv := ⟨fun c => if c == tw + 227 + off then 0 else 0, fun _ => 0, fun k => if k == 46 then 1 else 0⟩;
-        decide (env.loc (tw + 227 + off) ≠ env.pub 46))   -- frozen-Live (0) ≠ sealed PI[46] ⇒ pin REJECTS
+        let env : VmRowEnv := ⟨fun c => if c == tw + 51 + off then 0 else 0, fun _ => 0, fun k => if k == 46 then 1 else 0⟩;
+        decide (env.loc (tw + 51 + off) ≠ env.pub 46))   -- frozen-Live (0) ≠ sealed PI[46] ⇒ pin REJECTS
 
-/-! ## §v12 — THE DIRECT CARRIER-OCTET PI PINS (factory `child_vk` · hatchery `contract_hash`).
-
-The RESOLVED-FORK direct-pin lane (NOT the `CarrierOctetGates` eqGate wrap): the v12 carrier octets
-are already COMMITTED columns (STEP-2 producer fill, `rotation_witness.rs::produce` /
-`commitment.rs::compute_rotated_pre_limbs`), so pinning the AFTER-block octet directly to TAIL PIs
-PUBLISHES it — SAT-by-construction (a forged post-state that changed the octet mismatches the
-committed `state_commit`). Structurally identical to `withRecordPin8Headroom2` (the AFTER-block
-authority-limb pins), so the apex consumes the `rotV3_publishes`-shape forcing below. -/
-
-/-- In-block base of the v12 `child_vk` carrier octet (limbs 88..=95 — LITERAL since v13: the
-fields completion lanes 112..167 + pad 168 ride PAST it, so it no longer tracks `B_IROOT`). Rust
-twin `trace_rotated::B_CHILD_VK_OCTET`. The hatchery-INVARIANT carrier rides this octet
-(`invariant_digest === child_vk`), so it consumes the SAME pins. -/
-def B_CHILD_VK_OCTET : Nat := 88
-/-- In-block base of the v12 `contract_hash` carrier octet (limbs 96..=103, literal since v13). Rust
-twin `trace_rotated::B_CONTRACT_HASH_OCTET`. -/
-def B_CONTRACT_HASH_OCTET : Nat := 96
-
-#guard B_CHILD_VK_OCTET == 88
-#guard B_CONTRACT_HASH_OCTET == 96
-
-/-- **`withAfterOctetPins g octetBase`** — APPEND 8 `.piBinding .last` pins publishing the AFTER-block
-committed carrier octet (`EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + octetBase + k`, `k < 8`) as 8 TAIL PIs
-(`g.piCount + k`), bumping `piCount` by 8. Mirrors `withRecordPin8Headroom2` exactly — additive, no
-site / range / mem-op / map-op touched, so every existing forcing keystone lifts by
-`List.mem_append_left` (the peel below). -/
-def withAfterOctetPins (g : EffectVmDescriptor2) (octetBase : Nat) : EffectVmDescriptor2 :=
-  { g with
-    piCount := g.piCount + 8
-    constraints := g.constraints ++ (List.range 8).map (fun k =>
-      VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (octetBase + k))
-        (g.piCount + k))) }
-
-/-- The 8 octet pins are the ONLY constraints past the inner descriptor's (single `++`). -/
-theorem withAfterOctetPins_constraints (g : EffectVmDescriptor2) (octetBase : Nat) :
-    (withAfterOctetPins g octetBase).constraints
-      = g.constraints ++ (List.range 8).map (fun k =>
-          VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (octetBase + k))
-            (g.piCount + k))) := rfl
-
-/-- The octet pins are `.piBinding`s, so they contribute NO mem-op (the mem log is unchanged). -/
-theorem memOpsOf_withAfterOctetPins (g : EffectVmDescriptor2) (octetBase : Nat) :
-    memOpsOf (withAfterOctetPins g octetBase) = memOpsOf g := by
-  simp [memOpsOf, withAfterOctetPins, List.filterMap_append, List.filterMap_map]
-
-/-- The octet pins contribute NO map-op (the map log is unchanged). -/
-theorem mapOpsOf_withAfterOctetPins (g : EffectVmDescriptor2) (octetBase : Nat) :
-    mapOpsOf (withAfterOctetPins g octetBase) = mapOpsOf g := by
-  simp [mapOpsOf, withAfterOctetPins, List.filterMap_append, List.filterMap_map]
-
-/-- **THE PEEL** — `Satisfied2 (withAfterOctetPins g octetBase) ⟹ Satisfied2 g`. The wrap only APPENDS
-`.piBinding` constraints (and bumps `piCount`): the inner constraints stay members
-(`List.mem_append_left`), sites / ranges / mem / map logs are unchanged, so every existing per-effect
-soundness lemma lifts to the wrapped descriptor by peeling the wrap first. Mirrors
-`satisfied2_of_withRecordPin8Headroom2`. -/
-theorem satisfied2_of_withAfterOctetPins (hash : List ℤ → ℤ) (g : EffectVmDescriptor2) (octetBase : Nat)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withAfterOctetPins g octetBase) minit mfin maddrs t) :
-    Satisfied2 hash g minit mfin maddrs t := by
-  have hmem : memLog (withAfterOctetPins g octetBase) t = memLog g t := by
-    simp [memLog, memOpsOf_withAfterOctetPins]
-  have hmap : mapLog (withAfterOctetPins g octetBase) t = mapLog g t := by
-    simp [mapLog, mapOpsOf_withAfterOctetPins]
-  exact
-    { rowConstraints := fun i hi c hc => h.rowConstraints i hi c (by
-        rw [withAfterOctetPins_constraints]; exact List.mem_append_left _ hc)
-    , rowHashes := h.rowHashes
-    , rowRanges := h.rowRanges
-    , memAddrsNodup := h.memAddrsNodup
-    , memClosed := fun op hop => h.memClosed op (by rw [hmem]; exact hop)
-    , memDisciplined := by rw [← hmem]; exact h.memDisciplined
-    , memBalanced := by rw [← hmem]; exact h.memBalanced
-    , memTableFaithful := by rw [← hmem]; exact h.memTableFaithful
-    , mapTableFaithful := by rw [← hmap]; exact h.mapTableFaithful }
-
-/-- **`withAfterOctetPins_publishes` — THE `rotV3_publishes`-shape forcing.** On any LAST row of a
-`Satisfied2` witness, each of the 8 published TAIL PIs (`g.piCount + k`) EQUALS its committed
-AFTER-block octet column — so the apex reads the committed carrier octet off the PI vector, and a
-forged post-state octet (a laundered `child_vk` / `contract_hash`) is UNSAT (it would break both the
-pin and the committed `state_commit`). -/
-theorem withAfterOctetPins_publishes (hash : List ℤ → ℤ) (g : EffectVmDescriptor2) (octetBase : Nat)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (hsat : Satisfied2 hash (withAfterOctetPins g octetBase) minit mfin maddrs t)
-    (i : Nat) (hi : i < t.rows.length) (hlast : i + 1 = t.rows.length) :
-    ∀ k : Fin 8, (envAt t i).loc (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (octetBase + k.val))
-      = (envAt t i).pub (g.piCount + k.val) := by
-  intro k
-  have hlastt : (i + 1 == t.rows.length) = true := by simp [hlast]
-  have hin : VmConstraint2.base
-      (.piBinding .last (EFFECT_VM_WIDTH + AFTER_BLOCK_OFF + (octetBase + k.val)) (g.piCount + k.val))
-      ∈ (withAfterOctetPins g octetBase).constraints := by
-    rw [withAfterOctetPins_constraints]
-    exact List.mem_append_right _ (List.mem_map.mpr ⟨k.val, List.mem_range.mpr k.isLt, rfl⟩)
-  have h := hsat.rowConstraints i hi _ hin
-  simp only [VmConstraint2.holdsAt, hlastt, holdsVm_piLast_true] at h
-  exact h
-
-#assert_axioms satisfied2_of_withAfterOctetPins
-#assert_axioms withAfterOctetPins_publishes
-
-/-! ### The DSL rc-EMIT (`withDfaRcPins`) — the `Witnessed{Dfa}` route-commitment PI exposure.
-
-A `Witnessed{Dfa}` caveat (a DSL `CellProgram` predicate — e.g. the relay router
-`dregg-dfa-routing-v1`) is verified OFF-AIR by the executor's `DslCircuitDfaVerifier`; the deployed
-turn descriptor previously emitted NO PI for it, so a pure light client could not connect the
-re-proven DSL leaf (`circuit-prove::dsl_leaf_adapter`) to the deployed leg — the named BIG-BANG
-piece (`dsl_leaf_adapter.rs` module doc; the Lean refutation is `Dregg2.Circuit.DslBackingAttack`).
-
-The emit: the caveat region carries a 4-felt DFA ROUTE-COMMITMENT carrier at `C_RC_OFF` (offsets
-39..42, past the caveat commit at 38 — the `caveatCommit` fold over the 29 manifest felts is
-UNTOUCHED). The producer fills it with `custom_proof_pi_commitment(DfaProofWire.public_inputs)` —
-the SAME derivation the custom carrier's `custom_proof_commitment` binds, term-for-term — on a
-Dfa-gated turn, ZERO otherwise (the absent sentinel: a turn WITHOUT a Dfa caveat publishes zeros
-and still proves — the pins are plain PI bindings, satisfiable at any uniformly-filled value; the
-executor/verifier anchors the published value, real-or-zero, off the turn's own witnessed
-predicates). `withDfaRcPins` publishes the carrier as 4 TAIL PIs (`g.piCount + k`), the Dfa twin of
-`customPiExposure` — applied to EVERY `v3Registry` member (the caveat is a precondition, not an
-effect: any cap-authorized turn can carry it), so the per-turn FOLD can `connect` the DSL sub-proof
-leaf's in-circuit PI-commitment to the deployed leg at these slots (the dual-expose the fold lane
-mints). -/
-
-/-- The rotated CAVEAT-region base offset (past the v1 layout + the two rotated blocks). -/
-def CAVEAT_REGION_OFF : Nat := 2 * B_SPAN
-
-#guard CAVEAT_REGION_OFF == 454
-
-/-- **`withDfaRcPins g`** — APPEND 4 `.piBinding .last` pins publishing the caveat-region DFA
-route-commitment carrier (`EFFECT_VM_WIDTH + CAVEAT_REGION_OFF + C_RC_OFF + k`, `k < 4`) as 4 TAIL
-PIs (`g.piCount + k`), bumping `piCount` by 4. Mirrors `withAfterOctetPins` exactly — additive, no
-site / range / mem-op / map-op touched, so every existing forcing keystone lifts by
-`List.mem_append_left` (the peel below). -/
-def withDfaRcPins (g : EffectVmDescriptor2) : EffectVmDescriptor2 :=
-  { g with
-    piCount := g.piCount + 4
-    constraints := g.constraints ++ (List.range 4).map (fun k =>
-      VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + CAVEAT_REGION_OFF + (C_RC_OFF + k))
-        (g.piCount + k))) }
-
-/-- The 4 rc pins are the ONLY constraints past the inner descriptor's (single `++`) — the
-`strips_to` shape apex re-keys peel through. -/
-theorem withDfaRcPins_constraints (g : EffectVmDescriptor2) :
-    (withDfaRcPins g).constraints
-      = g.constraints ++ (List.range 4).map (fun k =>
-          VmConstraint2.base (.piBinding .last (EFFECT_VM_WIDTH + CAVEAT_REGION_OFF + (C_RC_OFF + k))
-            (g.piCount + k))) := rfl
-
-/-- The rc pins are `.piBinding`s, so they contribute NO mem-op (the mem log is unchanged). -/
-theorem memOpsOf_withDfaRcPins (g : EffectVmDescriptor2) :
-    memOpsOf (withDfaRcPins g) = memOpsOf g := by
-  simp [memOpsOf, withDfaRcPins, List.filterMap_append, List.filterMap_map]
-
-/-- The rc pins contribute NO map-op (the map log is unchanged). -/
-theorem mapOpsOf_withDfaRcPins (g : EffectVmDescriptor2) :
-    mapOpsOf (withDfaRcPins g) = mapOpsOf g := by
-  simp [mapOpsOf, withDfaRcPins, List.filterMap_append, List.filterMap_map]
-
-/-- **THE PEEL — `Satisfied2 (withDfaRcPins g) ⟹ Satisfied2 g`.** The wrap only APPENDS
-`.piBinding` constraints (and bumps `piCount`): the inner constraints stay members
-(`List.mem_append_left`), sites / ranges / mem / map logs are unchanged, so every existing
-per-effect soundness lemma lifts to the wrapped descriptor by peeling the wrap first. Mirrors
-`satisfied2_of_withAfterOctetPins`. -/
-theorem satisfied2_of_withDfaRcPins (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withDfaRcPins g) minit mfin maddrs t) :
-    Satisfied2 hash g minit mfin maddrs t := by
-  have hmem : memLog (withDfaRcPins g) t = memLog g t := by
-    simp [memLog, memOpsOf_withDfaRcPins]
-  have hmap : mapLog (withDfaRcPins g) t = mapLog g t := by
-    simp [mapLog, mapOpsOf_withDfaRcPins]
-  exact
-    { rowConstraints := fun i hi c hc => h.rowConstraints i hi c (by
-        rw [withDfaRcPins_constraints]; exact List.mem_append_left _ hc)
-    , rowHashes := h.rowHashes
-    , rowRanges := h.rowRanges
-    , memAddrsNodup := h.memAddrsNodup
-    , memClosed := fun op hop => h.memClosed op (by rw [hmem]; exact hop)
-    , memDisciplined := by rw [← hmem]; exact h.memDisciplined
-    , memBalanced := by rw [← hmem]; exact h.memBalanced
-    , memTableFaithful := by rw [← hmem]; exact h.memTableFaithful
-    , mapTableFaithful := by rw [← hmap]; exact h.mapTableFaithful }
-
-/-- **`withDfaRcPins_publishes` — the `rotV3_publishes`-shape forcing.** On any LAST row of a
-`Satisfied2` witness, each of the 4 published TAIL PIs (`g.piCount + k`) EQUALS its caveat-region
-route-commitment carrier column — so the fold reads the carrier off the PI vector: a leg claiming a
-DIFFERENT rc than the one the trace carries is UNSAT, and the fold's `connect` to the re-proven DSL
-leaf's in-circuit commitment makes an unwitnessed Dfa predicate a LIGHT-CLIENT refusal, not just a
-re-executor one. -/
-theorem withDfaRcPins_publishes (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (hsat : Satisfied2 hash (withDfaRcPins g) minit mfin maddrs t)
-    (i : Nat) (hi : i < t.rows.length) (hlast : i + 1 = t.rows.length) :
-    ∀ k : Fin 4, (envAt t i).loc (EFFECT_VM_WIDTH + CAVEAT_REGION_OFF + (C_RC_OFF + k.val))
-      = (envAt t i).pub (g.piCount + k.val) := by
-  intro k
-  have hlastt : (i + 1 == t.rows.length) = true := by simp [hlast]
-  have hin : VmConstraint2.base
-      (.piBinding .last (EFFECT_VM_WIDTH + CAVEAT_REGION_OFF + (C_RC_OFF + k.val)) (g.piCount + k.val))
-      ∈ (withDfaRcPins g).constraints := by
-    rw [withDfaRcPins_constraints]
-    exact List.mem_append_right _ (List.mem_map.mpr ⟨k.val, List.mem_range.mpr k.isLt, rfl⟩)
-  have h := hsat.rowConstraints i hi _ hin
-  simp only [VmConstraint2.holdsAt, hlastt, holdsVm_piLast_true] at h
-  exact h
-
-#assert_axioms satisfied2_of_withDfaRcPins
-#assert_axioms withDfaRcPins_publishes
-
-/-- **`factoryV3Carriers`** — the deployed `factoryVmDescriptor2R24` WITH the two direct carrier-octet
-pin cohorts TAIL-appended after PI 46: the `child_vk8` octet (limbs 88..=95, PI 47..54 — factory's
-installed child VK, which the hatchery-INVARIANT carrier also rides) then the `contract_hash8` octet
-(limbs 96..=103, PI 55..62 — the hatchery-mint `HpresProof::Attested` content hash, ZERO on a plain
-factory turn). `piCount 47 → 63`. Both pins publish the STEP-2-filled octet; the SDK/executor thread
-the material (`child_vk` = the executor's `effective_vk`; `contract_hash` at the hatchery-mint site). -/
-def factoryV3Carriers : EffectVmDescriptor2 :=
-  withAfterOctetPins (withAfterOctetPins factoryV3 B_CHILD_VK_OCTET) B_CONTRACT_HASH_OCTET
-
--- The two octet cohorts land the child_vk pins at PI 47..54 and the contract_hash pins at 55..62.
-#guard factoryV3.piCount == 47
-#guard factoryV3Carriers.piCount == 63
--- The grow-gate map-ops (accounts set-insert) survive the additive octet pins (they are `.piBinding`s).
-#guard (mapOpsOf factoryV3Carriers).length == 2
--- traceWidth / tables / sites are untouched by the additive pins (registry invariants hold).
-#guard factoryV3Carriers.traceWidth == factoryV3.traceWidth
-#guard factoryV3Carriers.tables.length == 5
-
-/-! ### The BRIDGE-MINT FELT MINT-HASH PIN (`mintV3BridgeHash`) — the bridge carrier's
-deployed-leg exposure (STEP 3 of the felt-domain mint_hash thread).
-
-The BridgeMint row's `mint_hash` (`param0`, col `prmCol 0`) was, until the STEP-1 executor
-re-align, the byte-domain `hash_to_bb(blake3(nullifier ‖ postcard(source_root) ‖ dest ‖ asset))`
-— read by ZERO constraints and recomputable by NO circuit (the 68297080e named residual: pinning
-it would be a dead-end exposure the felt-domain note-spend leaf could never connect). Since the
-re-align it is the FELT-DOMAIN `note_spend_mint_hash_felt` = `hash_fact(hash_fact(nullifier,
-[root, dest_fed, asset]), [value_lo, value_hi])` over the SIX compressed felts the executor's
-`apply_bridge_mint` enforces the real note-spend STARK against (`verify_note_spend_dsl_full`) —
-the SAME identity the recursion note-spend leaf (`circuit-prove::note_spend_leaf_adapter`)
-recomputes IN-AIR and exposes at its claim lane 6.
-
-`withMintHashPin` publishes that column as ONE appended PI (the bridge twin of the noteSpend
-nullifier weld — a FIRST-row pin on `prmCol 0`, the mint row is row 0), so the per-turn FOLD can
-`connect` the deployed leg's published mint identity to the re-proven note-spend leaf's exposed
-lane: a leg claiming a mint identity no verifying note-spend backs is UNSAT at the binding node.
-The THIRD-EDGE tie (teeth == committed-authority): the published PI is the trace's `param0`,
-which `effects_hash` absorbs (PI-bound), and the VERIFIER's reconstruction recomputes it from the
-turn's OWN `PortableNoteProof` via `convert_turn_effects_to_vm` — executor-derived, never a
-prover-chosen free PI. Rust producer twin: `trace_rotated.rs`'s BridgeMint arm (PI 46, pre-rc). -/
-
-/-- The bridge-mint mint-hash parameter column (`param::MINT_HASH = param0`, `prmCol 0`) — the
-mint row's felt-domain mint identity (the STEP-1 re-aligned `note_spend_mint_hash_felt`). -/
-def MINT_HASH_PARAM_COL : Nat := prmCol 0
-
-/-- **`withMintHashPin g`** — APPEND one `.piBinding .first` pin publishing the mint row's
-`mint_hash` param (`prmCol 0`) as ONE TAIL PI (`g.piCount`), bumping `piCount` by 1. Mirrors
-`withAfterOctetPins` exactly — additive, no site / range / mem-op / map-op touched, so every
-existing forcing keystone lifts by `List.mem_append_left` (the peel below). -/
-def withMintHashPin (g : EffectVmDescriptor2) : EffectVmDescriptor2 :=
-  { g with
-    piCount := g.piCount + 1
-    constraints := g.constraints
-      ++ [VmConstraint2.base (.piBinding .first MINT_HASH_PARAM_COL g.piCount)] }
-
-/-- The mint-hash pin is the ONLY constraint past the inner descriptor's (single `++`). -/
-theorem withMintHashPin_constraints (g : EffectVmDescriptor2) :
-    (withMintHashPin g).constraints
-      = g.constraints
-        ++ [VmConstraint2.base (.piBinding .first MINT_HASH_PARAM_COL g.piCount)] := rfl
-
-/-- The pin is a `.piBinding`, so it contributes NO mem-op (the mem log is unchanged). -/
-theorem memOpsOf_withMintHashPin (g : EffectVmDescriptor2) :
-    memOpsOf (withMintHashPin g) = memOpsOf g := by
-  simp [memOpsOf, withMintHashPin, List.filterMap_append]
-
-/-- The pin contributes NO map-op (the map log is unchanged). -/
-theorem mapOpsOf_withMintHashPin (g : EffectVmDescriptor2) :
-    mapOpsOf (withMintHashPin g) = mapOpsOf g := by
-  simp [mapOpsOf, withMintHashPin, List.filterMap_append]
-
-/-- **THE PEEL** — `Satisfied2 (withMintHashPin g) ⟹ Satisfied2 g`. The wrap only APPENDS one
-`.piBinding` constraint (and bumps `piCount`): the inner constraints stay members
-(`List.mem_append_left`), sites / ranges / mem / map logs are unchanged, so every existing
-per-effect soundness lemma lifts to the wrapped descriptor by peeling the wrap first. Mirrors
-`satisfied2_of_withAfterOctetPins`. -/
-theorem satisfied2_of_withMintHashPin (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    {minit : ℤ → ℤ} {mfin : ℤ → ℤ × Nat} {maddrs : List ℤ} {t : VmTrace}
-    (h : Satisfied2 hash (withMintHashPin g) minit mfin maddrs t) :
-    Satisfied2 hash g minit mfin maddrs t := by
-  have hmem : memLog (withMintHashPin g) t = memLog g t := by
-    simp [memLog, memOpsOf_withMintHashPin]
-  have hmap : mapLog (withMintHashPin g) t = mapLog g t := by
-    simp [mapLog, mapOpsOf_withMintHashPin]
-  exact
-    { rowConstraints := fun i hi c hc => h.rowConstraints i hi c (by
-        rw [withMintHashPin_constraints]; exact List.mem_append_left _ hc)
-    , rowHashes := h.rowHashes
-    , rowRanges := h.rowRanges
-    , memAddrsNodup := h.memAddrsNodup
-    , memClosed := fun op hop => h.memClosed op (by rw [hmem]; exact hop)
-    , memDisciplined := by rw [← hmem]; exact h.memDisciplined
-    , memBalanced := by rw [← hmem]; exact h.memBalanced
-    , memTableFaithful := by rw [← hmem]; exact h.memTableFaithful
-    , mapTableFaithful := by rw [← hmap]; exact h.mapTableFaithful }
-
-/-- **`withMintHashPin_publishes` — the `rotV3_publishes`-shape forcing.** On the FIRST row of a
-`Satisfied2` witness, the published TAIL PI (`g.piCount`) EQUALS the mint row's `mint_hash`
-param column — so the fold reads the mint identity off the PI vector: a leg publishing a
-DIFFERENT identity than the one its trace (and `effects_hash`) carries is UNSAT, and the fold's
-`connect` to the re-proven note-spend leaf's in-AIR-recomputed lane 6 makes an unbacked bridge
-mint a LIGHT-CLIENT refusal, not just a re-executor one. -/
-theorem withMintHashPin_publishes (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (hsat : Satisfied2 hash (withMintHashPin g) minit mfin maddrs t)
-    (h0 : 0 < t.rows.length) :
-    (envAt t 0).loc MINT_HASH_PARAM_COL = (envAt t 0).pub g.piCount := by
-  have hin : VmConstraint2.base (.piBinding .first MINT_HASH_PARAM_COL g.piCount)
-      ∈ (withMintHashPin g).constraints := by
-    rw [withMintHashPin_constraints]
-    exact List.mem_append_right _ (List.mem_singleton.mpr rfl)
-  have h := hsat.rowConstraints 0 h0 _ hin
-  have hfirstt : ((0 : Nat) == 0) = true := rfl
-  simp only [VmConstraint2.holdsAt, hfirstt, holdsVm_piFirst_true] at h
-  exact h
-
-/-- **TOOTH** — a published mint identity that is NOT the trace's mint row `param0` is UNSAT. -/
-theorem withMintHashPin_rejects_forged_pi (hash : List ℤ → ℤ) (g : EffectVmDescriptor2)
-    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
-    (h0 : 0 < t.rows.length)
-    (hforged : (envAt t 0).loc MINT_HASH_PARAM_COL ≠ (envAt t 0).pub g.piCount) :
-    ¬ Satisfied2 hash (withMintHashPin g) minit mfin maddrs t :=
-  fun hsat => hforged (withMintHashPin_publishes hash g minit mfin maddrs t hsat h0)
-
-#assert_axioms satisfied2_of_withMintHashPin
-#assert_axioms withMintHashPin_publishes
-#assert_axioms withMintHashPin_rejects_forged_pi
-
-/-- **`mintV3BridgeHash`** — the deployed `mintVmDescriptor2R24` WITH the felt mint-hash pin
-TAIL-appended after the 46-PI rotated prefix (PI 46; `piCount 46 → 47`). The inner member is the
-UNCHANGED gated bridge-mint (`withSelectorGate selM.MINT mintV3`); the pin publishes the STEP-1
-felt-domain mint identity the producer fills (`trace_rotated.rs` BridgeMint arm). The
-supply-mint member (`supplyMintV3`, `sel.MINT`) is NOT pinned — its `(target, slot)` mint_hash
-stays a byte-domain fold with no fold-connect consumer. -/
-def mintV3BridgeHash : EffectVmDescriptor2 :=
-  withMintHashPin (withSelectorGate EffectVmEmitMint.selM.MINT mintV3)
-
--- The pin lands at PI 46 (the first slot past the four rotated commit pins — the SAME arithmetic
--- as `ROT_NULLIFIER_PI`/`ROT_FEE_PI`; bridge-mint never co-occurs with note-spend/fee on one
--- descriptor, so sharing the slot index is sound); rc rides 47..50 on the deployed wrap.
-#guard mintV3.piCount == 46
-#guard mintV3BridgeHash.piCount == 47
--- traceWidth / tables / sites / ops are untouched by the additive pin (registry invariants hold).
-#guard mintV3BridgeHash.traceWidth == mintV3.traceWidth
-#guard mintV3BridgeHash.tables.length == mintV3.tables.length
-#guard (mapOpsOf mintV3BridgeHash).length == (mapOpsOf mintV3).length
-#guard (memOpsOf mintV3BridgeHash).length == (memOpsOf mintV3).length
-
-/-- **`v3RegistryBare`** — the full cohort at the rotated block BEFORE the uniform DSL rc-EMIT wrap
-(keys = the v2 keys suffixed `R24`; wire strings via `emitVmJson2`; driver `EmitRotationV3.lean`).
-The deployed registry is `v3Registry = v3RegistryBare.map withDfaRcPins` below. -/
-def v3RegistryBare : List (String × EffectVmDescriptor2) :=
+/-- **`v3Registry`** — the full 35-member cohort at the rotated block (the 27 v2-graduated members
++ the 8 STEP-1-widened; keys = the v2 keys suffixed `R24`; wire strings via `emitVmJson2`; driver
+`EmitRotationV3.lean`). -/
+def v3Registry : List (String × EffectVmDescriptor2) :=
   [ ("transferVmDescriptor2R24", v3OfFrozen EffectVmEmitTransfer.transferVmDescriptor)
   , ("burnVmDescriptor2R24", v3OfFrozen EffectVmEmitBurn.burnVmDescriptor)
-  , ("mintVmDescriptor2R24", mintV3BridgeHash)
+  , ("mintVmDescriptor2R24", withSelectorGate EffectVmEmitMint.selM.MINT (v3OfFrozen mintTickFace))
   , ("noteSpendVmDescriptor2R24", noteSpendV3)
   , ("noteCreateVmDescriptor2R24", noteCreateV3)
   , ("cellSealVmDescriptor2R24", cellSealV3)
@@ -5354,7 +3944,7 @@ def v3RegistryBare : List (String × EffectVmDescriptor2) :=
       withSelectorGate sel.GRANT_CAP (v3Of EffectVmEmitAttenuateA.attenuateVmDescriptor))
   , ("makeSovereignVmDescriptor2R24", makeSovereignV3)
   , ("createCellVmDescriptor2R24", createCellV3)
-  , ("factoryVmDescriptor2R24", factoryV3Carriers)
+  , ("factoryVmDescriptor2R24", factoryV3)
   , ("spawnVmDescriptor2R24", spawnV3)
   , ("receiptArchiveVmDescriptor2R24", receiptArchiveV3)
   , ("cellUnsealVmDescriptor2R24", cellUnsealV3)
@@ -5362,27 +3952,6 @@ def v3RegistryBare : List (String × EffectVmDescriptor2) :=
   ++ (List.finRange 8).map fun slot =>
       (s!"setFieldVmDescriptor2-{slot.val}R24",
         withSelectorGate EffectVmEmitSetField.SEL_SET_FIELD (v3OfFrozen (setFieldTickFace slot)))
-
-/-- **`v3Registry`** — the DEPLOYED full cohort: every `v3RegistryBare` member wrapped OUTERMOST
-through `withDfaRcPins` (the dsl rc-EMIT — a `Witnessed{Dfa}` caveat is a PRECONDITION any
-cap-authorized turn can carry, so the whole cohort exposes the 4-felt route-commitment carrier as
-its LAST 4 member PIs: slots `piCount − 4 .. piCount − 1` per member, riding AFTER every per-effect
-extra pin and BEFORE the 16 wide commit PIs `wideAppend` lands on the wide twin). Downstream
-registries (`v3RegistryCapOpen`, `v3RegistryWide`, the umem weld) inherit by construction. -/
-def v3Registry : List (String × EffectVmDescriptor2) :=
-  v3RegistryBare.map (fun (k, d) => (k, withDfaRcPins d))
-
--- The rc wrap is uniform: every member gains EXACTLY 4 PIs and NO width/table/site change.
-#guard (v3Registry.zip v3RegistryBare).all fun ((_, w), (_, b)) =>
-  w.piCount == b.piCount + 4 && w.traceWidth == b.traceWidth
-    && w.tables.length == b.tables.length && w.hashSites.length == b.hashSites.length
--- The deployed transfer publishes rc at slots 46..49 (piCount 46 → 50); the STEP-3 factory
--- (piCount 63) at 63..66; the custom exposure member (piCount 54) at 54..57; the bridge-mint
--- felt mint-hash member (piCount 47 — the mint-hash pin at 46) at 47..50.
-#guard (v3Registry.lookup "transferVmDescriptor2R24").any (·.piCount == 50)
-#guard (v3Registry.lookup "factoryVmDescriptor2R24").any (·.piCount == 67)
-#guard (v3Registry.lookup "customVmDescriptor2R24").any (·.piCount == 58)
-#guard (v3Registry.lookup "mintVmDescriptor2R24").any (·.piCount == 51)
 
 #guard v3Registry.length == 36
 -- Every registry entry emits a versioned v2 wire string with the rotated width, the five
@@ -5397,9 +3966,9 @@ def v3Registry : List (String × EffectVmDescriptor2) :=
     && (d.traceWidth - (EFFECT_VM_WIDTH + APPENDIX_SPAN)) % (CHIP_OUT_LANES - 1) == 0
 #guard v3Registry.all fun (_, d) => d.tables.length == 5
 #guard v3Registry.all fun (_, d) => d.hashSites.length == 0 && d.ranges.length == 0
--- The rotated transfer: the v1 graduation's constraints + 24 welds + 4 pins + 124 chip sites (v13).
+-- The rotated transfer: the v1 graduation's constraints + 24 welds + 4 pins + 36 chip sites.
 #guard (v3Of EffectVmEmitTransfer.transferVmDescriptor).constraints.length
-        == transferVmDescriptor2.constraints.length + 24 + 4 + 124
+        == transferVmDescriptor2.constraints.length + 24 + 4 + 36
 #guard (v3Of EffectVmEmitTransfer.transferVmDescriptor).piCount == 42 + 4
 -- The graduation side conditions hold on every v1-faced member (per-instance witnesses of
 -- the parametric `graduable_rotateV3`; attenuate/setFieldDyn ride `v3OfWith` over faces
@@ -5418,48 +3987,34 @@ def v3Registry : List (String × EffectVmDescriptor2) :=
 #guard graduable (rotateV3 EffectVmEmitReceiptArchive.receiptArchiveActorVmDescriptor)
 #guard graduable (rotateV3 EffectVmEmitCellUnseal.cellUnsealVmDescriptor)
 #guard graduable (rotateV3 EffectVmEmitEmitEvent.emitEventVmDescriptor)
--- The extras ride: attenuate carries ONLY the submask non-amp lookup (+1; the two scalar map-ops were
--- DROPPED — the faithful 8-felt cap-write is forced by the cap-open AFTER-SPINE, not an arity-2 map-op),
--- revokeCapability carries NO extras (its scalar held-read + remove-write pair is DROPPED — the
--- REMOVE-shaped after-spine deploy, `effCapRemoveV3`), setFieldDyn its 2 mem ops.
--- Both rebased onto the ROTATED-limb cap-write base (`v3OfWithCapWrite` over the tick face).
+-- The extras ride: attenuate carries its 3 phase-B constraints (held-read + keep-write + submask),
+-- revoke its 2 cap-crown constraints (held-read + remove-write, no submask), setFieldDyn its 2 mem ops.
+-- Both rebased onto the ROTATED-limb cap-write base (`v3OfWithCapWrite` over the tick face — the
+-- silent-forge close).
 #guard attenuateV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 1
+        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 3
 #guard revokeCapabilityV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length
+        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 2
 #guard (memOpsOf setFieldDynV3).length == 2
 #guard (mapOpsOf setFieldDynV3).length == 0
-#guard (mapOpsOf attenuateV3).length == 0
-#guard (mapOpsOf revokeCapabilityV3).length == 0
--- The cap-family WRITE close (INSERT/REMOVE-shaped after-spine deploy): delegate/grantCap/introduce
--- carry NO map ops (the arity-2 scalar pair is DROPPED — the faithful 8-felt cap-tree INSERT is
--- FORCED by the deployed `effCapInsertV3` wrap, never the lane-0 squeeze); delegateAtten keeps ONLY
--- the submask non-amp lookup (+1); revokeDelegation keeps ONLY the §14.EPOCH bump gate (+1).
+#guard (mapOpsOf attenuateV3).length == 2
+#guard (mapOpsOf revokeCapabilityV3).length == 2
+-- The cap-family WRITE close: delegate/grantCap carry held-read + insert-write (2 map ops);
+-- delegateAtten ALSO the submask lookup (+1 constraint, 2 map ops). The post-cap-root WRITE is
+-- now FORCED on the live wire (guarantee A — Authority — circuit-forced for these slots), on the
+-- ROTATED cap-root limb (`v3OfCapWrite` — the cap-root weld dropped, note-spend-shaped).
 #guard delegateV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length
+        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 2
 #guard grantCapWriteV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length
-#guard introduceWriteV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length
+        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 2
 #guard delegateAttenV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 1
-#guard revokeDelegationWriteV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 1
-#guard refreshDelegationWriteV3.constraints.length
-        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length
-#guard (mapOpsOf delegateV3).length == 0
-#guard (mapOpsOf grantCapWriteV3).length == 0
-#guard (mapOpsOf introduceWriteV3).length == 0
-#guard (mapOpsOf delegateAttenV3).length == 0
-#guard (mapOpsOf revokeDelegationWriteV3).length == 0
-#guard (mapOpsOf refreshDelegationWriteV3).length == 0
--- spawn keeps EXACTLY its 2 cells-tree grow-gate map-ops (limb 0); the 2 cap-tree map-ops (limb 25)
--- are DROPPED (the INSERT-shaped after-spine deploy — the cap handoff rides `effCapInsertV3`).
-#guard (mapOpsOf spawnWriteV3).length == 2
--- The rotated Custom carries EXACTLY its one proof-binding op + the eight `customPiExposure`
--- PI pins past the rotated passthrough base (no mem/map ops — the recursive-proof binding is
--- Custom's only NEWLY-EXPRESSIBLE leg; the eight pins publish its bound (commit, vk) columns).
-#guard customV3.constraints.length == (v3Of customV1Face).constraints.length + 1 + 8
+        == (v3OfCapWrite EffectVmEmitAttenuateA.attenuateVmDescriptorGenuineNoRecomputeTick).constraints.length + 3
+#guard (mapOpsOf delegateV3).length == 2
+#guard (mapOpsOf grantCapWriteV3).length == 2
+#guard (mapOpsOf delegateAttenV3).length == 2
+-- The rotated Custom carries EXACTLY its one proof-binding op past the rotated passthrough base
+-- (no mem/map ops — the recursive-proof binding is Custom's only NEWLY-EXPRESSIBLE leg).
+#guard customV3.constraints.length == (v3Of customV1Face).constraints.length + 1
 #guard (proofBindsOf customV3).length == 1
 #guard (memOpsOf customV3).length == 0
 #guard (mapOpsOf customV3).length == 0
@@ -5472,12 +4027,10 @@ no mem ops (both sides are concrete lists; the kernel decides this by reduction)
 theorem memOpsOf_setFieldDynV3 : memOpsOf setFieldDynV3 = memOpsOf setFieldDynVmDescriptor2 :=
   rfl
 
-/-- The rotated attenuate carries NO map ops: the faithful 8-felt in-place UPDATE-AT-KEY is FORCED by
-the cap-open AFTER-SPINE (`CapOpenEmit.effCapOpenWriteV3_forces_write8`), not the arity-2 scalar map-op
-pair (which left the high felts unbound — the ~31-bit lane-0 squeeze). Only the `submaskLookup`
-(`granted ⊑ held`) survives in the base extras, and a lookup is not a map op. -/
+/-- The rotated attenuate's map ops are the ROTATED-limb read/write pair, FIRING-guarded
+(`sel.ATTENUATE_CAPABILITY`) — the silent-forge close. -/
 theorem mapOpsOf_attenuateV3 :
-    mapOpsOf attenuateV3 = [] :=
+    mapOpsOf attenuateV3 = [heldReadOpRot sel.ATTENUATE_CAPABILITY, keepWriteOpRot sel.ATTENUATE_CAPABILITY] :=
   rfl
 
 /-- The rotated dynamic setField's memory log IS the original's (op-for-op): both
@@ -5501,72 +4054,177 @@ theorem setFieldDynV3_readback_genuine (hash : List ℤ → ℤ)
   have := hr rfl
   simpa [MemoryChecking.step] using this
 
-/-- **The rotated cap-crown NON-AMPLIFICATION leg** — on an active attenuate row of a `Satisfied2`
-witness of the ROTATED attenuate, the conferred (narrowed) rights are a bitwise SUBMASK of the held
-rights (`keep ⊑ held`), forced by the surviving `submaskLookup` against the realizable subset table.
-
-The cap-root WRITE itself (the faithful 8-felt in-place UPDATE-AT-KEY) is NO LONGER forced here by an
-arity-2 scalar map-op — that mechanism left the seven high felts of the ~124-bit cap-root unbound (the
-lane-0 squeeze). It is now forced downstream by the cap-open AFTER-SPINE
-(`CapOpenEmit.effCapOpenWriteV3_forces_write8`, over the committed 8-felt `beforeCapRootCols` /
-`afterCapRootCols` groups), which the attenuate CLASS-A refinement trio
-(`RotatedKernelRefinementCapFamily.attenuate_descriptorRefines_sat`) consumes. So this leg keeps only
-the non-amplification (submask) tooth. -/
+/-- **The rotated cap-crown phase-B leg, on the ROTATED-limb write path (the silent-forge close)** —
+on an active attenuate row of a `Satisfied2` witness of the ROTATED attenuate (the held key
+authenticated against the BEFORE rotated cap-root limb `beforeCapRootCol`, the post rotated cap-root
+limb `afterCapRootCol` the genuine sorted UPDATE-AT-KEY of the narrowed rights, `keep ⊑ held` bitwise).
+The map_op FIRES on the FIRING selector (`sel.ATTENUATE_CAPABILITY`), so the AFTER cap-root (var 264) is
+GENUINELY bound — NOT the never-firing var2-guarded V1-state col 87 (forgeable). -/
 theorem attenuateV3_non_amp (hash : List ℤ → ℤ)
     (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
     (hsub : t.tf (.custom SUBMASK_TID) = subsetTable MASK_BITS)
     (hsat : Satisfied2 hash attenuateV3 minit mfin maddrs t)
     (i : Nat) (hi : i < t.rows.length)
     (hactive : (envAt t i).loc sel.ATTENUATE_CAPABILITY = 1) :
-    ∃ a b : Nat, (envAt t i).loc (prmCol KEEP_MASK) = (a : ℤ)
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) (some ((envAt t i).loc (prmCol HELD_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH))
+    ∧ ∃ a b : Nat, (envAt t i).loc (prmCol KEEP_MASK) = (a : ℤ)
         ∧ (envAt t i).loc (prmCol HELD_MASK) = (b : ℤ) ∧ a &&& b = a := by
   have hrowc := hsat.rowConstraints i hi
-  have hmem : ∀ c ∈ ([.lookup submaskLookup] : List VmConstraint2), c ∈ attenuateV3.constraints :=
+  have hmem : ∀ c ∈ ([.mapOp (heldReadOpRot sel.ATTENUATE_CAPABILITY),
+      .mapOp (keepWriteOpRot sel.ATTENUATE_CAPABILITY), .lookup submaskLookup] :
+      List VmConstraint2), c ∈ attenuateV3.constraints :=
     fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (heldReadOpRot sel.ATTENUATE_CAPABILITY)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (keepWriteOpRot sel.ATTENUATE_CAPABILITY)) (hmem _ (by simp))
   have hlook := hrowc (.lookup submaskLookup) (hmem _ (by simp))
+  have hr := hread hactive
+  have hw := hwrite hactive
+  refine ⟨hr.1, hw, ?_⟩
   have hlook' : [(envAt t i).loc (prmCol KEEP_MASK), (envAt t i).loc (prmCol HELD_MASK)]
       ∈ t.tf (.custom SUBMASK_TID) := hlook
   rw [hsub] at hlook'
   obtain ⟨a, b, _, _, hab, hx, hy⟩ := (subsetTable_mem_iff MASK_BITS _ _).mp hlook'
   exact ⟨a, b, hx, hy, hab⟩
 
-/-! ### The cap-family WRITE keystones — REBASED onto the INSERT/REMOVE-shaped after-spine deploy.
+/-! ### The cap-family WRITE keystones (`<slot>V3_non_amp` / `_forces_write`) — guarantee A closed.
 
-The former `<slot>V3_forces_write` theorems (delegate / grantCap / introduce / revokeDelegation) forced
-the cap-tree write via the arity-2 scalar map-op pair — a mechanism that (a) left the seven high felts
-of the ~124-bit cap-root unbound (the lane-0 squeeze) and (b) is SHAPE-UNSAT against the deployed
-arity-7 `CanonicalCapTree`: `writesTo` is update-at-key, but a delegate/introduce SPLICES a fresh key
-(no shared before/after path) and a revoke tombstones the leaf to the ZERO digest (no leaf-absorb
-produces it). Those map-ops are DROPPED. The faithful 8-felt cap-tree writes are now forced downstream
-by the deployed INSERT/REMOVE-shaped cap-open wraps
-(`CapInsertEmit.effCapInsertV3_forces_write8` / `CapRemoveEmit.effCapRemoveV3_forces_write8`, over the
-committed 8-felt `beforeCapRootCols`/`afterCapRootCols` groups), which the CLASS-A refinement trios
-(`RotatedKernelRefinementCapFamily.{delegate,grantCap,delegateAtten,introduce,revokeDelegation}_descriptorRefines_sat`)
-consume. What survives HERE: delegateAtten's non-amplification submask tooth and revokeDelegation's
-§14.EPOCH bump gate. -/
+Mirror of `attenuateV3_non_amp`: on an active cap-graph row of a `Satisfied2` witness of the ROTATED
+cap-family descriptor, (1) the touched capability IS authenticated against the before cap-root (the
+membership READ — a forged held leaf is excluded by `opensTo_functional`), and (2) the post `cap_root`
+is the GENUINE sorted WRITE of the conferred value at the touched key (`writesTo`, FUNCTIONAL under CR via
+`writesTo_functional` — a forged `new_cap_root` is UNSAT). THIS is the close: the cap-tree WRITE the base
+descriptor previously left to an off-row prover-supplied `SpineCommits` hypothesis is now FORCED on the
+deployed wire from `Satisfied2 <slot>V3`. -/
 
-/-- **`delegateAttenV3_non_amp` — the delegateAtten NON-AMPLIFICATION leg.** On an active grant row of a
-`Satisfied2 delegateAttenV3` witness, the conferred (narrowed) rights are a bitwise SUBMASK of the held
-rights (`keep ⊑ held`), forced by the surviving `submaskLookup` against the realizable subset table. The
-cap-tree INSERT itself is forced downstream by the deployed `effCapInsertV3` wrap (see the section
-header) — this leg keeps only the non-amplification tooth, exactly as `attenuateV3_non_amp`. -/
+/-- **`delegateV3_forces_write` — the delegate cap-tree INSERT is FORCED in-circuit.** On an active
+delegate row of a `Satisfied2 delegateV3` witness: the held authority is membership-read against the
+before cap-root, and the post `cap_root` is the GENUINE sorted insert of the conferred rights
+(`param[KEEP_MASK]`) at the new edge key (`param[CAP_KEY]`). Forced from the deployed `insertWriteOp` —
+NOT the opaque `param.CAP_DIGEST_NEW` move, NOT an off-row decode. -/
+theorem delegateV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash delegateV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc sel.GRANT_CAP = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol ANCHOR_KEY)) (some ((envAt t i).loc (prmCol ANCHOR_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hmem : ∀ c ∈ ([.mapOp (anchorReadOpRot sel.GRANT_CAP),
+      .mapOp (insertWriteOpRot sel.GRANT_CAP)] : List VmConstraint2),
+      c ∈ delegateV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (anchorReadOpRot sel.GRANT_CAP)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (insertWriteOpRot sel.GRANT_CAP)) (hmem _ (by simp))
+  exact ⟨(hread hactive).1, hwrite hactive⟩
+
+/-- **`grantCapWriteV3_forces_write` — the bare grant cap-tree INSERT is FORCED in-circuit.** As
+`delegateV3_forces_write`, over `grantCapWriteV3` (the deployed grantCap base + the cap-crown write
+leg). -/
+theorem grantCapWriteV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash grantCapWriteV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc sel.GRANT_CAP = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol ANCHOR_KEY)) (some ((envAt t i).loc (prmCol ANCHOR_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hmem : ∀ c ∈ ([.mapOp (anchorReadOpRot sel.GRANT_CAP),
+      .mapOp (insertWriteOpRot sel.GRANT_CAP)] : List VmConstraint2),
+      c ∈ grantCapWriteV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (anchorReadOpRot sel.GRANT_CAP)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (insertWriteOpRot sel.GRANT_CAP)) (hmem _ (by simp))
+  exact ⟨(hread hactive).1, hwrite hactive⟩
+
+/-- **`delegateAttenV3_non_amp` — the delegateAtten cap-tree INSERT is FORCED in-circuit + non-amp.** As
+`delegateV3_forces_write` PLUS the `granted ⊑ held` bitwise submask tooth (the attenuated grant cannot
+amplify): the conferred rights `param[KEEP_MASK] ⊑ param[HELD_MASK]`. The post `cap_root` is the genuine
+sorted insert of the attenuated grant. -/
 theorem delegateAttenV3_non_amp (hash : List ℤ → ℤ)
     (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
     (hsub : t.tf (.custom SUBMASK_TID) = subsetTable MASK_BITS)
     (hsat : Satisfied2 hash delegateAttenV3 minit mfin maddrs t)
     (i : Nat) (hi : i < t.rows.length)
-    (_hactive : (envAt t i).loc sel.GRANT_CAP = 1) :
-    ∃ a b : Nat, (envAt t i).loc (prmCol KEEP_MASK) = (a : ℤ)
+    (hactive : (envAt t i).loc sel.GRANT_CAP = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol ANCHOR_KEY)) (some ((envAt t i).loc (prmCol ANCHOR_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH))
+    ∧ ∃ a b : Nat, (envAt t i).loc (prmCol KEEP_MASK) = (a : ℤ)
         ∧ (envAt t i).loc (prmCol HELD_MASK) = (b : ℤ) ∧ a &&& b = a := by
   have hrowc := hsat.rowConstraints i hi
-  have hmem : ∀ c ∈ ([.lookup submaskLookup] : List VmConstraint2),
-      c ∈ delegateAttenV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hmem : ∀ c ∈ ([.mapOp (anchorReadOpRot sel.GRANT_CAP),
+      .mapOp (insertWriteOpRot sel.GRANT_CAP), .lookup submaskLookup] :
+      List VmConstraint2), c ∈ delegateAttenV3.constraints :=
+    fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (anchorReadOpRot sel.GRANT_CAP)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (insertWriteOpRot sel.GRANT_CAP)) (hmem _ (by simp))
   have hlook := hrowc (.lookup submaskLookup) (hmem _ (by simp))
+  refine ⟨(hread hactive).1, hwrite hactive, ?_⟩
   have hlook' : [(envAt t i).loc (prmCol KEEP_MASK), (envAt t i).loc (prmCol HELD_MASK)]
       ∈ t.tf (.custom SUBMASK_TID) := hlook
   rw [hsub] at hlook'
   obtain ⟨a, b, _, _, hab, hx, hy⟩ := (subsetTable_mem_iff MASK_BITS _ _).mp hlook'
   exact ⟨a, b, hx, hy, hab⟩
+
+/-- **`introduceWriteV3_forces_write` — the introduce cap-tree INSERT is FORCED in-circuit (frozen-face
+close).** On an active cap-graph row of a `Satisfied2 introduceWriteV3` witness: the held authority is
+membership-read against the before cap-root, and the post `cap_root` is the GENUINE sorted insert of the
+conferred rights (`param[KEEP_MASK]`) at the new edge key (`param[CAP_KEY]`). Forced from the deployed
+`insertWriteOp` on the MOVING `introduceVmDescriptorGenuine` face — the v1-face `gCapPass` freeze that left
+this OFF-row is GONE. -/
+theorem introduceWriteV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash introduceWriteV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc sel.INTRODUCE = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol ANCHOR_KEY)) (some ((envAt t i).loc (prmCol ANCHOR_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hmem : ∀ c ∈ ([.mapOp (anchorReadOpRot sel.INTRODUCE),
+      .mapOp (insertWriteOpRot sel.INTRODUCE)] : List VmConstraint2),
+      c ∈ introduceWriteV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (anchorReadOpRot sel.INTRODUCE)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (insertWriteOpRot sel.INTRODUCE)) (hmem _ (by simp))
+  exact ⟨(hread hactive).1, hwrite hactive⟩
+
+/-- **`revokeDelegationWriteV3_forces_write` — the revokeDelegation cap-tree REMOVE is FORCED in-circuit
+(frozen-face close).** On an active cap-graph row of a `Satisfied2 revokeDelegationWriteV3` witness: the
+held authority is membership-read, and the post `cap_root` is the GENUINE sorted REMOVE (the ZERO sentinel
+write) at the revoked edge key (`param[CAP_KEY]`). Forced from the deployed `removeWriteOp` on the MOVING
+`revokeVmDescriptorGenuine` face — the v1-face `gCapPass` freeze is GONE. NO submask (revoke deletes a slot;
+non-amplification is structural — the ZERO write is below any held mask). -/
+theorem revokeDelegationWriteV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash revokeDelegationWriteV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc sel.REVOKE_DELEGATION = 1) :
+    opensTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) (some ((envAt t i).loc (prmCol HELD_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeCapRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) 0
+        ((envAt t i).loc (afterCapRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hmem : ∀ c ∈ ([.mapOp (heldReadOpRot sel.REVOKE_DELEGATION),
+      .mapOp (removeWriteOpRot sel.REVOKE_DELEGATION),
+      .base (epochBumpGate sel.REVOKE_DELEGATION
+        (beforeEpochCol EFFECT_VM_WIDTH) (afterEpochCol EFFECT_VM_WIDTH))] : List VmConstraint2),
+      c ∈ revokeDelegationWriteV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (heldReadOpRot sel.REVOKE_DELEGATION)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (removeWriteOpRot sel.REVOKE_DELEGATION)) (hmem _ (by simp))
+  exact ⟨(hread hactive).1, hwrite hactive⟩
 
 /-- **`revokeDelegationWriteV3_forces_epoch_bump` — the §14.EPOCH parent-epoch BUMP is FORCED in-circuit.**
 On an active revoke row (`sel.REVOKE_DELEGATION = 1`, not the last row — pad rows follow) of a `Satisfied2
@@ -5605,22 +4263,38 @@ theorem revokeDelegationWriteV3_rejects_wrong_epoch (hash : List ℤ → ℤ)
     ¬ Satisfied2 hash revokeDelegationWriteV3 minit mfin maddrs t :=
   fun hsat => hwrong (revokeDelegationWriteV3_forces_epoch_bump hash minit mfin maddrs t hsat i hi hnl hactive)
 
--- (`refreshDelegationWriteV3_forces_write` — the arity-2 map-op DELEG-write theorem — is DELETED: the
--- scalar `delegReadOpRot`/`delegUpdateWriteOpRot` pair was shape-UNSAT against the deployed
--- native-8-felt witness heaps. The DELEG-tree UPDATE-AT-KEY is now FORCED by the deployed
--- `effCapOpenWriteV3` wrap: `CapOpenEmit.effCapOpenWriteV3_forces_write8`, consumed by
--- `RotatedKernelRefinementCapFamily.refreshDelegation_descriptorRefines_sat`.)
+/-- **`refreshDelegationWriteV3_forces_write` — the refreshDelegation DELEGATIONS-tree UPDATE is FORCED
+in-circuit.** On an active cap-graph row of a `Satisfied2 refreshDelegationWriteV3` witness: the child's
+present snapshot is membership-read against the before DELEG-root (the rotated cap-root limb), and the
+post DELEG-root is the GENUINE sorted UPDATE-AT-KEY of the recomputed snapshot (`param[KEEP_MASK]`) at the
+child key (`param[CAP_KEY]`). Forced from the deployed `delegUpdateWriteOpRot` on the MOVING genuine face —
+the DELEG WRITE that was the `delegRoot_runtime_column_pending` supplied digest is now in-circuit-bound. -/
+theorem refreshDelegationWriteV3_forces_write (hash : List ℤ → ℤ)
+    (minit : ℤ → ℤ) (mfin : ℤ → ℤ × Nat) (maddrs : List ℤ) (t : VmTrace)
+    (hsat : Satisfied2 hash refreshDelegationWriteV3 minit mfin maddrs t)
+    (i : Nat) (hi : i < t.rows.length)
+    (hactive : (envAt t i).loc sel.REFRESH_DELEGATION = 1) :
+    opensTo hash ((envAt t i).loc (beforeDelegRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) (some ((envAt t i).loc (prmCol HELD_MASK)))
+    ∧ writesTo hash ((envAt t i).loc (beforeDelegRootCol EFFECT_VM_WIDTH))
+        ((envAt t i).loc (prmCol CAP_KEY)) ((envAt t i).loc (prmCol KEEP_MASK))
+        ((envAt t i).loc (afterDelegRootCol EFFECT_VM_WIDTH)) := by
+  have hrowc := hsat.rowConstraints i hi
+  have hmem : ∀ c ∈ ([.mapOp (delegReadOpRot sel.REFRESH_DELEGATION),
+      .mapOp (delegUpdateWriteOpRot sel.REFRESH_DELEGATION)] : List VmConstraint2),
+      c ∈ refreshDelegationWriteV3.constraints := fun c hc => List.mem_append_right _ hc
+  have hread := hrowc (.mapOp (delegReadOpRot sel.REFRESH_DELEGATION)) (hmem _ (by simp))
+  have hwrite := hrowc (.mapOp (delegUpdateWriteOpRot sel.REFRESH_DELEGATION)) (hmem _ (by simp))
+  exact ⟨(hread hactive).1, hwrite hactive⟩
 
 /-- The rotated Custom declares EXACTLY the one proof-binding op (the rotated graduation
 contributes none; the extras add exactly `customProofBind`). -/
 theorem proofBindsOf_customV3 : proofBindsOf customV3 = [customProofBind] := by
   have hbase : proofBindsOf (v3Of customV1Face) = [] := proofBindsOf_graduateV1 (rotateV3 customV1Face)
   unfold proofBindsOf at hbase ⊢
-  -- `customV3.constraints = ((v3Of …).constraints ++ [proofBind customProofBind]) ++ customPiExposure`;
-  -- the eight `customPiExposure` pins are all `.base (.piBinding …)`, contributing no proof-binds.
-  show (((v3Of customV1Face).constraints ++ [VmConstraint2.proofBind customProofBind])
-      ++ customPiExposure).filterMap _ = _
-  rw [List.filterMap_append, List.filterMap_append, hbase]
+  show ((v3Of customV1Face).constraints ++ [VmConstraint2.proofBind customProofBind]).filterMap
+      _ = _
+  rw [List.filterMap_append, hbase]
   rfl
 
 /-- **The rotated cap-crown analog for Custom** — `customV2_binds_proof`, transported: on an active
@@ -5642,10 +4316,15 @@ theorem customV3_binds_proof (hash : List ℤ → ℤ)
 #assert_axioms setFieldDynV3_memLog
 #assert_axioms setFieldDynV3_readback_genuine
 #assert_axioms attenuateV3_non_amp
+#assert_axioms delegateV3_forces_write
+#assert_axioms grantCapWriteV3_forces_write
 #assert_axioms delegateAttenV3_non_amp
+#assert_axioms introduceWriteV3_forces_write
+#assert_axioms revokeDelegationWriteV3_forces_write
 #assert_axioms revokeDelegationWriteV3_forces_epoch_bump
 #assert_axioms revokeDelegationWriteV3_rejects_wrong_epoch
 #assert_axioms epochBumpGate_forces
+#assert_axioms refreshDelegationWriteV3_forces_write
 #assert_axioms proofBindsOf_customV3
 #assert_axioms customV3_binds_proof
 #assert_axioms noteSpendV3_grow_gate_forces_set_insert

@@ -275,71 +275,71 @@ pub const DREGG_EFFECTVM_RECORD_V1_FP: &str =
 pub const DREGG_EFFECTVM_TRANSFER_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-transfer-ir2.json");
 pub const DREGG_EFFECTVM_TRANSFER_IR2_FP: &str =
-    "7e1ab68576f7a54785dae752085035528753eb567addafcc455074cbcb7c8c3f";
+    "f94a1dba39360f3570957eb078fcba5ae951ea484f54412937cbcd7a165de037";
 pub const DREGG_EFFECTVM_BURN_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-burn-ir2.json");
 pub const DREGG_EFFECTVM_BURN_IR2_FP: &str =
-    "f732611fccdbe342987fec08e87ffd576ab8b3d8dd9d7aee67d7b9df8f5c70eb";
+    "c9cdb4d52508e787eab0901b74e2f94bf80182cdb30635aa1079a1ac21317f4d";
 pub const DREGG_EFFECTVM_MINT_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-mint-ir2.json");
 pub const DREGG_EFFECTVM_MINT_IR2_FP: &str =
-    "1deaa7c97b373bffa9333586b5249df71c1b070935955d074e8160281b97bbca";
+    "44932f7ee6cd0978955d82e8a8968aeb25a42187ea04f7e24900f9bb63ee0f6e";
 pub const DREGG_EFFECTVM_NOTE_SPEND_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-note-spend-ir2.json");
 pub const DREGG_EFFECTVM_NOTE_SPEND_IR2_FP: &str =
-    "a42ad7545f9eb65914cbec22b9355528284315be385a680a18004fd1900e20c2";
+    "0c57537e1b3e380ec72e0866115076ae2405b583beb4adcb9453e9cb0d66f942";
 pub const DREGG_EFFECTVM_NOTE_CREATE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-note-create-ir2.json");
 pub const DREGG_EFFECTVM_NOTE_CREATE_IR2_FP: &str =
-    "38b7187bba3542c531f70d0d00163b90e142bce9110721f24db403d214656cbf";
+    "6f264773e6d6a462d8471383ce9cc6f625e6dfa6116d6aece54fde78d745f571";
 pub const DREGG_EFFECTVM_CELL_SEAL_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-cell-seal-ir2.json");
 pub const DREGG_EFFECTVM_CELL_SEAL_IR2_FP: &str =
-    "9096de2f8f2b829b10c461eacede288bfdd85b0fd509555cbb206b6fd3451bea";
+    "8bf2729339325bd3ac39f084e0356becc96bdc827e25e36caee8b7adf79f951b";
 pub const DREGG_EFFECTVM_CELL_DESTROY_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-cell-destroy-ir2.json");
 pub const DREGG_EFFECTVM_CELL_DESTROY_IR2_FP: &str =
-    "ea1dec2287e522594fea348fb523e83faba968c22c96e25f6ee8f62ce82c05fa";
+    "f2ac4ccadbb9ff940beb0272f3109049ae4a282d83b66647731b3bedc16c51f9";
 pub const DREGG_EFFECTVM_REFUSAL_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-refusal-ir2.json");
 pub const DREGG_EFFECTVM_REFUSAL_IR2_FP: &str =
-    "18a3512df5094d494811f2d26fc306c25bfa3f876d9d14e59e3ba209edcd3f32";
+    "aeb46cd81fd0250ba0742d679757efd70c4a23f783de02980fd860403ec5d5b8";
 pub const DREGG_EFFECTVM_SET_PERMS_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-perms-ir2.json");
 pub const DREGG_EFFECTVM_SET_PERMS_IR2_FP: &str =
-    "5fec17684e790c1c422b1bc200895f89b18ea1bb07074158842e5953cc64080c";
+    "865406f5f2d5261c2a7a35187eae6df01b0fc2bf13ade2a281cde4f4f4a0a044";
 pub const DREGG_EFFECTVM_SET_VK_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-vk-ir2.json");
 pub const DREGG_EFFECTVM_SET_VK_IR2_FP: &str =
-    "9621c65a2e16d9c28823e333efc1eef8ab3d6ed55904451098ace2584e8d86a3";
+    "7afc84384fe84354f2c1634787e27efd31e1708d25888d7a45922c8a53f68f48";
 pub const DREGG_EFFECTVM_EXERCISE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-exercise-ir2.json");
 pub const DREGG_EFFECTVM_EXERCISE_IR2_FP: &str =
-    "c47e9add936777bfb6bd39df85a24ae960be520235afff6440e24e421240eb32";
+    "dc21377dac2fe9730e0c98868fe58a48c87ddcede53dcd303b30212aba3c41ce";
 pub const DREGG_EFFECTVM_PIPELINED_SEND_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-pipelined-send-ir2.json");
 pub const DREGG_EFFECTVM_PIPELINED_SEND_IR2_FP: &str =
-    "904f9c773aca65497a68348aa22224a1a16837ec511fe54519337ab657f30e3a";
+    "d60d9a2cbc2320db0f2ce22e9fd0a87e853c01d8d04b0dd43bffac8a900ddaf2";
 pub const DREGG_EFFECTVM_REFRESH_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-refresh-ir2.json");
 pub const DREGG_EFFECTVM_REFRESH_IR2_FP: &str =
-    "aede347d2fe74a278cb609fe33f69dfdeb09151a905c110fd92cb9370d1ab005";
+    "2059700b90502502f9932a49985bf073f05250a864edf35b11440048f0f39d94";
 pub const DREGG_EFFECTVM_INCREMENT_NONCE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-increment-nonce-ir2.json");
 pub const DREGG_EFFECTVM_INCREMENT_NONCE_IR2_FP: &str =
-    "7f5470169de5cc1d17c9ea90a251aabbbe558c8392a861103cca81305f65e7c3";
+    "9f7cce001143022c89e8207767a8a48161d5b8b4fdf0020736574f968615943e";
 pub const DREGG_EFFECTVM_REVOKE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-revoke-ir2.json");
 pub const DREGG_EFFECTVM_REVOKE_IR2_FP: &str =
-    "d69b2ad8d1e9b13c84e909c36891f59d47a43b452e55859bdcf6fc9308a0affa";
+    "d3452334ebe75723a49d44a0d66ce2451366eb299247b225ab04c9b1f9a9a182";
 pub const DREGG_EFFECTVM_INTRODUCE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-introduce-ir2.json");
 pub const DREGG_EFFECTVM_INTRODUCE_IR2_FP: &str =
-    "190521abaa1967847e23cbb8a2a332d6257ecc8d8ac05dbf52022d619f3fac34";
+    "9d7b73bd1643db503635ec18eaec5f658d824f89090beb3ac0d380ea053f384b";
 pub const DREGG_EFFECTVM_ATTENUATE_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-attenuate-ir2.json");
 pub const DREGG_EFFECTVM_ATTENUATE_IR2_FP: &str =
-    "52d6d6f1c76ce3f8814cbb0f3c41e325cfb645bfc45ed1ef763b40131ba5f6fe";
+    "a49022b5ee6f7e1195b12a21fe61e10a030df9b3b4063ebd060e32ba72873fee";
 // GRADUATED (cap-crown): RevokeCapability (sel 24). The v2 leg of the cap-REMOVAL effect — a
 // held-membership map-read authenticated against the before cap_root + a ZERO-value remove-write
 // (the slot's rights deleted), NO submask (revoke deletes a slot, it does not narrow rights). Lean
@@ -348,7 +348,7 @@ pub const DREGG_EFFECTVM_ATTENUATE_IR2_FP: &str =
 pub const DREGG_EFFECTVM_REVOKE_CAP_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-revoke-cap-ir2.json");
 pub const DREGG_EFFECTVM_REVOKE_CAP_IR2_FP: &str =
-    "ddd66b7acb3003e5e26eaf38743c67462824c6a8cd975796c08a805fa54d4d53";
+    "24f4a8703a2b9b42f7352b4c310444d5b9ddf4beb5fec0c2b85c2618df6c9cff";
 // GRADUATED (Custom recursive-proof binding, sel 8): the runtime passthrough face graduated onto
 // IR-v2 PLUS the `proof_bind` op (`customProofBind`) that ties the row's `custom_proof_commitment`
 // to a VERIFYING external sub-proof of the recursion engine — the accumulator constraint the
@@ -357,43 +357,43 @@ pub const DREGG_EFFECTVM_REVOKE_CAP_IR2_FP: &str =
 pub const DREGG_EFFECTVM_CUSTOM_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-custom-ir2.json");
 pub const DREGG_EFFECTVM_CUSTOM_IR2_FP: &str =
-    "e2d296687d88761ccc2977ac95a9a3ea693313d94cef66bd0810af13cb347033";
+    "b9aaa323dd7c166c7a91682b58e44252b368ebe97e2f79a63f7601beb4c57e30";
 pub const DREGG_EFFECTVM_SET_FIELD_DYN_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-dyn-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_DYN_IR2_FP: &str =
-    "d2aa3dd677765b4d2bba2c628651b9c6ba37dcdd86c9da00da44f3aa5a3260fa";
+    "b209e09ea2c29deb3add6ff3f05af35848e26f238faf025846c48ac0f24e6e6c";
 pub const DREGG_EFFECTVM_SET_FIELD_0_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-0-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_0_IR2_FP: &str =
-    "e024ad19f58922252b7cdc70c274a4f6ed6f5f391adb77b08f46c2847f1cf0d8";
+    "0143c480f4fd8882bdca372049b402a8036cceda75e963644ef9665787c8832d";
 pub const DREGG_EFFECTVM_SET_FIELD_1_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-1-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_1_IR2_FP: &str =
-    "cf45df10a15ff2d7c49650da9040e78e534dd07fe4cf21f09d5f6b7069e89d8b";
+    "0530b760b8180f84d1e5f99475fc9fe41c71aa82e57217a06dacb3a41ee63306";
 pub const DREGG_EFFECTVM_SET_FIELD_2_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-2-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_2_IR2_FP: &str =
-    "719752cb08ec7e181b94a8a766703fdec344fa75b03e6817145a2e54cebf491e";
+    "804d9996ea9a40a3f63854b91180591b646869f9b8711b5dfb42a82320821fa5";
 pub const DREGG_EFFECTVM_SET_FIELD_3_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-3-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_3_IR2_FP: &str =
-    "bc42b993f8f40325eedb94d3d33989534b2445a37c80f2d496f6c756ef524007";
+    "c546640f654ec6fa95116066b79b99edfd6b8cc87bb511655f9134a391a09cfd";
 pub const DREGG_EFFECTVM_SET_FIELD_4_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-4-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_4_IR2_FP: &str =
-    "c24af7e38efb2241ba402ba72b13f02fffbb70a0ad951ef8b481e1fcf6b97cb3";
+    "48432ac6594535532ab6795f7190dffe3663cc5fc1b7b63add993376f8132128";
 pub const DREGG_EFFECTVM_SET_FIELD_5_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-5-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_5_IR2_FP: &str =
-    "5859dd8b048d1d89e30b10fa3e7c726c4f92126ef23464741d7ddf5b06002bfc";
+    "4994ff04f689d0c8a27a16b5bb457aff6340fb0293faa81979a384e765542e5e";
 pub const DREGG_EFFECTVM_SET_FIELD_6_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-6-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_6_IR2_FP: &str =
-    "02671895e187cc6dee172d0baf9372332b1041f81b3d8da68d9b2053fa28c351";
+    "422dcda681482d1745a0a237dd96ed28ba3f29f28161c96ad2157cbd73774e5f";
 pub const DREGG_EFFECTVM_SET_FIELD_7_IR2_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-set-field-7-ir2.json");
 pub const DREGG_EFFECTVM_SET_FIELD_7_IR2_FP: &str =
-    "e26003660a1bbc0072eac64296230c5fbe8afbecafb140f059ae7f6d082402c2";
+    "0602dc08ab649d9d6db476b3cf54ef0335ec61bd990ad00834a226ea1746b09b";
 
 // ==== selector index -> (descriptor name, const json, fingerprint) ====
 pub const SELECTOR_DESCRIPTORS: &[(usize, &str, &str, &str)] = &[
@@ -738,7 +738,7 @@ pub const ROTATION_LAYOUT_V3_STAGED_FP: &str =
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-rotation-state-v3-staged.json");
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_FP: &str =
-    "615b2ff7419634d7f4527009d8de88d73cc2f321b789aec6fc5586d7ade36891";
+    "a084de25197e5ec67a7e2ca1e86ce3ba0b455491ca4b48fbe30757d23ad615f0";
 
 /// The REGISTER-COUNT MEASUREMENT probes (`docs/ROTATION-CUTOVER.md` pre-gates): the same
 /// staged rotation probe emitted at R=24 and R=32 registers from the PARAMETRIC Lean
@@ -751,11 +751,11 @@ pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_FP: &str =
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_R24_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-rotation-state-v3-staged-r24.json");
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_R24_FP: &str =
-    "92bba2b7f1dca932e0cf06f78ad155b2afccc8f7b4e8740a31e803000a4e8c6a";
+    "64142cfc426bc5a73ec42bf3369e41fe59d2ad48265a1627e93a9e16b1d067a6";
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_R32_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-rotation-state-v3-staged-r32.json");
 pub const DREGG_EFFECTVM_ROTATION_STATE_V3_STAGED_R32_FP: &str =
-    "3afc1492e22949ed41f87a07f99e638a1d7f8684d6cc73a2bf7e4991231a8f82";
+    "c7717b32e6cf1c55dce92b16b8065fd0e8a994fbfe3b6cf606f1f1b6d9d33af9";
 
 /// The v3-staged registry (keyed by Lean def-name, the `V2_DESCRIPTORS` pattern). Entry 0
 /// is the deployed R=16 reference; entries 1-2 are the register-count measurement probes.
@@ -794,7 +794,7 @@ pub const ROTATION_CAVEAT_LAYOUT_V3_STAGED_FP: &str =
 pub const DREGG_EFFECTVM_ROTATION_CAVEAT_V3_STAGED_JSON: &str =
     include_str!("../descriptors/dregg-effectvm-rotation-caveat-v3-staged-r24.json");
 pub const DREGG_EFFECTVM_ROTATION_CAVEAT_V3_STAGED_FP: &str =
-    "39d84d4af032e31380bf909b560d1924d2754ec023da0fb2dfee03de727f5112";
+    "c45e525f46dab10f18474b95554ab36fef9f709a827a8ab16ba17cb0d8b09582";
 
 /// The caveat-operand staged registry (kept SEPARATE from `V3_STAGED_DESCRIPTORS`
 /// so the three rotation-probe pins stay byte-frozen and their coverage walker
@@ -815,13 +815,12 @@ pub const V3_STAGED_CAVEAT_DESCRIPTORS: &[(&str, &str, &str)] = &[(
 /// createCell · factory · spawn · receiptArchive · cellUnseal · emitEvent). The TSV is
 /// `key\tname\tjson` per line, structurally covered by `v3_staged_registry_parses_and_covers`.
 /// STAGED: a new constant, no VK bump, the live wire untouched. Each descriptor's
-/// `trace_width = EFFECT_VM_WIDTH (188) + APPENDIX_SPAN (221) = 409` (the v10 pre_limbs geometry),
-/// plus the graduated chip-lane columns; the rotated commitments ride four appended PI slots
-/// (rotated OLD/NEW commit · height · caveat commit).
+/// `trace_width = EFFECT_VM_WIDTH (186) + APPENDIX_SPAN (141) = 327`; the rotated
+/// commitments ride four appended PI slots (rotated OLD/NEW commit · height · caveat commit).
 pub const V3_STAGED_REGISTRY_TSV: &str =
     include_str!("../descriptors/rotation-v3-staged-registry.tsv");
 pub const V3_STAGED_REGISTRY_FP: &str =
-    "df5f0a760582bbd05c7289a851740933b0915b0f97eb4fe1c08bfb87ddd11117";
+    "3f28db64d9bb76d89770aeb941c71ed5d0e929705fa0f88381b8bb1c39745a0f";
 
 /// **THE UMEM-FORM COHORT REGISTRY (STAGED, VK-RISK-FREE).** The 9 per-effect FIXED-cohort umem
 /// descriptors — `setFieldUMem` · `setHeapUMem` · `grantUMem` · `attenuateUMem` ·
@@ -1197,14 +1196,13 @@ pub const WIDE_TRANSFER_STAGED_TSV: &str =
 /// live `V3_STAGED_REGISTRY_TSV` member). ADDITIVE: the live 1-felt `V3_STAGED_REGISTRY_TSV` / FP / VK
 /// are UNTOUCHED — this is the parallel wide path beside them. The transfer row (row 0) is
 /// byte-identical to `WIDE_TRANSFER_STAGED_TSV`. The wide carriers land PAST each member's host width
-/// (801/829, the heapWrite after-spine host 1287, and the faithful 8-felt cap-open family
-/// 1158/1160/1301), re-absorbing the SAME rotated limbs the 1-felt block lays into a genuine 8-felt
-/// (~124-bit) commitment (wide widths 1169/1197/1526/1528/1655/1669, each carrying the 16 wide commit
+/// (581/595/609/819/821), re-absorbing the SAME rotated limbs the 1-felt block lays into a genuine
+/// 8-felt (~124-bit) commitment (wide widths 789/803/817/1027/1029, each carrying the 16 wide commit
 /// PIs = the 8-felt before/after anchors).
 pub const WIDE_REGISTRY_STAGED_TSV: &str =
     include_str!("../descriptors/rotation-wide-registry-staged.tsv");
 pub const WIDE_REGISTRY_STAGED_FP: &str =
-    "2058fce4b055a94fca841eb530f6b5bb416e9bcee088bfd7d21c49583fdffe43";
+    "d446ab8a72d0f9a5b95bda545de43c86e4568c0acc93456da5ed37b2842a8cf2";
 
 /// **THE LEAN-EMITTED WIDE+UMEM WELDED REGISTRY (STAGED, VK-RISK-FREE) — the WIDE+umem weld's
 /// MISSING VERIFIER LEG.** A member-for-member, name-stable welded twin of the wire's WIDE cap-open
@@ -1230,7 +1228,7 @@ pub const WIDE_REGISTRY_STAGED_FP: &str =
 pub const WIDE_UMEM_WELD_REGISTRY_TSV: &str =
     include_str!("../descriptors/rotation-wide-umem-welded-registry-staged.tsv");
 pub const WIDE_UMEM_WELD_REGISTRY_FP: &str =
-    "e281c24063056d441f00d403dd0184638a141d9cf446734d99f052db3e94e68f";
+    "70d7d9e32ba134b05a85e980004b9480f5a3a3ad18014465077bec719dd9d705";
 
 /// The rotated probe layout at register count `r` (the Rust twin of the Lean parametric
 /// layout `EffectVmEmitRotationR`: columns are FUNCTIONS of R; the chunking is 4-wide head,
@@ -1958,23 +1956,19 @@ mod tests {
         use crate::effect_vm::columns::rotation::caveat as cav;
         use crate::lean_descriptor_air::{LeanExpr, VmConstraint};
 
-        // The DEPLOYED rotated geometry (the v12 pre_limbs re-lay: NUM_PRE_LIMBS = 112 — the bare
-        // R=24 registers + cells/cap/nullifier/commitments/heap/lifecycle/epoch/height/disc roots +
-        // the 8-felt completion limbs 37..87 + the v12 carrier-material octets 88..111). Source-of-truth = the canonical
-        // `trace_rotated` constants (which STEP-1 grew), NOT re-hardcoded literals; mirrors the Lean
-        // `EffectVmEmitRotationV3` §1 constants and the caveat region inside it.
-        use crate::effect_vm::trace_rotated::{
-            B_CHAIN_BASE, B_COMMITTED_HEIGHT, B_IROOT, B_SPAN, B_STATE_COMMIT,
-        };
-        const V1_WIDTH: usize = EFFECT_VM_WIDTH;
-        // chain carriers occupy `[B_CHAIN_BASE, B_SPAN)` (the head digest + one per 3-wide group).
-        const B_NUM_CHAIN: usize = B_SPAN - B_CHAIN_BASE; // 37 (v12: 112 limbs)
-        // The caveat region grew 39 → 43 with the dsl rc-EMIT: the 4-felt `Witnessed{Dfa}`
-        // route-commitment carrier rides in-region offsets 39..=42 on EVERY rotated member's
-        // layout (`trace_rotated::C_SPAN`); only the PI pins (`withDfaRcPins`) are per-member.
-        const C_SPAN: usize = crate::effect_vm::trace_rotated::C_SPAN; // 43 (v12 + rc)
-        const C_COMMIT: usize = cav::MANIFEST_SIZE + cav::NUM_CHAIN; // 29 + 9 = 38
-        const APPENDIX_SPAN: usize = 2 * B_SPAN + C_SPAN; // 345 (v12 + rc)
+        // The DEPLOYED rotated geometry (R=24 PLUS the `commitments_root` flag-day limb 27, so 32
+        // pre-iroot limbs — NOT the bare R=24 register probe `rotation_layout_for(24)`). Mirrors the
+        // Lean `EffectVmEmitRotationV3` §1 constants and the caveat region inside it.
+        const V1_WIDTH: usize = EFFECT_VM_WIDTH; // 186
+        const B_SPAN: usize = 51; // 37 limbs + iroot + state_commit + 12 chain carriers
+        const B_IROOT: usize = 37;
+        const B_STATE_COMMIT: usize = 38;
+        const B_CHAIN_BASE: usize = 39;
+        const B_NUM_CHAIN: usize = 12;
+        const B_COMMITTED_HEIGHT: usize = 31;
+        const C_SPAN: usize = 39;
+        const C_COMMIT: usize = 38;
+        const APPENDIX_SPAN: usize = 2 * B_SPAN + C_SPAN; // 141
 
         let mut n = 0usize;
         for line in V3_STAGED_REGISTRY_TSV.lines() {
@@ -2018,62 +2012,37 @@ mod tests {
                 // inherits 47 PIs. Every other cap-open member rides a non-birth base (46 PIs).
                 let is_spawn = key.starts_with("spawn");
                 let extra_pis = if is_tb { 3 } else { 0 } + if is_spawn { 1 } else { 0 };
-                // Phase H-CAP-8: the FAITHFUL 8-FELT cap-open appendix. The native `node8` arity-16
-                // tree commits the WHOLE 8-felt digest group per absorb (the 7 spare permutation
-                // lanes are PROMOTED into the bound fold — no separate `7·17` lane tail). The Lean
-                // twin `CapOpenEmit.CAP_OPEN_SPAN = 7 + 8 + DEPTH·17 + 8 + 2 + MASK_BITS`:
-                //   7 leaf scalar + 8 leaf-digest + DEPTH·(8 sib + 1 dir + 8 node) + 8 cap_root
-                //   + src + effBit + 32 mask-bit = 7 + 8 + 16·17 + 8 + 2 + 32 = 329.
-                let cap_span = 7 + 8 + 16 * 17 + 8 + 2 + 32; // CAP_OPEN_SPAN = 329
-                // The cap-WRITE members (`effCapOpenWriteV3`: attenuate + the delegation-mutating
-                // writes) carry the AFTER-SPINE recompute appendix PAST the 329-col read appendix —
-                // `CapOpenEmit.AFTER_SPINE_SPAN = 15 + 8·DEPTH = 143` (after-leaf + after-leaf-digest
-                // + DEPTH·8 after-node), forcing the faithful 8-felt cap-WRITE (`*_forces_write8`).
-                let after_spine_span = 15 + 8 * 16; // AFTER_SPINE_SPAN = 143
+                // Phase B-GATE: the rotated base graduation appends `7·n_rot_sites` lane columns,
+                // and the cap-open appendix is now 210 (91 base+mask + 7·17 lane cols for the leaf
+                // + 16 node absorbs). Both surpluses are multiples of 7; the concrete widths are
+                // pinned by the emit goldens + fingerprints.
+                let cap_span = 7 + 1 + 3 * 16 + 3 + 32 + 7 * 17; // CAP_OPEN_SPAN = 210
                 let rot_base = V1_WIDTH + APPENDIX_SPAN;
-                let appendix = cap_span + extra_cols;
-                // The rotated base graduates by `7·n_rot_sites` wire-commit lane cols (still 7-felt;
-                // only the CAP DIGEST groups went 8-felt). So the width is
-                //   rot_base + 7·n_sites + 329 (+ 2 TB) (+ 143 after-spine for write/attenuate).
-                // 143 % 7 ≠ 0, so the with/without-after-spine forms are mutually EXCLUSIVE — the
-                // residual cleanly decides which member this is (no name-keyed dispatch).
                 assert!(
-                    d.trace_width >= rot_base + appendix,
-                    "{key}: cap-open trace width below rotated base + 329 cap-membership appendix"
-                );
-                let surplus = d.trace_width - rot_base - appendix;
-                let has_after_spine = surplus % 7 != 0;
-                let lane_surplus = if has_after_spine {
-                    surplus.checked_sub(after_spine_span)
-                } else {
-                    Some(surplus)
-                };
-                assert!(
-                    matches!(lane_surplus, Some(s) if s % 7 == 0),
-                    "{key}: cap-open trace width = rotated base (+ 7·n_rot_sites lane cols) + 329 \
-                     cap-membership appendix (+2 TB cols) (+143 after-spine for write/attenuate)"
+                    d.trace_width >= rot_base + cap_span + extra_cols
+                        && (d.trace_width - (rot_base + cap_span + extra_cols)) % 7 == 0,
+                    "{key}: cap-open trace width = rotated base (+ 7·n_rot_sites lane cols) + 210 \
+                     cap-membership appendix (91 base+mask + 7·17 chip lane cols) (+2 TB cols)"
                 );
                 assert_eq!(
                     d.public_input_count,
                     46 + extra_pis,
                     "{key}: cap-open carries the rotated 46-PI vector (+3 turn-identity PIs for TB)"
                 );
-                // The cap-open READ appendix declares EXACTLY 17 poseidon2 chip lookups whose DIGEST
-                // (out0, tuple col CHIP_RATE+1) lands in the cap-membership CORE column block
-                // `[cap_open_base, cap_open_base + 287)` (= leaf 7 + leaf-digest 8 + DEPTH·17 level
-                // blocks; `capRoot` starts at +287): 1 leaf absorb + 16 node absorbs. The after-spine
-                // recompute's own 17 lookups land at `[cap_open_base + 329, …)` — PAST the core
-                // window — so a write member still counts exactly the read spine's 17.
+                // The cap-open appendix declares EXACTLY 17 poseidon2 chip lookups whose DIGEST
+                // (out0, tuple col CHIP_RATE+1) lands in the cap-membership column block
+                // `[cap_open_base, cap_open_base + 91)`: 1 leaf absorb + 16 node absorbs. (Phase
+                // B-GATE: the 7-felt lane columns are appended at the VERY END of the descriptor,
+                // so an `any(var >= cap_open_base)` heuristic would over-count — every lookup now
+                // carries lane cols past the base. Keying on out0's appendix range is exact.)
                 use crate::descriptor_ir2::CHIP_RATE;
-                // Recover the appendix base from the total width. The cap appendix starts at the
-                // GRADUATED rotated width (`base.traceWidth`); for write/attenuate members the
-                // after-spine sits past it, so subtract it too: `cap_open_base = trace_width -
-                // CAP_OPEN_SPAN(329) - extra_cols (- AFTER_SPINE_SPAN(143) if write)`.
-                let cap_membership_core = 7 + 8 + 16 * 17; // leaf + leaf-digest + DEPTH·17 = 287
-                let cap_open_base = d.trace_width
-                    - cap_span
-                    - extra_cols
-                    - if has_after_spine { after_spine_span } else { 0 };
+                // Phase B-GATE: the cap-membership appendix now starts at the GRADUATED rotated
+                // width (the rotated lanes are appended past 328, so the cap block was shifted to
+                // `base.traceWidth`). Recover that base from the total width: `cap_open_base =
+                // trace_width - CAP_OPEN_SPAN(210) - extra_cols`. The 91 cap-membership cols sit at
+                // `[cap_open_base, cap_open_base + 91)`; the 119 cap lane cols follow.
+                let cap_span = 7 + 1 + 3 * 16 + 3 + 32 + 7 * 17; // CAP_OPEN_SPAN = 210
+                let cap_open_base = d.trace_width - cap_span - extra_cols;
                 let cap_lookups = d
                     .constraints
                     .iter()
@@ -2082,7 +2051,7 @@ mod tests {
                             matches!(
                                 l.tuple.get(CHIP_RATE + 1),
                                 Some(LeanExpr::Var(v))
-                                    if *v >= cap_open_base && *v < cap_open_base + cap_membership_core
+                                    if *v >= cap_open_base && *v < cap_open_base + 91
                             )
                         } else {
                             false
@@ -2091,7 +2060,7 @@ mod tests {
                     .count();
                 assert_eq!(
                     cap_lookups, 17,
-                    "{key}: cap-open read appendix declares 1 leaf + 16 node chip lookups"
+                    "{key}: cap-open appendix declares 1 leaf + 16 node chip lookups"
                 );
                 continue;
             }
@@ -2238,41 +2207,6 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            // THE UNIFORM DSL rc-EMIT (`withDfaRcPins`): every rotated COHORT member (+ the
-            // fee-in-proof transfer) publishes the 4-felt `Witnessed{Dfa}` route-commitment
-            // carrier (caveat-region offsets 39..=42) as its LAST 4 member PIs. Strip + assert
-            // the quad here so the per-effect branches below keep their pre-rc expectations;
-            // fail-closed on membership (a cohort member MISSING the rc pins, or a tail member
-            // GROWING them, both fail).
-            let rc_col = V1_WIDTH + 2 * B_SPAN + crate::effect_vm::trace_rotated::C_DFA_RC_OFF;
-            let (rc_pins, nullifier_pins): (Vec<(usize, usize)>, Vec<(usize, usize)>) =
-                nullifier_pins
-                    .into_iter()
-                    .partition(|(col, _)| (rc_col..rc_col + 4).contains(col));
-            let has_rc = !rc_pins.is_empty();
-            // NOT rc-wrapped: heapWrite (v3RegistryHeap tail, no v1 prefix), the dedicated
-            // supply-mint (tail `withSelectorGate sel::MINT mintV3` over the BARE body), and the
-            // STAGED escrow-satisfaction weld (no live routing). Everything else here is the
-            // rc-wrapped cohort (+ transferFee).
-            let rc_exempt = is_heap_write
-                || key == "supplyMintVmDescriptor2R24"
-                || key == "settleEscrowSatVmDescriptor2R24";
-            assert_eq!(
-                has_rc, !rc_exempt,
-                "{key}: dsl rc pins present iff the member is the rc-wrapped cohort"
-            );
-            if has_rc {
-                let rc_expected: Vec<(usize, usize)> = (0..4)
-                    .map(|k| (rc_col + k, d.public_input_count - 4 + k))
-                    .collect();
-                assert_eq!(
-                    rc_pins, rc_expected,
-                    "{key}: the 4 rc pins publish the rc carrier (region offsets 39..=42) as the \
-                     LAST 4 member PIs"
-                );
-            }
-            // The member's PRE-rc PI count — what every per-effect branch below pins.
-            let base_pi_count = d.public_input_count - if has_rc { 4 } else { 0 };
             // THE RECORD-FORCING PIN (the deployment-soundness close, `EffectVmEmitRotationV3
             // .rotateV3WithRecordPin`): cellSeal/cellUnseal/cellDestroy AND receiptArchive force the
             // AFTER block's lifecycle limb (col `after_base + B_LIFECYCLE`) — the deployed apply moves
@@ -2310,7 +2244,7 @@ mod tests {
             );
             if key == "noteSpendVmDescriptor2R24" {
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "noteSpend: rotated 46-PI + the appended nullifier slot"
                 );
                 assert_eq!(
@@ -2324,7 +2258,7 @@ mod tests {
                 // `commitmentsInsertOp` map-op forces the commitment set-insert on limb 27
                 // (`EffectVmEmitRotationV3.noteCreateV3`).
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "noteCreate: rotated 46-PI + the appended commitment slot"
                 );
                 assert_eq!(
@@ -2332,69 +2266,38 @@ mod tests {
                     vec![(PARAM_BASE + param::NULLIFIER, pi_base + 4)],
                     "noteCreate: the fifth pin welds the published commitment (param0) to PI[46]"
                 );
-            } else if key == "factoryVmDescriptor2R24" {
-                // STEP-3 factory carriers (`factoryV3Carriers = withAfterOctetPins (withAfterOctetPins
-                // factoryV3 B_CHILD_VK_OCTET) B_CONTRACT_HASH_OCTET`): the new-cell-key grow-gate pin
-                // (param1 CHILD_VK_DERIVED → PI[46]) PLUS the 16 committed carrier-octet pins — the
-                // AFTER-block child_vk8 octet (limbs 88..=95 → PI[47..54]) then the contract_hash8
-                // octet (limbs 96..=103 → PI[55..62]), last-row, the v12 big-bang exposure the
-                // factory/hatchery fold tooths bind.
-                use crate::effect_vm::trace_rotated::{B_CHILD_VK_OCTET, B_CONTRACT_HASH_OCTET};
-                assert_eq!(
-                    base_pi_count, 63,
-                    "factory: rotated 46-PI + the new-cell-key slot + the 16 carrier-octet pins"
-                );
-                let mut expected = vec![(PARAM_BASE + param::CHILD_VK_DERIVED, pi_base + 4)];
-                for i in 0..8 {
-                    expected.push((after_base + B_CHILD_VK_OCTET + i, pi_base + 5 + i));
-                }
-                for i in 0..8 {
-                    expected.push((after_base + B_CONTRACT_HASH_OCTET + i, pi_base + 13 + i));
-                }
-                assert_eq!(
-                    nullifier_pins, expected,
-                    "factory: the grow-gate key pin (PI[46]) + the child_vk8 (PI[47..54]) + \
-                     contract_hash8 (PI[55..62]) committed-octet pins"
-                );
             } else if new_cell_key_pin_member {
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "{key}: rotated 46-PI + the appended new-cell-key slot"
                 );
-                // createCell/spawn key on param0 (the new-cell id).
-                let key_col = PARAM_BASE;
+                // createCell/spawn key on param0 (the new-cell id); factory keys on param1
+                // (CHILD_VK_DERIVED — param0 carries the factory VK).
+                let key_col = if key == "factoryVmDescriptor2R24" {
+                    PARAM_BASE + param::CHILD_VK_DERIVED
+                } else {
+                    PARAM_BASE
+                };
                 assert_eq!(
                     nullifier_pins,
                     vec![(key_col, pi_base + 4)],
                     "{key}: the fifth pin welds the new-cell key to PI[46] (the accounts-set \
                      grow-gate)"
                 );
-            } else if record_digest_pin_member {
-                // H1: the record-digest movers (setPerms/setVK/makeSovereign/refusal) pin ALL 8 faithful
-                // authority limbs (`withRecordPin8Headroom2`): limb-0 (`B_AUTHORITY_DIGEST`) → PI[46] +
-                // the 7 headroom limbs (AFTER offsets 12..18) → PI[47..53], so a 31-bit-colliding
-                // wide-open authority forged into ANY limb is UNSAT (the GENTIAN close for movers).
-                assert_eq!(
-                    base_pi_count, 54,
-                    "{key}: rotated 46-PI + the 8 authority record-pins (47..53)"
-                );
-                let mut expected = vec![(after_base + B_AUTHORITY_DIGEST, pi_base + 4)];
-                for i in 0..7 {
-                    expected.push((after_base + 12 + i, pi_base + 5 + i));
-                }
-                assert_eq!(
-                    nullifier_pins, expected,
-                    "{key}: the 8 record-pins weld the AFTER authority limbs (24, 12..18) to PI[46..53]"
-                );
             } else if lifecycle_record_pin_member {
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "{key}: rotated 46-PI + the appended record-forcing slot"
                 );
+                let forced_col = if record_digest_pin_member {
+                    after_base + B_AUTHORITY_DIGEST
+                } else {
+                    after_base + B_LIFECYCLE
+                };
                 assert_eq!(
                     nullifier_pins,
-                    vec![(after_base + B_LIFECYCLE, pi_base + 4)],
-                    "{key}: the fifth pin welds the AFTER block's correctly-written lifecycle \
+                    vec![(forced_col, pi_base + 4)],
+                    "{key}: the fifth pin welds the AFTER block's correctly-written record/lifecycle \
                      limb to PI[46] (the deployment-soundness gate)"
                 );
             } else if key == "transferFeeVmDescriptor2R24" {
@@ -2403,7 +2306,7 @@ mod tests {
                 // INSIDE the proven transition (the bal-lo gate forces `after = before − amount − fee`).
                 use crate::effect_vm::columns::{STATE_AFTER_BASE, state};
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "transferFee: rotated 46-PI + the appended fee slot"
                 );
                 assert_eq!(
@@ -2414,18 +2317,16 @@ mod tests {
             } else if key == "setFieldDynVmDescriptor2R24" {
                 // THE DYNAMIC setField fields-root weld (WAVE 3): the fifth pin welds the AFTER
                 // block's committed `fields_root` sub-limb to PI[46] (col `afterFieldsRootCol
-                // setFieldDynV1Face.traceWidth` = 363 in the v12 pre_limbs geometry — the AFTER block
-                // moved +32 with the B_SPAN 119→151 grow, over v11's 331 — the declared
-                // post-`fields_root` param), so a forged post-`fields_root` is UNSAT in-circuit
-                // (Lean `setFieldDynForcedV3`).
+                // setFieldDynV1Face.traceWidth` = 263, the declared post-`fields_root` param), so a
+                // forged post-`fields_root` is UNSAT in-circuit (Lean `setFieldDynForcedV3`).
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "setFieldDyn: rotated 46-PI + the appended fields-root weld slot"
                 );
                 assert_eq!(
                     nullifier_pins,
-                    vec![(363, pi_base + 4)],
-                    "setFieldDyn: the fifth pin welds the AFTER fields_root weld col (363, v12) to PI[46]"
+                    vec![(263, pi_base + 4)],
+                    "setFieldDyn: the fifth pin welds the AFTER fields_root weld col (263) to PI[46]"
                 );
             } else if key == "settleEscrowSatVmDescriptor2R24" {
                 // THE WELDED SEALED-ESCROW SATISFACTION descriptor (VK-EPOCH §6 BLOCKER 1, STAGED):
@@ -2438,7 +2339,7 @@ mod tests {
                 // Refinement proven in `metatheory/Dregg2/Deos/SettleEscrowSatDescriptor.lean`.
                 use crate::effect_vm::columns::PARAM_BASE;
                 assert_eq!(
-                    base_pi_count, 47,
+                    d.public_input_count, 47,
                     "settleEscrowSat: rotated 46-PI + the appended selector slot"
                 );
                 assert_eq!(
@@ -2459,31 +2360,9 @@ mod tests {
                     nullifier_pins.is_empty(),
                     "heapWrite: carries no fifth pin (the splice map_op rides the map_ops table)"
                 );
-            } else if key == "customVmDescriptor2R24" {
-                // G2 custom-leg PI exposure (`EffectVmEmitRotationV3.customPiExposure`): customV3
-                // publishes the deployed custom fold-binding anchors PAST the rotated 46-PI vector —
-                // `custom_proof_commitment` (PARAM_BASE+4..7) → PI[46..49] and `custom_program_vk_hash`
-                // (PARAM_BASE+0..3) → PI[50..53], all on the FIRST row (the binding is fold-enforced,
-                // like memOp/umemOp, NOT a row poly). So custom carries 54 PIs (46 + 8 anchors).
-                assert_eq!(
-                    base_pi_count, 54,
-                    "custom: rotated 46-PI + the 8 custom fold-binding anchors (46..53)"
-                );
-                let mut expected: Vec<(usize, usize)> = Vec::new();
-                for i in 0..4 {
-                    expected.push((PARAM_BASE + 4 + i, pi_base + 4 + i)); // proof_commitment → 46..49
-                }
-                for i in 0..4 {
-                    expected.push((PARAM_BASE + i, pi_base + 8 + i)); // program_vk_hash → 50..53
-                }
-                assert_eq!(
-                    nullifier_pins, expected,
-                    "custom: 8 fold-binding pins weld proof_commitment (PARAM_BASE+4..7)→PI[46..49] \
-                     + program_vk_hash (PARAM_BASE+0..3)→PI[50..53]"
-                );
             } else {
                 assert_eq!(
-                    base_pi_count, 46,
+                    d.public_input_count, 46,
                     "{key}: non-record-pin cohort carries the rotated 46-PI"
                 );
                 assert!(
@@ -2528,19 +2407,20 @@ mod tests {
         );
     }
 
-    /// **THE WIDE REGISTRY drift + coverage pin (STAGED-ADDITIVE slice 2).** The 57-member faithful
+    /// **THE WIDE REGISTRY drift + coverage pin (STAGED-ADDITIVE slice 2).** The 45-member faithful
     /// 8-felt wide registry TSV is fingerprint-stable (the Lean `EmitWideRegistryProbe.lean` is the
     /// byte source), parses member-for-member, and is name-stable against the live 1-felt registry
-    /// (the flip is a name-stable repoint). The transfer member (row 0) is the v12 TEETH-EXPOSING
-    /// advance (+2 claim PIs / +2 teeth columns) of the single-line `WIDE_TRANSFER_STAGED_TSV`.
-    /// ADDITIVE: pins the wide path WITHOUT touching the live `V3_STAGED_REGISTRY_*`.
+    /// (the flip is a name-stable repoint). The transfer member (row 0) is byte-identical to the
+    /// single-line `WIDE_TRANSFER_STAGED_TSV`. ADDITIVE: pins the wide path WITHOUT touching the live
+    /// `V3_STAGED_REGISTRY_*`.
     #[test]
     fn wide_registry_parses_and_is_name_stable() {
         use crate::descriptor_ir2::parse_vm_descriptor2;
 
-        // Every wide member parses; the wide geometry is `host + 608` carrier columns + 16 PIs. The
+        // Every wide member parses; the wide geometry is `host + 208` carrier columns + 16 PIs. The
         // keys are NAME-STABLE against the live 1-felt registry, member-for-member (the flip repoint
-        // does not rename).
+        // does not rename). The transfer member (row 0) JSON is byte-identical to the single-line
+        // `WIDE_TRANSFER_STAGED_TSV`.
         let live_keys: Vec<&str> = V3_STAGED_REGISTRY_TSV
             .lines()
             .filter(|l| !l.is_empty())
@@ -2566,22 +2446,13 @@ mod tests {
                 "wide registry key {i} name-stable with the live registry"
             );
             let d = parse_vm_descriptor2(json).unwrap_or_else(|e| panic!("{key} wide parses: {e}"));
-            // the wide member is `host + 608` (the v12 pre_limbs re-lay grew the carrier blocks) and
-            // `host.piCount + 16`. The v12 big-bang host widths in play: 1135 (custom/setFieldDyn →
-            // 1743), 1163 (the rotated cohort → 1771), the cap-open family + the §J′ insert hosts
-            // (→ 2100), the turn-identity-pinned transferCapOpenTB (→ 2102), heapWrite's after-spine
-            // membership host (→ 2229), the refusal fields-write weld + the cap-WRITE after-spine
-            // members (→ 2243) — every wide width is `host + 608` — PLUS the two v12 teeth-exposing
-            // advances: the membership-teeth transfer (1771 + 2 teeth columns past the carriers →
-            // 1773, `CarrierComposed.transferV3MembershipWide`) and the KEY_COMMIT-gated sovereign
-            // (1771 + the 32-column chip-digest appendix → 1803,
-            // `CarrierComposed.makeSovereignV3DeployedWide`).
+            // the wide member is `host + 208` (two 13×8 carrier blocks) and `host.piCount + 16`.
+            // The host widths in play are 581 (custom/setFieldDyn → 789), 595 (heapWrite splice → 803),
+            // 609 (the rotated cohort → 817), 819 (cap-open → 1027) and 821 (the turn-identity-pinned
+            // transfer cap-open → 1029): every wide width is `host + 208` (188-base EffectVM row).
             assert!(
-                matches!(
-                    d.trace_width,
-                    1743 | 1771 | 1773 | 1803 | 2100 | 2102 | 2229 | 2243
-                ),
-                "{key}: wide width {} is a known wide geometry (1743 / 1771 / 1773 / 1803 / 2100 / 2102 / 2229 / 2243)",
+                matches!(d.trace_width, 789 | 803 | 817 | 1027 | 1029),
+                "{key}: wide width {} is a known wide geometry (789 / 803 / 817 / 1027 / 1029)",
                 d.trace_width
             );
             // Every wide member carries the 16 wide-commit PIs (the 8-felt ~124-bit before/after
@@ -2596,12 +2467,8 @@ mod tests {
                 d.public_input_count
             );
             if i == 0 {
-                // v12 big-bang: row 0 is the TEETH-EXPOSING advance of the plain wide transfer
-                // (`CarrierComposed.transferV3MembershipWide` — the 2 `(sender_leaf,
-                // authorized_root)` claim PIs at 50..51 ahead of the anchors, teeth columns past
-                // the carriers). The single-line `WIDE_TRANSFER_STAGED_TSV` stays the PLAIN wide
-                // transfer, so byte-identity is retired for the exact +2/+2 advance relation.
-                let plain = parse_vm_descriptor2(
+                assert_eq!(
+                    json,
                     WIDE_TRANSFER_STAGED_TSV
                         .lines()
                         .next()
@@ -2609,17 +2476,7 @@ mod tests {
                         .splitn(3, '\t')
                         .nth(2)
                         .unwrap(),
-                )
-                .expect("plain wide transfer parses");
-                assert_eq!(
-                    d.public_input_count,
-                    plain.public_input_count + 2,
-                    "wide registry row 0 (transfer) = the plain wide transfer + 2 membership claim PIs"
-                );
-                assert_eq!(
-                    d.trace_width,
-                    plain.trace_width + 2,
-                    "wide registry row 0 (transfer) = the plain wide transfer + 2 teeth columns"
+                    "wide registry row 0 (transfer) == the single-line WIDE_TRANSFER_STAGED_TSV"
                 );
             }
         }

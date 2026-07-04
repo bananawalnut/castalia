@@ -63,14 +63,14 @@ use dregg_circuit::descriptor_ir2::{
 };
 use dregg_circuit::effect_vm::columns::PARAM_BASE;
 use dregg_circuit::effect_vm::trace_rotated::{
-    AFTER_BASE, B_STATE_COMMIT, BEFORE_BASE, DFA_RC_LEN, ROT_NULLIFIER_PI, ROT_NULLIFIER_PI_COUNT,
-    ROT_WIDTH, RotatedBlockWitness, V1_PI_COUNT, empty_caveat_manifest,
-    generate_rotated_create_cell_trace_with_accounts_tree, rotated_descriptor_name_for_effect,
+    AFTER_BASE, B_STATE_COMMIT, BEFORE_BASE, ROT_WIDTH, RotatedBlockWitness, V1_PI_COUNT,
+    empty_caveat_manifest, generate_rotated_create_cell_trace_with_accounts_tree,
+    rotated_descriptor_name_for_effect,
 };
 use dregg_circuit::effect_vm::{CellState, Effect};
 use dregg_circuit::effect_vm_descriptors::V3_STAGED_REGISTRY_TSV;
 use dregg_circuit::field::BabyBear;
-use dregg_circuit::heap_root::{CanonicalHeapTree8, HEAP_TREE_DEPTH, HeapLeaf};
+use dregg_circuit::heap_root::{CanonicalHeapTree, HEAP_TREE_DEPTH, HeapLeaf};
 use dregg_turn::rotation_witness as rw;
 
 /// The rotated `cells_root` accounts-accumulator limb (limb 0 of every rotated block).
@@ -139,21 +139,9 @@ fn assert_birth_forced_on_wire(effect: Effect, name: &str, key_col: usize, label
     assert_eq!(resolved, name, "{label}: expected rotated descriptor name");
     let desc = parse_vm_descriptor2(rotated_descriptor_json(name))
         .expect("rotated birth descriptor parses");
-    // The committed birth-family PI shape, DERIVED from the canonical producer constants:
-    // 46 rotated prefix PIs + the appended new-cell-key pin (`ROT_NULLIFIER_PI_COUNT` = 47),
-    // THEN — factory only — the 16 carrier-octet pins (child_vk8 @ 47..54 + contract_hash8 @
-    // 55..62, the STEP-3 `factoryV3Carriers` exposure), THEN the cohort-wide dsl rc tail
-    // (`DFA_RC_LEN` = 4, the `withDfaRcPins` outermost wrap — always the LAST member PIs).
-    let factory_octet_pis = if matches!(effect, Effect::CreateCellFromFactory { .. }) {
-        16
-    } else {
-        0
-    };
-    let expected_pi_count = ROT_NULLIFIER_PI_COUNT + factory_octet_pis + DFA_RC_LEN;
     assert_eq!(
-        desc.public_input_count, expected_pi_count,
-        "{label}: birth descriptor carries the 46 prefix PIs + the new-cell-key pin \
-         (+ the factory carrier octets) + the {DFA_RC_LEN} dsl rc tail PIs"
+        desc.public_input_count, 47,
+        "{label}: birth descriptor carries 46 prefix PIs + the appended new-cell-key pin"
     );
 
     let before_balance: i64 = 40_000;
@@ -175,7 +163,6 @@ fn assert_birth_forced_on_wire(effect: Effect, name: &str, key_col: usize, label
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
     let after_w = rw::produce(
         &after_cell,
@@ -183,7 +170,6 @@ fn assert_birth_forced_on_wire(effect: Effect, name: &str, key_col: usize, label
         &nullifier_root,
         &commitments_root,
         &receipt_log,
-        &Default::default(),
     );
 
     let caveat = empty_caveat_manifest();
@@ -212,14 +198,13 @@ fn assert_birth_forced_on_wire(effect: Effect, name: &str, key_col: usize, label
     assert_eq!(trace[0].len(), ROT_WIDTH, "rotated trace width");
     assert_eq!(
         dpis.len(),
-        expected_pi_count,
-        "{label}: the producer's birth PI vector matches the committed member shape \
-         (key pin + factory octets + rc tail)"
+        47,
+        "{label}: birth rotated PI is 47 (new-cell-key slot appended)"
     );
 
     // ANTI-VACUITY: the grow-gate GENUINELY moved limb 0 (the AFTER accounts root differs from the
     // BEFORE root — the set actually grew; the close is not over a frozen column).
-    let before_root = CanonicalHeapTree8::new(before_accounts.clone(), HEAP_TREE_DEPTH).root8()[0];
+    let before_root = CanonicalHeapTree::new(before_accounts.clone(), HEAP_TREE_DEPTH).root();
     assert_eq!(
         trace[0][BEFORE_BASE + B_CELLS_ROOT],
         before_root,
@@ -230,12 +215,11 @@ fn assert_birth_forced_on_wire(effect: Effect, name: &str, key_col: usize, label
         before_root,
         "{label}: AFTER cells_root limb GREW (anti-omission — the insert actually happened)"
     );
-    // The published new-cell-key pin (`ROT_NULLIFIER_PI` = 46, the first slot past the rotated
-    // prefix) IS the create-row key column (the effect param).
+    // The published new-cell-key pin (PI 46) IS the create-row key column (the effect param).
     assert_eq!(
-        dpis[ROT_NULLIFIER_PI],
+        dpis[46],
         trace[0][PARAM_BASE + key_col],
-        "{label}: PI {ROT_NULLIFIER_PI} = the create row's new-cell key (param[{key_col}])"
+        "{label}: PI 46 = the create row's new-cell key (param[{key_col}])"
     );
 
     // POSITIVE TOOTH (no downgrade): the honest birth turn proves + verifies — light-client path,

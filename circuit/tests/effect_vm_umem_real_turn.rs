@@ -45,7 +45,7 @@ use dregg_circuit::descriptor_ir2::{
     verify_vm_descriptor2,
 };
 use dregg_circuit::field::BabyBear;
-use dregg_circuit::heap_root::{CanonicalHeapTree8, HEAP_DIGEST_W, HEAP_TREE_DEPTH, HeapLeaf};
+use dregg_circuit::heap_root::{CanonicalHeapTree, HEAP_TREE_DEPTH, HeapLeaf};
 use dregg_circuit::lean_descriptor_air::{LeanExpr, VmConstraint, VmRow};
 use dregg_turn::umem::{UKey, UVal, UmemKind, UmemOp, disciplined, fold, receipt_op};
 use dregg_turn::{
@@ -462,16 +462,16 @@ fn umem_real_turn_stale_prev_refuses() {
 // boundary cells with their declared values (no new bus/column/AIR).
 
 /// The deployed-shape column layout for the cross-cell read MapOp (arbitrary but stable):
-/// cols [0..8) = the peer's published field-plane 8-felt root (each lane pinned to PI lane i),
-/// col 8 = the read field address, col 9 = the read field value.
+/// col 0 = the peer's published field-plane root (pinned to PI 0), col 1 = the read field
+/// address, col 2 = the read field value.
 const XC_ROOT: usize = 0;
-const XC_ADDR: usize = HEAP_DIGEST_W;
-const XC_VALUE: usize = HEAP_DIGEST_W + 1;
+const XC_ADDR: usize = 1;
+const XC_VALUE: usize = 2;
 
 /// Build a peer cell, publish its field-plane heap (`(slot, field_value)` leaves over its
 /// non-zero fields), and return `(peer_cell, peer_field_heap, root)`. The root is the in-circuit
 /// commitment to the peer's field state the cross-cell read opens against.
-fn peer_field_heap(peer: &Cell) -> (Vec<HeapLeaf>, [BabyBear; HEAP_DIGEST_W]) {
+fn peer_field_heap(peer: &Cell) -> (Vec<HeapLeaf>, BabyBear) {
     let mut leaves: Vec<HeapLeaf> = Vec::new();
     for (slot, f) in peer.state.fields.iter().enumerate() {
         // a field cell exists in the published map iff its first felt-limb is non-zero (a
@@ -484,43 +484,36 @@ fn peer_field_heap(peer: &Cell) -> (Vec<HeapLeaf>, [BabyBear; HEAP_DIGEST_W]) {
             });
         }
     }
-    let tree = CanonicalHeapTree8::new(leaves.clone(), HEAP_TREE_DEPTH);
-    (leaves, tree.root8().limbs())
+    let tree = CanonicalHeapTree::new(leaves.clone(), HEAP_TREE_DEPTH);
+    (leaves, tree.root())
 }
 
 /// The descriptor for the cross-cell read: one `MapOp::Read` opening the read field against the
 /// peer root, with the root column PINNED to PI 0 (the published commitment). Width 4.
 fn xcell_read_desc() -> EffectVmDescriptor2 {
-    // Each of the 8 root lanes is pinned to its published-commitment PI lane (the anti-forge
-    // anchor: the opened 8-felt root is not prover-chosen, it is the PI-bound committed value).
-    let mut constraints: Vec<VmConstraint2> = (0..HEAP_DIGEST_W)
-        .map(|lane| {
-            VmConstraint2::Base(VmConstraint::PiBinding {
-                row: VmRow::First,
-                col: XC_ROOT + lane,
-                pi_index: lane,
-            })
-        })
-        .collect();
-    // The read: open `(addr, value)` against the committed peer root (root unchanged).
-    constraints.push(VmConstraint2::MapOp(MapOpSpec {
-        guard: LeanExpr::Const(1),
-        root: (XC_ROOT..XC_ROOT + HEAP_DIGEST_W)
-            .map(LeanExpr::Var)
-            .collect(),
-        key: LeanExpr::Var(XC_ADDR),
-        value: LeanExpr::Var(XC_VALUE),
-        new_root: (XC_ROOT..XC_ROOT + HEAP_DIGEST_W)
-            .map(LeanExpr::Var)
-            .collect(),
-        op: MapKind::Read,
-    }));
     EffectVmDescriptor2 {
         name: "xcell-read".to_string(),
-        trace_width: HEAP_DIGEST_W + 2,
-        public_input_count: HEAP_DIGEST_W,
+        trace_width: 4,
+        public_input_count: 1,
         tables: vec![],
-        constraints,
+        constraints: vec![
+            // The peer-root column EQUALS the published commitment (the anti-forge anchor:
+            // the opened root is not prover-chosen, it is the PI-bound committed value).
+            VmConstraint2::Base(VmConstraint::PiBinding {
+                row: VmRow::First,
+                col: XC_ROOT,
+                pi_index: 0,
+            }),
+            // The read: open `(addr, value)` against the committed peer root (root unchanged).
+            VmConstraint2::MapOp(MapOpSpec {
+                guard: LeanExpr::Const(1),
+                root: LeanExpr::Var(XC_ROOT),
+                key: LeanExpr::Var(XC_ADDR),
+                value: LeanExpr::Var(XC_VALUE),
+                new_root: LeanExpr::Var(XC_ROOT),
+                op: MapKind::Read,
+            }),
+        ],
         hash_sites: vec![],
         ranges: vec![],
     }
@@ -528,7 +521,7 @@ fn xcell_read_desc() -> EffectVmDescriptor2 {
 
 /// Execute a turn that mutates cell A but only READS cell B, and return cell B's published
 /// field heap + root + a chosen (read-addr, read-value) the turn observed.
-fn cross_cell_read_setup() -> (Vec<HeapLeaf>, [BabyBear; HEAP_DIGEST_W], BabyBear, BabyBear) {
+fn cross_cell_read_setup() -> (Vec<HeapLeaf>, BabyBear, BabyBear, BabyBear) {
     // cell A: the actor the turn mutates. cell B: the peer the turn READS, never mutates.
     let mut agent = make_open_cell(21, 1000);
     agent.state.fields[0] = [9u8; 32];
@@ -597,22 +590,22 @@ fn cross_cell_read_setup() -> (Vec<HeapLeaf>, [BabyBear; HEAP_DIGEST_W], BabyBea
 fn cross_cell_read_proves_committed_peer_state() {
     let (heap, root, read_addr, read_value) = cross_cell_read_setup();
     let desc = xcell_read_desc();
-    let mut row = vec![BabyBear::ZERO; HEAP_DIGEST_W + 2];
-    row[XC_ROOT..XC_ROOT + HEAP_DIGEST_W].copy_from_slice(&root);
+    let mut row = vec![BabyBear::ZERO; 4];
+    row[XC_ROOT] = root;
     row[XC_ADDR] = read_addr;
     row[XC_VALUE] = read_value;
     let trace = vec![row; 4];
 
-    // the published commitment is the public input; each root lane is PI-bound to it.
+    // the published commitment is the public input; the root column is PI-bound to it.
     let proof = prove_vm_descriptor2(
         &desc,
         &trace,
-        &root,
+        &[root],
         &MemBoundaryWitness::default(),
         std::slice::from_ref(&heap),
     )
     .expect("an honest cross-cell read of committed peer state must prove");
-    verify_vm_descriptor2(&desc, &proof, &root)
+    verify_vm_descriptor2(&desc, &proof, &[root])
         .expect("the cross-cell read verifies against the published commitment");
 }
 
@@ -620,11 +613,10 @@ fn cross_cell_read_proves_committed_peer_state() {
 fn cross_cell_read_forged_peer_root_refuses() {
     let (heap, root, read_addr, read_value) = cross_cell_read_setup();
     let desc = xcell_read_desc();
-    let mut forged_root = root;
-    forged_root[0] += BabyBear::ONE; // a root not matching any published peer heap
+    let forged_root = root + BabyBear::ONE;
     assert_ne!(forged_root, root);
-    let mut row = vec![BabyBear::ZERO; HEAP_DIGEST_W + 2];
-    row[XC_ROOT..XC_ROOT + HEAP_DIGEST_W].copy_from_slice(&forged_root);
+    let mut row = vec![BabyBear::ZERO; 4];
+    row[XC_ROOT] = forged_root; // a root not matching any published peer heap
     row[XC_ADDR] = read_addr;
     row[XC_VALUE] = read_value;
     let trace = vec![row; 4];
@@ -634,7 +626,7 @@ fn cross_cell_read_forged_peer_root_refuses() {
     let r = prove_vm_descriptor2(
         &desc,
         &trace,
-        &forged_root,
+        &[forged_root],
         &MemBoundaryWitness::default(),
         &[heap],
     );
@@ -648,8 +640,8 @@ fn cross_cell_read_forged_peer_root_refuses() {
 fn cross_cell_read_forged_field_value_refuses() {
     let (heap, root, read_addr, _read_value) = cross_cell_read_setup();
     let desc = xcell_read_desc();
-    let mut row = vec![BabyBear::ZERO; HEAP_DIGEST_W + 2];
-    row[XC_ROOT..XC_ROOT + HEAP_DIGEST_W].copy_from_slice(&root);
+    let mut row = vec![BabyBear::ZERO; 4];
+    row[XC_ROOT] = root;
     row[XC_ADDR] = read_addr;
     row[XC_VALUE] = BabyBear::new(778); // NOT the committed 777
     let trace = vec![row; 4];
@@ -657,7 +649,7 @@ fn cross_cell_read_forged_field_value_refuses() {
     let r = prove_vm_descriptor2(
         &desc,
         &trace,
-        &root,
+        &[root],
         &MemBoundaryWitness::default(),
         &[heap],
     );
@@ -673,8 +665,8 @@ fn cross_cell_read_pi_mismatch_refuses() {
     // commitment C while opening against a different root C' is refused by the PiBinding leg.
     let (heap, root, read_addr, read_value) = cross_cell_read_setup();
     let desc = xcell_read_desc();
-    let mut row = vec![BabyBear::ZERO; HEAP_DIGEST_W + 2];
-    row[XC_ROOT..XC_ROOT + HEAP_DIGEST_W].copy_from_slice(&root);
+    let mut row = vec![BabyBear::ZERO; 4];
+    row[XC_ROOT] = root;
     row[XC_ADDR] = read_addr;
     row[XC_VALUE] = read_value;
     let trace = vec![row; 4];
@@ -683,19 +675,15 @@ fn cross_cell_read_pi_mismatch_refuses() {
     // unsatisfiable, so NO proof exists. (The PI is not part of the pre-flight trace replay, so
     // the refusal surfaces as the in-circuit constraint failing rather than an Err — caught
     // here: either way, a satisfying proof is impossible.)
-    let mut wrong_pi = root;
-    wrong_pi[0] += BabyBear::ONE;
-    // The PI mismatch is a boundary PiBinding caught at VERIFY (the light-client op), not
-    // necessarily at prove — exercise both legs.
+    let wrong_pi = root + BabyBear::ONE;
     let outcome = std::panic::catch_unwind(|| {
         prove_vm_descriptor2(
             &desc,
             &trace,
-            &wrong_pi,
+            &[wrong_pi],
             &MemBoundaryWitness::default(),
             std::slice::from_ref(&heap),
         )
-        .and_then(|proof| verify_vm_descriptor2(&desc, &proof, &wrong_pi))
     });
     let refused = match outcome {
         Err(_) => true,      // in-circuit PiBinding constraint failed (no satisfying proof)
@@ -778,12 +766,7 @@ fn cross_cell_read_whole_image_extra_cell_refuses() {
         build_whole_image_fold(&declared, peer_published_root).expect("declared view folds");
     // The pin is a boundary constraint (not a pre-flight replay), so the refusal can surface as an
     // Err or an in-circuit panic — either way no satisfying proof exists.
-    // The `PiBinding{Last}` published-root pin is caught at VERIFY (the light-client op), not
-    // necessarily at prove — exercise both legs.
-    let outcome = std::panic::catch_unwind(|| {
-        prove_whole_image_fold(&witness)
-            .and_then(|proof| verify_whole_image_fold(&proof, &witness.public_inputs))
-    });
+    let outcome = std::panic::catch_unwind(|| prove_whole_image_fold(&witness));
     let refused = match outcome {
         Err(_) => true,
         Ok(r) => r.is_err(),
@@ -821,49 +804,6 @@ fn cross_cell_read_whole_image_tampered_value_refuses() {
     assert!(
         refused,
         "a tampered declared value must refuse (the sorted insert recomputes a different root)"
-    );
-}
-
-#[test]
-fn cross_cell_read_whole_image_smuggled_start_root_refuses() {
-    // The SMUGGLED-START tooth (latent vacuity B4): the descriptor's `PiBinding{First}` only
-    // forces the fold's first pre-root to EQUAL PI 0 — it does NOT force PI 0 to be the empty
-    // root. PI 0 is a verifier-side public input, so a prover could publish
-    // `[smuggled_root, published]` and start the fold from a NON-empty root holding cells the
-    // boundary never declared: every link would still be a genuine insert and both `PiBinding`s
-    // would pass, yet `published` would commit to the smuggled cells PLUS the declared ones —
-    // defeating the no-extra-cells guarantee. The verify wrapper pins PI 0 to the canonical
-    // empty root, so such a public-input vector is REFUSED before the STARK is even consulted.
-    let leaves = peer_with_fields(&[(1, 111), (3, 777), (5, 555)]);
-    let published = whole_boundary_fold(&leaves);
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-    let proof = prove_whole_image_fold(&witness).expect("the honest fold proves");
-
-    // Honest PIs (empty-root start) accept.
-    verify_whole_image_fold(&proof, &witness.public_inputs)
-        .expect("the honest empty-root-start fold verifies");
-
-    // A NON-empty smuggled start root (e.g. a one-cell heap hiding an undeclared cell) in PI 0
-    // must be refused by the pin, independent of any proof.
-    let smuggled_start = whole_boundary_fold(&[HeapLeaf {
-        addr: BabyBear::new(99),
-        value: BabyBear::new(42),
-    }]);
-    assert_ne!(
-        smuggled_start,
-        dregg_circuit::heap_root::empty_heap_root_8(),
-        "the smuggled start must be a genuinely non-empty root"
-    );
-    let mut smuggled_pis = smuggled_start.to_vec();
-    smuggled_pis.extend_from_slice(&published);
-    let refused = verify_whole_image_fold(&proof, &smuggled_pis);
-    assert!(
-        refused.is_err(),
-        "a non-empty (smuggled-cells) start root in PI 0 must be refused"
-    );
-    assert!(
-        refused.unwrap_err().contains("empty-heap"),
-        "the refusal must be the empty-root pin, not an incidental STARK mismatch"
     );
 }
 
@@ -974,191 +914,5 @@ fn whole_image_fold_bound_boundary_value_mismatch_refuses() {
     assert!(
         refused,
         "a boundary cell value differing from the folded value must refuse (the Blum tooth bites)"
-    );
-}
-
-#[test]
-fn whole_image_fold_bound_smuggled_start_root_refuses() {
-    // The smuggled-start tooth (B4) on the BOUND wrapper: same as the unbound case — the bound
-    // verify wrapper pins PI 0 to the canonical empty root, so a non-empty start root holding
-    // undeclared cells is refused before the STARK is consulted.
-    let leaves = peer_with_fields(&[(1, 111), (3, 777), (5, 555)]);
-    let published = whole_boundary_fold(&leaves);
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-    let boundary =
-        boundary_witness_for_fold(&leaves, FIELD_DOMAIN).expect("boundary witness builds");
-    let proof = prove_whole_image_fold_bound(&witness, &boundary, FIELD_DOMAIN)
-        .expect("the honest bound fold proves");
-
-    // Honest empty-root start accepts.
-    verify_whole_image_fold_bound(&proof, &witness.public_inputs, FIELD_DOMAIN)
-        .expect("the honest empty-root-start bound fold verifies");
-
-    // A non-empty smuggled start root in PI 0 is refused by the pin.
-    let smuggled_start = whole_boundary_fold(&[HeapLeaf {
-        addr: BabyBear::new(99),
-        value: BabyBear::new(42),
-    }]);
-    let mut smuggled_pis = smuggled_start.to_vec();
-    smuggled_pis.extend_from_slice(&published);
-    let refused = verify_whole_image_fold_bound(&proof, &smuggled_pis, FIELD_DOMAIN);
-    assert!(
-        refused.is_err(),
-        "a non-empty (smuggled-cells) start root in PI 0 must be refused (bound wrapper)"
-    );
-    assert!(
-        refused.unwrap_err().contains("empty-heap"),
-        "the refusal must be the empty-root pin, not an incidental STARK mismatch"
-    );
-}
-
-// ===========================================================================
-// THE FLAT-MEMORY whole-image fold — the EXACT twin of the universal bound fold above, against
-// the FLAT memory boundary table (`Ir2Air::MemBoundary`, the boundary `setFieldDynVmDescriptor2`
-// uses to hold a cell's eight user fields at addresses `0..7`). This closes the latent flat-`minit`
-// hole: the fold recomputes the sorted-Poseidon2 root of the ENTIRE declared flat boundary image
-// and pins it to the published (committed-pre-state) root, each fold link cross-bound to the
-// `MemBoundary` table via a `MemOp::Read`. The two deployed teeth (the `BUS_MEM_ADDRS`
-// address-closure + the `BUS_MEM_CHECK` Blum balance) refuse any folded cell the boundary never
-// declared, and any folded value differing from the declared `minit[addr]` — so a FORGED `minit`
-// folds to a different root and the published-root pin REFUSES in `verify_batch`. The Lean
-// soundness anchor is `DescriptorIR2.satisfied2_init_root` / `satisfied2_init_root_bound` /
-// `satisfied2_init_whole_image`.
-
-use dregg_circuit::whole_image_fold::{
-    boundary_mem_witness_for_fold, prove_whole_image_fold_bound_mem,
-    verify_whole_image_fold_bound_mem,
-};
-
-/// A flat field-plane view: the cell's user fields as `(addr, value)` leaves over the flat
-/// boundary's address space. Distinct addresses; the fold sorts.
-fn flat_fields(addr_values: &[(u32, u32)]) -> Vec<HeapLeaf> {
-    addr_values
-        .iter()
-        .map(|&(a, v)| HeapLeaf {
-            addr: BabyBear::new(a),
-            value: BabyBear::new(v),
-        })
-        .collect()
-}
-
-#[test]
-fn whole_image_fold_bound_mem_proves_against_boundary_table() {
-    // The HONEST flat-bound read: the fold folds exactly the flat boundary table's declared cells,
-    // each with its declared init value, and pins that fold to the published root. The combined
-    // proof (the fold Merkle chain + the per-cell `MemOp::Read` against the flat boundary table)
-    // proves and independently verifies.
-    let leaves = flat_fields(&[(1, 111), (3, 777), (7, 555)]);
-    assert!(leaves.len() >= 2, "the fold must be non-trivial");
-    let published = whole_boundary_fold(&leaves);
-
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-    let boundary = boundary_mem_witness_for_fold(&leaves).expect("flat boundary witness builds");
-    let proof = prove_whole_image_fold_bound_mem(&witness, &boundary)
-        .expect("the flat boundary-bound whole-image fold proves");
-    verify_whole_image_fold_bound_mem(&proof, &witness.public_inputs).expect(
-        "the flat boundary-bound whole-image fold verifies against the published commitment",
-    );
-}
-
-#[test]
-fn whole_image_fold_bound_mem_forged_minit_refuses() {
-    // THE TOOTH that flips the empirically-confirmed forged-accept: the fold folds the GENUINE
-    // committed field values, but the flat boundary DECLARES a forged `minit` value for one
-    // (untouched) field — `minit[7] = 999`. The per-cell `MemOp::Read`'s claimed prev value (the
-    // folded value) no longer matches the boundary's replayed init image at addr 7, so the
-    // `BUS_MEM_CHECK` Blum reconciliation REFUSES. A forged `minit` cannot keep the published
-    // (committed-pre-state) root — `Heap.root_injective` / `satisfied2_init_root_bound`, in-circuit.
-    let leaves = flat_fields(&[(1, 111), (3, 777), (7, 555)]);
-    let published = whole_boundary_fold(&leaves);
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-
-    let mut boundary =
-        boundary_mem_witness_for_fold(&leaves).expect("flat boundary witness builds");
-    // Forge the declared init value at the untouched field addr 7 (the diagnosis's `minit[7]=999`).
-    let idx = boundary
-        .addrs
-        .iter()
-        .position(|&a| a == 7)
-        .expect("addr 7 declared");
-    boundary.init_vals[idx] = 999;
-
-    let outcome =
-        std::panic::catch_unwind(|| prove_whole_image_fold_bound_mem(&witness, &boundary));
-    let refused = match outcome {
-        Err(_) => true,
-        Ok(r) => r.is_err(),
-    };
-    assert!(
-        refused,
-        "a forged minit value differing from the folded committed value must refuse (the Blum tooth bites)"
-    );
-}
-
-#[test]
-fn whole_image_fold_bound_mem_undeclared_cell_refuses() {
-    // The fold folds a cell (addr 7) the flat boundary table never DECLARES. The per-cell
-    // `MemOp::Read` of that cell hits an undeclared address — no `table_entry` to balance the
-    // `BUS_MEM_ADDRS` closure (`memClosed`) — so the bound proof REFUSES (`committed ⊆ declared`).
-    let leaves = flat_fields(&[(1, 111), (3, 777), (7, 555)]);
-    let published = whole_boundary_fold(&leaves);
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-
-    // The boundary DECLARES only two of the three folded cells (addr 7 omitted).
-    let declared: Vec<HeapLeaf> = leaves
-        .iter()
-        .filter(|l| l.addr != BabyBear::new(7))
-        .cloned()
-        .collect();
-    assert_eq!(
-        declared.len(),
-        leaves.len() - 1,
-        "exactly one cell undeclared"
-    );
-    let boundary = boundary_mem_witness_for_fold(&declared).expect("flat boundary witness builds");
-
-    let outcome =
-        std::panic::catch_unwind(|| prove_whole_image_fold_bound_mem(&witness, &boundary));
-    let refused = match outcome {
-        Err(_) => true,
-        Ok(r) => r.is_err(),
-    };
-    assert!(
-        refused,
-        "a folded cell the flat boundary never declared must refuse (the address-closure tooth bites)"
-    );
-}
-
-#[test]
-fn whole_image_fold_bound_mem_smuggled_start_root_refuses() {
-    // The smuggled-start tooth on the flat-bound wrapper: the bound verify wrapper pins PI 0 to the
-    // canonical empty root, so a non-empty start root holding undeclared cells is refused before
-    // the STARK is consulted (no-extra-cells: the fold must provably start from nothing).
-    let leaves = flat_fields(&[(1, 111), (3, 777), (7, 555)]);
-    let published = whole_boundary_fold(&leaves);
-    let witness = build_whole_image_fold(&leaves, published).expect("declared view folds");
-    let boundary = boundary_mem_witness_for_fold(&leaves).expect("flat boundary witness builds");
-    let proof = prove_whole_image_fold_bound_mem(&witness, &boundary)
-        .expect("the honest bound fold proves");
-
-    // Honest empty-root start accepts.
-    verify_whole_image_fold_bound_mem(&proof, &witness.public_inputs)
-        .expect("the honest empty-root-start flat bound fold verifies");
-
-    // A non-empty smuggled start root in PI 0 is refused by the pin.
-    let smuggled_start = whole_boundary_fold(&[HeapLeaf {
-        addr: BabyBear::new(99),
-        value: BabyBear::new(42),
-    }]);
-    let mut smuggled_pis = smuggled_start.to_vec();
-    smuggled_pis.extend_from_slice(&published);
-    let refused = verify_whole_image_fold_bound_mem(&proof, &smuggled_pis);
-    assert!(
-        refused.is_err(),
-        "a non-empty (smuggled-cells) start root in PI 0 must be refused (flat bound wrapper)"
-    );
-    assert!(
-        refused.unwrap_err().contains("empty-heap"),
-        "the refusal must be the empty-root pin, not an incidental STARK mismatch"
     );
 }

@@ -140,11 +140,6 @@ fn effect_body(effect: &Effect) -> String {
         Effect::NoteCreate {
             value, asset_type, ..
         } => format!("create a private note (value {value}, asset {asset_type})"),
-        Effect::ShieldedTransfer { payload } => format!(
-            "a shielded value transfer (amount + parties hidden): spend {} input note(s) and mint {} output note(s), value conserved",
-            payload.inputs.len(),
-            payload.output_legs.len()
-        ),
 
         Effect::SpawnWithDelegation {
             child_public_key,

@@ -74,7 +74,7 @@ use crate::dsl::circuit::{BoundaryDef, BoundaryRow, ConstraintExpr, DslCircuit};
 use crate::field::BabyBear;
 use crate::plonky3_prover::{
     DreggStarkConfig, POSEIDON2_PERM_AUX_COLS, POSEIDON2_WIDTH, create_config,
-    poseidon2_permute_aux_witness, poseidon2_permute_expr, poseidon2_permute_expr_lanes, to_p3,
+    poseidon2_permute_aux_witness, poseidon2_permute_expr, to_p3,
 };
 
 /// The DSL-circuit p3 proof: a `p3-batch-stark` batch proof over the production
@@ -164,8 +164,7 @@ fn check_algebraic(c: &ConstraintExpr, index: usize) -> Result<(), DslP3Error> {
         | ConstraintExpr::Hash { .. }
         | ConstraintExpr::Hash2to1 { .. }
         | ConstraintExpr::Hash4to1 { .. }
-        | ConstraintExpr::Hash3Cap { .. }
-        | ConstraintExpr::MerkleHash8 { .. } => Ok(()),
+        | ConstraintExpr::Hash3Cap { .. } => Ok(()),
         ConstraintExpr::Gated { inner, .. }
         | ConstraintExpr::InvertedGated { inner, .. }
         | ConstraintExpr::Squared { inner } => check_algebraic(inner, index),
@@ -212,7 +211,6 @@ fn is_hash(c: &ConstraintExpr) -> bool {
             | ConstraintExpr::Hash2to1 { .. }
             | ConstraintExpr::Hash4to1 { .. }
             | ConstraintExpr::Hash3Cap { .. }
-            | ConstraintExpr::MerkleHash8 { .. }
     )
 }
 
@@ -349,23 +347,7 @@ fn hash_input_state<AB: AirBuilder>(
             st[2] = local[*right_col].into();
             st[4] = AB::Expr::from_u64(3); // arity tag (matches cap_chip_absorb len=3)
         }
-        // `cap_node8(L8, R8)` = the arity-16 `node8` compression: the 16-wide input state is
-        // exactly `L8 ‖ R8` seeded into all 16 lanes (`chip_absorb_all_lanes(16, L8‖R8)` puts
-        // ins[0..16] into state[0..16] with NO tag lane — node8 seeds every lane with a genuine
-        // input). All 8 output lanes are read by the caller via `poseidon2_permute_expr_lanes`.
-        ConstraintExpr::MerkleHash8 {
-            left_cols,
-            right_cols,
-            ..
-        } => {
-            for i in 0..8 {
-                st[i] = local[left_cols[i]].into();
-                st[8 + i] = local[right_cols[i]].into();
-            }
-        }
-        _ => unreachable!(
-            "hash_input_state only called on Hash/Hash2to1/Hash4to1/Hash3Cap/MerkleHash8"
-        ),
+        _ => unreachable!("hash_input_state only called on Hash/Hash2to1/Hash4to1/Hash3Cap"),
     }
     st
 }
@@ -421,19 +403,6 @@ fn hash_input_state_concrete(c: &ConstraintExpr, row: &[BabyBear]) -> [BabyBear;
             st[1] = row[*left_col];
             st[2] = row[*right_col];
             st[4] = BabyBear::new(3);
-        }
-        // node8 concrete seeding: `L8 ‖ R8` into all 16 lanes (byte-identical to the arity-16
-        // `chip_absorb_all_lanes` gather), so the aux witness this fills matches the
-        // symbolic `hash_input_state` above.
-        ConstraintExpr::MerkleHash8 {
-            left_cols,
-            right_cols,
-            ..
-        } => {
-            for i in 0..8 {
-                st[i] = row[left_cols[i]];
-                st[8 + i] = row[right_cols[i]];
-            }
         }
         _ => unreachable!(),
     }
@@ -506,7 +475,6 @@ fn eval_expr<AB: AirBuilder>(c: &ConstraintExpr, local: &[AB::Var], next: &[AB::
         | ConstraintExpr::Hash2to1 { .. }
         | ConstraintExpr::Hash4to1 { .. }
         | ConstraintExpr::Hash3Cap { .. }
-        | ConstraintExpr::MerkleHash8 { .. }
         | ConstraintExpr::MerkleHash { .. }
         | ConstraintExpr::Lookup { .. }
         | ConstraintExpr::ChainedHash2to1 { .. }
@@ -571,25 +539,9 @@ where
                     let base = self.base_width + hash_block * POSEIDON2_PERM_AUX_COLS;
                     let aux: Vec<AB::Var> = local[base..base + POSEIDON2_PERM_AUX_COLS].to_vec();
                     let input = hash_input_state::<AB>(c, &local);
-                    match c {
-                        // Multi-output node8: bind ALL 8 genuine permutation output lanes to
-                        // the 8 parent columns (the ~124-bit faithful 8-felt node hash). The
-                        // lanes are 8 DISTINCT field elements (the final permutation state),
-                        // NOT eight copies of lane 0 — the full-width collision floor.
-                        ConstraintExpr::MerkleHash8 { output_cols, .. } => {
-                            let lanes = poseidon2_permute_expr_lanes::<AB>(builder, input, &aux);
-                            for i in 0..8 {
-                                let out: AB::Expr = local[output_cols[i]].into();
-                                builder.assert_eq(lanes[i].clone(), out);
-                            }
-                        }
-                        // Single-output hashes squeeze lane 0 only.
-                        _ => {
-                            let digest = poseidon2_permute_expr::<AB>(builder, input, &aux);
-                            let out: AB::Expr = local[hash_output_col(c)].into();
-                            builder.assert_eq(digest, out);
-                        }
-                    }
+                    let digest = poseidon2_permute_expr::<AB>(builder, input, &aux);
+                    let out: AB::Expr = local[hash_output_col(c)].into();
+                    builder.assert_eq(digest, out);
                     hash_block += 1;
                 }
                 // Any constraint that references `next` must be gated to

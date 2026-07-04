@@ -794,68 +794,6 @@ async fn run_node(
         tracing::warn!("Running in DEVNET mode \u{2014} keys are not production-grade");
     }
 
-    // ── MARSHAL-ONLY STARTUP TRIPWIRE (fail-CLOSED refusal) ───────────────────
-    // A binary linked WITHOUT the verified Lean executor archive (libdregg_lean.a)
-    // runs the UN-verified Rust executor: `dregg_lean_ffi::lean_available()` is false.
-    // Such a build must NEVER deploy silently as if it were the verified node — a
-    // stale or gitignored Lean seed degrades the whole executor to marshal-only with
-    // no other visible signal. Historically this tripwire was LOG-ONLY (an `error!`),
-    // so a *solo* node whose logs were ignored could still serve its API presenting as
-    // verified. It is now fail-CLOSED: any node (solo OR full) REFUSES to start
-    // (`exit(1)`) when the verified executor is not linked, UNLESS the operator
-    // explicitly accepts the un-verified executor with `DREGG_ALLOW_UNVERIFIED_CONSENSUS=1`
-    // (the same escape hatch the verified-consensus hard-check below uses). This makes an
-    // unverified node a DELIBERATE opt-in, never a silent default. (See
-    // docs/BUILD-LEAN-LINKED-NODE.md.)
-    //
-    // The refusal must also be SIDE-EFFECT-FREE, so it runs HERE — before
-    // `NodeState` construction touches the data dir. When it ran after state
-    // construction + devnet seeding, a refused first launch left a partially
-    // initialized data dir: the relaunch (with the opt-in set) took the
-    // recovery path instead of the fresh-boot path and never provisioned the
-    // operator's agent cell. The first `/api/faucet` call without `public_key`
-    // then materialized that cell as a zero-key stub, and every signed turn on
-    // that data dir failed "Ed25519 signature verification failed" forever
-    // (the faucet never rewrites an existing cell's key). Reproduced
-    // end-to-end: clean boot → agent cell present with the operator key;
-    // refused-launch-then-relaunch → agent cell absent.
-    let lean_available = dregg_lean_ffi::lean_available();
-    let allow_unverified = env_allow_unverified(
-        std::env::var("DREGG_ALLOW_UNVERIFIED_CONSENSUS")
-            .ok()
-            .as_deref(),
-    );
-    if !lean_available {
-        if !marshal_only_must_refuse(lean_available, allow_unverified) {
-            tracing::warn!(
-                "MARSHAL-ONLY BUILD OVERRIDDEN: `dregg_lean_ffi::lean_available()` is false — this \
-                 binary was linked WITHOUT the verified Lean executor archive (libdregg_lean.a) and \
-                 is running the UN-VERIFIED Rust executor. DREGG_ALLOW_UNVERIFIED_CONSENSUS is set, \
-                 so the node will proceed on the un-verified executor. Its state transitions are NOT \
-                 shadowed by the proved Lean kernel — do not present this node as verified."
-            );
-        } else {
-            error!(
-                "REFUSING TO START: `dregg_lean_ffi::lean_available()` is false — this binary was \
-                 linked WITHOUT the verified Lean executor archive (libdregg_lean.a) and would run \
-                 the UN-VERIFIED Rust executor. A node (solo OR full) MUST NOT serve as if verified \
-                 while running the un-verified executor. Rebuild against a closure-complete, \
-                 HEAD-matching Lean archive: `./scripts/bootstrap.sh` (and set DREGG_REQUIRE_LEAN=1 \
-                 in CI/distribution builds so a marshal-only degrade fails the build instead of \
-                 shipping silently — a --release build now defaults that gate ON). To deliberately \
-                 run an un-verified node, set DREGG_ALLOW_UNVERIFIED_CONSENSUS=1. A stale or \
-                 gitignored seed silently degrades to marshal-only — see \
-                 docs/BUILD-LEAN-LINKED-NODE.md."
-            );
-            std::process::exit(1);
-        }
-    } else {
-        info!(
-            "verified-executor archive linked: `dregg_lean_ffi::lean_available()` is true — this \
-             node runs the PROVED Lean executor over the C ABI"
-        );
-    }
-
     // Initialize node state with configurable key file.
     let has_peers = !peers.is_empty();
     let node_state = match state::NodeState::new_with_key_file(&data_path, peers, key_file) {
@@ -1121,55 +1059,6 @@ async fn run_node(
                 committee_size, "federation mode: full — BFT quorum required for finality"
             );
         }
-    }
-
-    // ── VERIFIED-CONSENSUS STARTUP HARD-CHECK (red-team parity #6/#7) ──────────
-    // A node in FULL (multi-party BFT) federation mode is a verified-consensus role:
-    // it finalizes over `BlocklaceFinality.tauOrder`, the order the Lean-exported
-    // `dregg_tau_order` computes. If the verified archive is NOT linked (a
-    // marshal-only / stale build where `tau_order_available()` is false), the node
-    // would SILENTLY degrade to the un-verified Rust `ordering::tau` per poll (a
-    // `warn!` only — see `blocklace_sync`'s fallback). For a node that is SUPPOSED to
-    // be Lean-shadowed that is fail-OPEN: it claims verified production+consensus
-    // while running unverified ordering. Refuse to start instead (fail-CLOSED for
-    // this role). A solo node (committee-of-one, trivial order) and a node that never
-    // federates are unaffected, so the intentional mixed rust/lean network keeps
-    // working — only the verified-role node refuses to run unverified.
-    //
-    // Escape hatch: `DREGG_ALLOW_UNVERIFIED_CONSENSUS=1` lets an operator who
-    // deliberately accepts the un-verified Rust ordering proceed (e.g. a dev box with
-    // a marshal-only archive). It is opt-IN — the default for a full-mode node is to
-    // refuse.
-    if !is_solo_mode && !dregg_lean_ffi::tau_order_available() {
-        // Reuses the `allow_unverified` escape hatch parsed above (the same
-        // DREGG_ALLOW_UNVERIFIED_CONSENSUS variable governs both gates).
-        if allow_unverified {
-            tracing::warn!(
-                "VERIFIED-CONSENSUS HARD-CHECK OVERRIDDEN: this node is in FULL (multi-party BFT) \
-                 mode but the Lean verified-consensus archive is NOT linked (`dregg_tau_order` \
-                 absent). DREGG_ALLOW_UNVERIFIED_CONSENSUS is set, so the node will proceed on the \
-                 UN-VERIFIED Rust `ordering::tau` — its finality is NOT shadowed by the verified \
-                 rule. Do not use this in a federation that expects verified consensus."
-            );
-        } else {
-            error!(
-                "REFUSING TO START: this node is configured for VERIFIED consensus (federation \
-                 mode FULL — multi-party BFT finality), but the Lean verified-consensus archive is \
-                 not linked: `dregg_lean_ffi::tau_order_available()` is false (the build lacks the \
-                 `dregg_tau_order` export, e.g. a marshal-only / stale archive). A verified-role \
-                 node MUST NOT silently fall back to the un-verified Rust ordering. Rebuild the \
-                 node against the closure-complete verified archive (it splices \
-                 Dregg2.Distributed.FinalityGate), run this node in `--federation-mode solo` if it \
-                 is not meant to finalize, or set DREGG_ALLOW_UNVERIFIED_CONSENSUS=1 to explicitly \
-                 accept un-verified ordering."
-            );
-            std::process::exit(1);
-        }
-    } else if !is_solo_mode {
-        info!(
-            "verified-consensus hard-check passed: the Lean `dregg_tau_order` archive is linked — \
-             this full-mode node finalizes over the VERIFIED ordering rule"
-        );
     }
 
     // Phase C: Log multi-group participation if --groups is specified.
@@ -1972,25 +1861,6 @@ fn solo_should_auto_upgrade(is_solo_mode: bool, has_peers: bool, committee_size:
     is_solo_mode && (has_peers || committee_size > 1)
 }
 
-/// Parse the `DREGG_ALLOW_UNVERIFIED_CONSENSUS` escape hatch (shared by the
-/// marshal-only startup tripwire and the verified-consensus hard-check). Running an
-/// un-verified executor / ordering is a DELIBERATE opt-in — this returns `true` only
-/// when the operator explicitly set the variable to a truthy value.
-fn env_allow_unverified(val: Option<&str>) -> bool {
-    matches!(
-        val,
-        Some("1") | Some("true") | Some("TRUE") | Some("on") | Some("ON")
-    )
-}
-
-/// Whether a node must REFUSE to start because it would run the UN-verified Rust
-/// executor (`lean_available()==false`) without the explicit operator opt-in. Any
-/// node — solo OR full — refuses unless the escape hatch is set, so an unverified
-/// node is never a silent default.
-fn marshal_only_must_refuse(lean_available: bool, allow_unverified: bool) -> bool {
-    !lean_available && !allow_unverified
-}
-
 /// Wait for a shutdown signal to trigger a graceful, checkpoint-then-exit stop.
 ///
 /// Handles BOTH SIGINT (Ctrl-C) and SIGTERM. `docker stop` (and systemd) send
@@ -2062,31 +1932,6 @@ mod shutdown_and_federation_tests {
         // (the helper only fires when currently solo).
         assert!(!solo_should_auto_upgrade(false, true, 5));
         assert!(!solo_should_auto_upgrade(false, false, 1));
-    }
-
-    // ── MARSHAL-ONLY startup refusal (fail-closed unless explicit opt-in) ──────
-
-    #[test]
-    fn env_allow_unverified_only_on_explicit_truthy() {
-        for v in ["1", "true", "TRUE", "on", "ON"] {
-            assert!(env_allow_unverified(Some(v)), "expected {v:?} to allow");
-        }
-        for v in ["0", "false", "off", "no", "", "yes", "2"] {
-            assert!(!env_allow_unverified(Some(v)), "expected {v:?} to refuse");
-        }
-        // Unset (the default) never allows an un-verified executor.
-        assert!(!env_allow_unverified(None));
-    }
-
-    #[test]
-    fn marshal_only_refuses_unless_escape_set() {
-        // A verified build (lean linked) never refuses, regardless of the escape.
-        assert!(!marshal_only_must_refuse(true, false));
-        assert!(!marshal_only_must_refuse(true, true));
-        // A marshal-only build REFUSES by default (no silent unverified default)…
-        assert!(marshal_only_must_refuse(false, false));
-        // …and only proceeds when the operator explicitly opts in.
-        assert!(!marshal_only_must_refuse(false, true));
     }
 
     // ── BUG 4: graceful shutdown wires SIGTERM (docker stop) ───────────────────

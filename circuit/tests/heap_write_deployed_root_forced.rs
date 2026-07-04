@@ -36,17 +36,9 @@ const VALUE: usize = 72; // hp.VALUE
 const HEAP_ROOT_BEFORE: usize = 65;
 const HEAP_ROOT_AFTER: usize = 87;
 const HEAP_ADDR: usize = 102;
-// Phase H-HEAP-8: the deployed splice `MapOp` reads/writes the FAITHFUL 8-felt heap-root GROUP on the
-// ROTATED limbs (lane 0 = rotated `heap_root` limb 28, completions 58..64), NOT the v1-state cols 65/87.
-// Lane 0: before = EFFECT_VM_WIDTH(188)+B_HEAP_ROOT(28) = 216; after = 188+B_SPAN(227)+28 = 443. The
-// v13 rotated block span grew 91→227 (`EffectVmEmitRotationV3.B_SPAN`: R=24 geometry + commitments_root
-// + lifecycle/perms/vk/mode + fields_root + the v11/v12 completion octets + the v13 fields[0..7] lanes).
-// Mirrors the cap weld's rotated cap-root limb. (Lean `EffectVmEmitRotationV3.heapRootGroupCol`.)
-const HEAP_ROOT_BEFORE_ROT: usize = 216;
-const HEAP_ROOT_AFTER_ROT: usize = 443;
 
 const P2_CHIP_TABLE: usize = 1; // table id of `poseidon2_chip` in the staged registry
-const CHIP_DIGEST_IDX: usize = 17; // out0 position in the 25-wide chip tuple (arity + 16 inputs + out0 + 7 lanes)
+const CHIP_DIGEST_IDX: usize = 12; // the digest column position in the 17-wide chip tuple
 
 /// Resolve a rotated descriptor JSON by registry key from the committed staged TSV.
 fn rotated_descriptor_json(name: &str) -> &'static str {
@@ -132,19 +124,12 @@ fn deployed_heapwrite_forces_sorted_merkle_splice() {
     let m: &MapOpSpec = splice
         .expect("PHASE-E: heapWriteVmDescriptor2R24 must carry a `.write` map_op (the splice)");
 
-    // The splice op opens the committed heap root (8-felt group, lane 0 = col 65) at the in-row-
-    // recomputed address (col 102) for the written value (col 72) and FORCES the new heap root
-    // (8-felt group, lane 0 = col 87) to the genuine sorted update. Phase H-HEAP-8: `root`/`new_root`
-    // are 8-lane digest groups whose lane 0 is the old scalar heap-root limb.
+    // The splice op opens the committed heap root (col 65) at the in-row-recomputed address (col 102)
+    // for the written value (col 72) and FORCES the new heap root (col 87) to the genuine sorted update.
     assert_eq!(
-        m.root.len(),
-        8,
-        "splice root must be an 8-felt heap-root group"
-    );
-    assert_eq!(
-        m.root[0],
-        LeanExpr::Var(HEAP_ROOT_BEFORE_ROT),
-        "splice root lane 0 must be the ROTATED before heap-root limb 28 (col 216)"
+        m.root,
+        LeanExpr::Var(HEAP_ROOT_BEFORE),
+        "splice root must be HEAP_ROOT_BEFORE(65)"
     );
     assert_eq!(
         m.key,
@@ -157,15 +142,9 @@ fn deployed_heapwrite_forces_sorted_merkle_splice() {
         "splice value must be VALUE(72)"
     );
     assert_eq!(
-        m.new_root.len(),
-        8,
-        "splice new_root must be an 8-felt heap-root group"
-    );
-    assert_eq!(
-        m.new_root[0],
-        LeanExpr::Var(HEAP_ROOT_AFTER_ROT),
-        "splice new_root lane 0 must be the ROTATED after heap-root limb 28 (col 443) — the published \
-         faithful heap_root"
+        m.new_root,
+        LeanExpr::Var(HEAP_ROOT_AFTER),
+        "splice new_root must be HEAP_ROOT_AFTER(87) — the published heap_root register"
     );
 
     eprintln!(

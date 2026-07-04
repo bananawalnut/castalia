@@ -77,28 +77,6 @@ pub struct ShadowHostCtx {
     /// cross-federation / tampered one fails the recomputed `verify_strict` and the wire DOES NOT echo
     /// (the gate's WHO leg fail-closes). Defaults to the all-zero id (the test/round-trip federation).
     pub federation_id: [u8; 32],
-    /// The HOST fee-distribution cells (`self.proposer_cell` / `self.treasury_cell` /
-    /// `self.fee_well_cell`). THE EPOCH §5 ("fees as moves"): after a committing turn the Rust
-    /// executor MOVES the fee — `proposer_cell` += fee/2, `treasury_cell` += fee*3/10, and the
-    /// remainder to `fee_well_cell` (`distribute_fee_shares`) — so the committed value delta is zero.
-    ///
-    /// These are HOST/CONSENSUS config, NOT kernel-turn-body state: the verified kernel's
-    /// `distributeFee` runs against FIXED PLACEHOLDER cells (`admCtxOfHost`'s `hostProposerCell` /
-    /// `hostTreasuryCell` = 0xF00 / 0xF01) and burns the residue, precisely because the real
-    /// distribution targets are node config the wire grammar does not carry. The placeholder credits
-    /// land on synthetic cells absent from the deployed ledger (dropped by the `WireState → Ledger`
-    /// extractor), so the verified producer's reconstituted ledger reflects ONLY the agent's
-    /// prologue fee debit, never the real fee-well credit. The Rust executor, in contrast, applies
-    /// the REAL distribution to real cells — so a fee-bearing turn diverged on `.root()` (the n=5
-    /// dogfood faucet bug). Threading the real cells here lets the producer apply the IDENTICAL host
-    /// fee distribution to the reconstituted ledger (`lean_apply::apply_fee_distribution`), so both
-    /// producers reflect the same host fee policy and agree on `.root()` WITHOUT changing the
-    /// verified spec. Defaults to all-`None` (the test/round-trip path: no fee distribution).
-    pub proposer_cell: Option<CellId>,
-    /// See [`Self::proposer_cell`] — the treasury share recipient (`self.treasury_cell`).
-    pub treasury_cell: Option<CellId>,
-    /// See [`Self::proposer_cell`] — the fee-well remainder recipient (`self.fee_well_cell`).
-    pub fee_well_cell: Option<CellId>,
 }
 
 impl ShadowHostCtx {
@@ -113,9 +91,6 @@ impl ShadowHostCtx {
             intro_lifetime: 1000,
             current_timestamp: 0,
             federation_id: [0u8; 32],
-            proposer_cell: None,
-            treasury_cell: None,
-            fee_well_cell: None,
         }
     }
 }

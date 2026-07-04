@@ -53,11 +53,6 @@ sudo cp "$REPO_DIR/deploy/aws/caddy/Caddyfile" /etc/caddy/Caddyfile
 sudo caddy validate --config /etc/caddy/Caddyfile
 sudo systemctl reload caddy
 
-# The public site host. Override DREGG_SITE_DOMAIN to point a different
-# deployment (production / a fork) at the same Caddyfile + build. This MUST
-# match the primary domain Caddy serves (DREGG_SITE_DOMAINS in the Caddyfile).
-SITE_DOMAIN="${DREGG_SITE_DOMAIN:-devnet.dregg.fg-goose.online}"
-
 echo "=== Site deployed ==="
-echo "Explorer: https://${SITE_DOMAIN}/explorer/"
-echo "Site:     https://${SITE_DOMAIN}/"
+echo "Explorer: https://devnet.dregg.fg-goose.online/explorer/"
+echo "Site:     https://devnet.dregg.fg-goose.online/"

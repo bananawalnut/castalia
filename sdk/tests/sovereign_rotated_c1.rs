@@ -45,7 +45,6 @@ fn setup_sovereign_cell(balance: u64) -> (AgentCipherclerk, CellId, Ledger) {
         nullifier_root,
         commitments_root,
         iroot,
-        material: Default::default(),
     };
     let commitment =
         dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);
@@ -199,7 +198,6 @@ mod record_pin_anchor {
             nullifier_root,
             commitments_root,
             iroot,
-            material: Default::default(),
         };
         let commitment =
             dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);
@@ -320,7 +318,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
         // AFTER witness = the FORGED after-cell (its r23 authority digest = digest(frozen)).
         let after_w = rw::produce(
@@ -329,7 +326,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
 
         let initial_vm_state =
@@ -388,7 +384,6 @@ mod record_pin_anchor {
                 nullifier_root,
                 commitments_root,
                 iroot: after_w.iroot,
-                material: Default::default(),
             },
         );
         let new_commitment = dregg_cell::commitment::felt_to_bytes32(new_commit_felt);
@@ -524,7 +519,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
         let after_w = rw::produce(
             &forged_after,
@@ -532,7 +526,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
 
         let initial_vm_state =
@@ -586,7 +579,6 @@ mod record_pin_anchor {
                 nullifier_root,
                 commitments_root,
                 iroot: after_w.iroot,
-                material: Default::default(),
             },
         );
         let new_commitment = dregg_cell::commitment::felt_to_bytes32(new_commit_felt);
@@ -675,7 +667,6 @@ mod record_pin_anchor {
             nullifier_root,
             commitments_root,
             iroot,
-            material: Default::default(),
         };
         let commitment =
             dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);
@@ -770,7 +761,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
         let after_w = rw::produce(
             forged_after,
@@ -778,7 +768,6 @@ mod record_pin_anchor {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
 
         let initial_vm_state =
@@ -836,7 +825,6 @@ mod record_pin_anchor {
                 nullifier_root,
                 commitments_root,
                 iroot: after_w.iroot,
-                material: Default::default(),
             },
         );
         let new_commitment = dregg_cell::commitment::felt_to_bytes32(new_commit_felt);
@@ -1147,7 +1135,6 @@ mod record_pin_anchor {
             nullifier_root,
             commitments_root,
             iroot,
-            material: Default::default(),
         };
         let commitment =
             dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);
@@ -1260,7 +1247,6 @@ mod whole_turn_forest {
             nullifier_root,
             commitments_root,
             iroot,
-            material: Default::default(),
         };
         let commitment =
             dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);
@@ -1462,7 +1448,6 @@ mod wall_a {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
         let after_w = rw::produce(
             &after_cell,
@@ -1470,7 +1455,6 @@ mod wall_a {
             &nullifier_root,
             &commitments_root,
             &receipt_hashes,
-            &Default::default(),
         );
 
         let rotation = RotationTurnWitness::for_effects(before_w, after_w, &vm_effects);
@@ -1651,7 +1635,6 @@ mod multi_residue_record_pin {
             nullifier_root,
             commitments_root,
             iroot,
-            material: Default::default(),
         };
         let commitment =
             dregg_cell::commitment::compute_canonical_state_commitment_v9_8(&cell, &v9_ctx);

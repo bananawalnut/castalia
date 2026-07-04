@@ -64,24 +64,15 @@ This is NOT new mathematics: the gate is an ordinary constraint check, and the "
 real `evaluate_with_meta` step and carried by the real `CellContract` skeleton" — exactly as the
 membrane is a naming of iterated kernel attenuation and the derived cell of a committed-heap binding.
 
-## The light-client crown (BUILT) + the named residual
+## The named follow-up (VK-affecting, NOT forced here)
 
 This rung grounds the EXECUTOR-witnessed invariant: a re-executing validator running the cell's
-program refuses a violating turn, and a proved `CellContract` certifies the forever-crown. The
-companion refutation `Dregg2/Circuit/HatcheryBackingAttack.lean` shows that crown was, as DEPLOYED,
-vacuous for a pure LIGHT CLIENT: the `contract_hash` of `HpresProof::Attested` is only STORED, read by
-no circuit constraint, so the deployed AIR admits a mint whose forever-crown verifies nothing
-(`deployed_admits_unbacked_hatchery`). The REPAIR is BUILT — the per-turn FOLD over a re-proved
-contract-attestation leaf (`circuit-prove::hatchery_leaf_adapter::prove_hatchery_leaf`) connected to
-the mint leg's claimed `contract_hash` teeth via `prove_hatchery_binding_node_segmented`: the
-`(contract_hash, invariant_digest)` tuple is bound IN the recursion tree the light client folds, and a
-`contract_hash` no attestation leaf backs is UNSAT (the tooth
-`forged_contract_hash_is_rejected_by_the_fold`). So `HpresProof::Attested` is now a forever-crown
-backed by the FOLD, not the executor/Lean carry alone. Two named residuals remain (NOT vacuity): the
-deployed mint leg must DUAL-EXPOSE its `contract_hash` teeth (the VK-affecting "big-bang" descriptor
-PI-exposure piece named in `metatheory/docs/HOUSE-CAPACITIES-WELD-PLAN.md`, hatchery row — the same
-lane the cap-root reshape drives), and full in-AIR re-verification that the `contract_hash` resolves to
-a verifying `CellContract` proof term stays the named off-AIR digest-of-attestation cost.
+program refuses a violating turn, and a proved `CellContract` certifies the forever-crown. Binding the
+kind's invariant into the EffectVM circuit — so a light client verifying a *batch* sees the minted
+kind's constraint enforced as part of the proven kernel transition (the kind's constraint-program as an
+in-circuit witness) — is the VK-affecting weld named in
+`metatheory/docs/HOUSE-CAPACITIES-WELD-PLAN.md` (hatchery row), the same lane the cap-root reshape
+drives. The constraint tooth here is the *executor* tooth; the circuit tooth is its shadow.
 
 ## Axiom hygiene
 

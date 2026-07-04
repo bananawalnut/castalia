@@ -31,7 +31,7 @@
 
 use gpui::{
     div, px, AnyElement, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement, SharedString, Styled,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled,
 };
 
 use android_cell::{AndroidPermission, KernelGrantOutcome};
@@ -93,7 +93,7 @@ impl DeosDesktop {
             .get_mut(&cell)
             .expect("android chrome ensured")
             .hand_over(perm);
-        self.say(SystemUiCapChrome::outcome_line(&outcome));
+        self.status = SystemUiCapChrome::outcome_line(&outcome);
         outcome
     }
 
@@ -103,7 +103,6 @@ impl DeosDesktop {
     pub(super) fn render_android_systemui_body(
         &mut self,
         cell: CellId,
-        scroll: &gpui::ScrollHandle,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         self.ensure_android_chrome(cell);
@@ -170,6 +169,9 @@ impl DeosDesktop {
         // The body column: the app label, the (optional) shade, then the hand-over sheet.
         let mut body = div()
             .id(SharedString::from(format!("sysui-body-{hex}")))
+            .flex_1()
+            .min_h(px(0.0))
+            .overflow_y_scroll()
             .bg(gpui::rgb(NT_PANEL))
             .flex()
             .flex_col()
@@ -251,9 +253,7 @@ impl DeosDesktop {
         }
         body = body.child(sheet_col);
 
-        // The SystemUI column scrolls behind a REAL NT scrollbar (shade + sheet
-        // can outgrow the window; the persistent handle keeps the place).
-        super::chrome::nt_scroll_face(scroll, body).into_any_element()
+        body.into_any_element()
     }
 
     // ── Bake / test hooks (drive the SystemUI cap-chrome headlessly) ─────────────────

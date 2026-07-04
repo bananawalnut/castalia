@@ -39,17 +39,6 @@ import { ChannelsClient } from "./channels";
 // THE FULL ACTING SURFACE (the two-noun front door) — browser-safe now that
 // `internal/ed25519` is @noble-backed. Re-exported so a tab gets `Identity →
 // .turn() → .sign() → .submit() → Receipt` from `@dregg/sdk/browser`.
-export {
-  DEFAULT_DOMAINS,
-  DREGG_ENDPOINTS,
-  apiUrl,
-  devnetUrl,
-  devnetWssUrl,
-  gatewayUrl,
-  portalUrl,
-  resolveDomains,
-} from "./endpoints";
-export type { DreggDomains } from "./endpoints";
 export { Identity } from "./identity";
 export { NodeClient, AgentRuntime, NodeError as NodeClientError } from "./client";
 export type { NodeClientOptions } from "./client";

@@ -1,9 +1,0 @@
-# Never commit media, browser deps, or the local playwright symlink.
-out/
-node_modules
-_probe*.mjs
-_dbg*.mjs
-*.mp4
-*.webm
-*.png
-*.gif
