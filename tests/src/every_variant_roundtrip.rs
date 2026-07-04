@@ -181,6 +181,33 @@ fn all_effect_variants() -> Vec<Variant> {
                 range_proof: None,
             },
         },
+        Variant {
+            label: "ShieldedTransfer",
+            effect: Effect::ShieldedTransfer {
+                payload: dregg_turn::action::ShieldedTransferPayload {
+                    merkle_root: 7,
+                    inputs: vec![dregg_turn::action::ShieldedInputPayload {
+                        nullifier: 11,
+                        value_binding: 13,
+                        proof: vec![1, 2, 3],
+                    }],
+                    input_legs: vec![dregg_turn::action::ShieldedLeg {
+                        asset_type: 1,
+                        commitment_bytes: [21u8; 32],
+                    }],
+                    output_legs: vec![dregg_turn::action::ShieldedLeg {
+                        asset_type: 1,
+                        commitment_bytes: [22u8; 32],
+                    }],
+                    output_range_proofs: vec![vec![4, 5, 6]],
+                    conservation: dregg_cell_crypto::ConservationProof {
+                        excess_commitment: [0u8; 32],
+                        nonce_commitment: [1u8; 32],
+                        response: [2u8; 32],
+                    },
+                },
+            },
+        },
         // -- Seal / unseal: RETIRED (dregg3) — CreateSealPair/Seal/Unseal verbs
         //    dissolved into cell-program patterns; no surviving Effect variant.
         // -- Delegation -----------------------------------------------------------
@@ -420,6 +447,7 @@ fn assert_variant_coverage(e: &Effect) -> &'static str {
         Effect::Promise { .. } => "Promise",
         Effect::Notify { .. } => "Notify",
         Effect::React { .. } => "React",
+        Effect::ShieldedTransfer { .. } => "ShieldedTransfer",
     }
 }
 

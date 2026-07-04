@@ -115,6 +115,23 @@ pub fn convert_turn_effects_to_vm(
                         value: *value,
                     });
                 }
+                Effect::ShieldedTransfer { payload } => {
+                    // Must mirror sdk::cipherclerk::convert_effects_to_vm:
+                    // shielded transfer is a hidden-value note spend, so bind
+                    // the revealed nullifier through the existing NoteSpend VM
+                    // selector with zero transparent value until the dedicated
+                    // shielded-transfer descriptor exists.
+                    let nullifier = payload
+                        .inputs
+                        .first()
+                        .map(|input| input.nullifier.to_le_bytes())
+                        .unwrap_or_default();
+                    let nullifier_hash = blake3::hash(&nullifier);
+                    vm_effects.push(VmEffect::NoteSpend {
+                        nullifier: hash_to_bb(nullifier_hash.as_bytes()),
+                        value: 0,
+                    });
+                }
                 Effect::IncrementNonce { cell } if cell == cell_id => {
                     vm_effects.push(VmEffect::IncrementNonce);
                 }
