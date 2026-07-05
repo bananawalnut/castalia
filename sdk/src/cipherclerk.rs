@@ -6271,6 +6271,25 @@ impl AgentCipherclerk {
                         value: *value,
                     });
                 }
+                Effect::ShieldedTransfer { payload } => {
+                    // ShieldedTransfer consumes nullifiers like NoteSpend, but
+                    // hides value behind commitments/conservation proofs. Until
+                    // the dedicated shielded-transfer VM descriptor lands, bind
+                    // the first revealed nullifier into the existing NoteSpend
+                    // selector with zero transparent value. This keeps the
+                    // projection non-lossy for identity/double-spend anchoring
+                    // without claiming transparent balance movement.
+                    let nullifier = payload
+                        .inputs
+                        .first()
+                        .map(|input| input.nullifier.to_le_bytes())
+                        .unwrap_or_default();
+                    let nullifier_hash = blake3::hash(&nullifier);
+                    vm_effects.push(VmEffect::NoteSpend {
+                        nullifier: hash_to_bb(nullifier_hash.as_bytes()),
+                        value: 0,
+                    });
+                }
 
                 Effect::MakeSovereign { cell } if cell == cell_id => {
                     vm_effects.push(VmEffect::MakeSovereign);

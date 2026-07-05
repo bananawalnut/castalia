@@ -262,6 +262,14 @@ fn effect_body(effect: &Effect) -> String {
             "react to (one-shot SPEND) the promise-hole 0x{} — its hole id is spent into the nullifier set, so a second react is rejected as a double-spend",
             hx32(&pending_id.0)
         ),
+        Effect::ShieldedTransfer { payload } => format!(
+            "perform a shielded transfer against note root {} ({} input nullifier(s), {} input commitment(s), {} output commitment(s), {} output range proof(s))",
+            payload.merkle_root,
+            payload.inputs.len(),
+            payload.input_legs.len(),
+            payload.output_legs.len(),
+            payload.output_range_proofs.len()
+        ),
     }
 }
 
@@ -493,10 +501,38 @@ mod tests {
                 prefix_end_height: 42,
                 checkpoint: archival_attestation(),
             },
+            Effect::ShieldedTransfer {
+                payload: shielded_payload(),
+            },
         ]
     }
 
     // ---- minimal valid constructors for nested witness types ----
+
+    fn shielded_payload() -> dregg_turn::action::ShieldedTransferPayload {
+        dregg_turn::action::ShieldedTransferPayload {
+            merkle_root: 7,
+            inputs: vec![dregg_turn::action::ShieldedInputPayload {
+                nullifier: 11,
+                value_binding: 13,
+                proof: vec![1, 2, 3],
+            }],
+            input_legs: vec![dregg_turn::action::ShieldedLeg {
+                asset_type: 1,
+                commitment_bytes: [21u8; 32],
+            }],
+            output_legs: vec![dregg_turn::action::ShieldedLeg {
+                asset_type: 1,
+                commitment_bytes: [22u8; 32],
+            }],
+            output_range_proofs: vec![vec![4, 5, 6]],
+            conservation: dregg_cell_crypto::ConservationProof {
+                excess_commitment: [0u8; 32],
+                nonce_commitment: [1u8; 32],
+                response: [2u8; 32],
+            },
+        }
+    }
 
     fn attested_root() -> dregg_types::AttestedRoot {
         dregg_types::AttestedRoot {
