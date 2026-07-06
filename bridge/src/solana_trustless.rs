@@ -50,7 +50,9 @@ use crate::solana_consensus::{
     BankHashComponents, EpochStakeTable, PohAnchorPolicy, PohSegment, ValidatorVote, VoteSetError,
     verify_accounts_inclusion, verify_poh_anchored, verify_poh_segment, verify_supermajority,
 };
-use crate::solana_mirror::{MirrorError, MirrorMint, MirrorState};
+#[cfg(any(test, feature = "test-utils"))]
+use crate::solana_mirror::MirrorMint;
+use crate::solana_mirror::{MirrorError, MirrorState};
 use crate::solana_provenance::{
     ProvenAccount, ProvenanceError, RotationStep, VerifiedStakeTable, WeakSubjectivityAnchor,
     rotate,
