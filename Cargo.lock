@@ -4327,6 +4327,7 @@ dependencies = [
  "dregg-token",
  "dregg-trace",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
 ]
 
