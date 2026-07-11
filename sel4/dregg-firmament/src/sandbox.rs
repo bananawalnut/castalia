@@ -193,6 +193,14 @@ fn max_open_fds() -> RawFd {
     }
 }
 
+/// Path-opening syscalls may be exposed only when a real read grant is backed by
+/// an enforced path policy. Seccomp cannot inspect pathnames, so Landlock must
+/// remain the component that narrows the syscall to the granted subtree.
+#[cfg(any(target_os = "linux", test))]
+fn path_open_syscalls_allowed(has_read_grants: bool, path_policy_enforced: bool) -> bool {
+    has_read_grants && path_policy_enforced
+}
+
 // ───────────────────────────── macOS backend ────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -298,8 +306,11 @@ mod linux {
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
         unshare_namespaces()?;
         no_new_privs()?;
-        apply_landlock(&c.read_paths)?;
-        apply_seccomp()?;
+        let path_policy_enforced = apply_landlock(&c.read_paths)?;
+        apply_seccomp(super::path_open_syscalls_allowed(
+            !c.read_paths.is_empty(),
+            path_policy_enforced,
+        ))?;
         Ok(())
     }
 
@@ -348,9 +359,10 @@ mod linux {
 
     /// Install a default-deny seccomp-bpf filter that allows only the syscalls a
     /// confined PD body needs (read/write/close/exit/sigreturn/…) and traps the
-    /// rest (notably `socket`, `open`, `openat`, `execve`) to EPERM. Built with
-    /// the `seccompiler` crate.
-    fn apply_seccomp() -> Result<(), ConfineError> {
+    /// rest to EPERM. When Landlock fully enforces a non-empty path grant, only
+    /// the path-opening syscall class is additionally exposed; Landlock remains
+    /// the pathname authority. Built with the `seccompiler` crate.
+    fn apply_seccomp(allow_path_open: bool) -> Result<(), ConfineError> {
         use seccompiler::{apply_filter, BpfProgram, SeccompAction, SeccompFilter, TargetArch};
         use std::collections::BTreeMap;
 
@@ -390,7 +402,12 @@ mod linux {
             libc::SYS_ppoll,
             libc::SYS_fcntl,
         ];
-        let rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        let mut rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        if allow_path_open {
+            #[cfg(target_arch = "x86_64")]
+            rules.insert(libc::SYS_open, vec![]);
+            rules.insert(libc::SYS_openat, vec![]);
+        }
 
         let filter = SeccompFilter::new(
             rules,
@@ -413,7 +430,7 @@ mod linux {
     /// namespace + seccomp `open` denial already deny ambient FS authority, so
     /// we treat an ABI-unsupported result as best-effort (the deny still holds
     /// at the seccomp layer).
-    fn apply_landlock(read_paths: &[String]) -> Result<(), ConfineError> {
+    fn apply_landlock(read_paths: &[String]) -> Result<bool, ConfineError> {
         use landlock::{
             Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
         };
@@ -442,10 +459,9 @@ mod linux {
         let status = ruleset
             .restrict_self()
             .map_err(|e| ConfineError::Linux(format!("landlock restrict: {e}")))?;
-        // If the running kernel lacks Landlock, the restriction is a no-op here;
-        // the seccomp `open` denial is the backstop, so this is not fatal.
-        let _ = matches!(status.ruleset, RulesetStatus::NotEnforced);
-        Ok(())
+        // Path-opening syscalls are exposed only when Landlock confirms the
+        // grant is fully enforced. Otherwise seccomp keeps every open denied.
+        Ok(matches!(status.ruleset, RulesetStatus::FullyEnforced))
     }
 }
 
@@ -454,6 +470,14 @@ mod linux {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn path_open_syscalls_require_both_a_grant_and_enforced_path_policy() {
+        assert!(!path_open_syscalls_allowed(false, false));
+        assert!(!path_open_syscalls_allowed(false, true));
+        assert!(!path_open_syscalls_allowed(true, false));
+        assert!(path_open_syscalls_allowed(true, true));
+    }
 
     #[test]
     fn endpoint_only_keeps_just_the_control_fd() {
