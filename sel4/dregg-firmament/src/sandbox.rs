@@ -535,7 +535,8 @@ mod linux {
     /// the `seccompiler` crate.
     fn apply_seccomp() -> Result<(), ConfineError> {
         use seccompiler::{
-            apply_filter, BackendError, BpfProgram, SeccompAction, SeccompFilter, TargetArch,
+            apply_filter, BackendError, BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp,
+            SeccompCondition, SeccompFilter, SeccompRule, TargetArch,
         };
         use std::collections::BTreeMap;
 
@@ -575,7 +576,18 @@ mod linux {
             libc::SYS_ppoll,
             libc::SYS_fcntl,
         ];
-        let rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        let mut rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        // Permit only the read-only probe that proves the mandatory flag stayed
+        // set. Do not broadly allow prctl operations after seccomp is installed.
+        let get_no_new_privs = SeccompCondition::new(
+            0,
+            SeccompCmpArgLen::Dword,
+            SeccompCmpOp::Eq,
+            libc::PR_GET_NO_NEW_PRIVS as u64,
+        )
+        .and_then(|condition| SeccompRule::new(vec![condition]))
+        .map_err(|error| ConfineError::linux("seccomp_prctl_rule", error.to_string()))?;
+        rules.insert(libc::SYS_prctl, vec![get_no_new_privs]);
 
         let filter = SeccompFilter::new(
             rules,
