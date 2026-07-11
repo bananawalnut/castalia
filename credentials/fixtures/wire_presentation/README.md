@@ -28,3 +28,19 @@ tokens, private witnesses, or operator material.
 This fixture demonstrates only the Castalia wire boundary. It is not secS adapter
 evidence and does not establish proof verification, revocation freshness,
 unlinkability, live authority, federation/finality, or production readiness.
+
+## Negative fixture matrix
+
+`credentials/tests/wire_presentation_seam.rs` keeps these rejection cases
+executable:
+
+| Input | Expected result |
+|---|---|
+| malformed JSON | `VerificationError::MalformedWire` |
+| unknown envelope field/version | `VerificationError::MalformedWire` |
+| trace/private holder field | `VerificationError::MalformedWire` |
+| missing verifier-owned federation root | `VerificationError::MissingExpectedFederationRoot` |
+| mismatched verifier-owned federation root | `VerificationError::FederationRootMismatch` |
+
+Unknown versions are not guessed or silently normalized. A future version needs
+an explicit typed envelope and its own reviewed compatibility policy.
