@@ -144,6 +144,7 @@ impl Presentation {
 
 /// Wire-safe presentation (no `AuthorizationTrace`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WirePresentation {
     pub proof: dregg_bridge::present::WirePresentationProof,
     pub disclosed: Vec<(String, AttrValue)>,

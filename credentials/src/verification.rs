@@ -19,7 +19,7 @@ use thiserror::Error;
 
 use dregg_circuit::PresentationVerification;
 
-use crate::presentation::Presentation;
+use crate::presentation::{Presentation, WirePresentation};
 use crate::revocation::{NonRevocationError, RevocationProof};
 use crate::schema::{AttrValue, CredentialSchema, PredicateRequest};
 
@@ -80,6 +80,8 @@ pub struct VerifiedPresentation {
 /// Verification failure.
 #[derive(Debug, Error)]
 pub enum VerificationError {
+    #[error("wire presentation JSON is malformed: {0}")]
+    MalformedWire(String),
     #[error("bridge proof verification failed: {0:?}")]
     Bridge(PresentationVerification),
     #[error("required schema `{expected}` but presentation does not match")]
@@ -92,6 +94,8 @@ pub enum VerificationError {
     AnonymityMismatch,
     #[error("federation root mismatch (expected `{expected_hex}`)")]
     FederationRootMismatch { expected_hex: String },
+    #[error("wire verifier requires an externally trusted federation root")]
+    MissingExpectedFederationRoot,
     #[error("credential is revoked")]
     Revoked,
     #[error(
@@ -131,6 +135,48 @@ pub fn verify_anonymous(
     let mut opts = options.clone();
     opts.require_anonymous = true;
     verify(presentation, &opts)
+}
+
+/// Verify a wire-safe presentation against verifier-owned public expectations.
+///
+/// This boundary never accepts holder-local [`Presentation`] state or an
+/// authorization trace. The federation root is mandatory because the wire proof
+/// deliberately omits the linkable raw root metadata.
+pub fn verify_wire(
+    presentation: &WirePresentation,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    let expected_root = options
+        .expected_federation_root
+        .ok_or(VerificationError::MissingExpectedFederationRoot)?;
+    let proof_root = presentation
+        .proof
+        .circuit_proof
+        .public_inputs
+        .federation_root;
+    if proof_root != dregg_bridge::present::bb_from_bytes(&expected_root) {
+        return Err(VerificationError::FederationRootMismatch {
+            expected_hex: hex_encode(&expected_root),
+        });
+    }
+
+    verify_wire_inner(
+        &presentation.disclosed,
+        &presentation.predicate_proofs,
+        presentation.anonymous,
+        &presentation.proof,
+        options,
+    )
+}
+
+/// Deserialize a closed wire envelope and verify it via [`verify_wire`].
+pub fn verify_wire_json(
+    presentation_json: &str,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    let presentation = serde_json::from_str(presentation_json)
+        .map_err(|error| VerificationError::MalformedWire(error.to_string()))?;
+    verify_wire(&presentation, options)
 }
 
 fn verify_inner(
@@ -267,6 +313,87 @@ fn verify_inner(
     Ok(VerifiedPresentation {
         disclosed: disclosed.to_vec(),
         federation_root: proof.federation_root,
+        anonymous,
+    })
+}
+
+fn verify_wire_inner(
+    disclosed: &[(String, AttrValue)],
+    predicate_proofs: &[crate::presentation::NamedPredicateProof],
+    anonymous: bool,
+    proof: &dregg_bridge::present::WirePresentationProof,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    if options.require_anonymous && !anonymous {
+        return Err(VerificationError::AnonymityMismatch);
+    }
+
+    match &proof.verification {
+        PresentationVerification::Valid => {}
+        PresentationVerification::LocalOnly if !options.require_anonymous => {}
+        PresentationVerification::LocalOnly => return Err(VerificationError::LocalOnlyRejected),
+        other => return Err(VerificationError::Bridge(other.clone())),
+    }
+    if options.require_anonymous
+        && proof.real_stark_proof.is_none()
+        && proof.ivc_proof.is_none()
+        && proof.validated_ivc_proof.is_none()
+    {
+        return Err(VerificationError::LocalOnlyRejected);
+    }
+
+    if let Some(schema) = &options.expected_schema {
+        for (name, _) in disclosed {
+            if !schema.has_attribute(name) {
+                return Err(VerificationError::SchemaMismatch {
+                    expected: schema.name.clone(),
+                });
+            }
+        }
+    }
+    for expected in &options.expected_disclosure {
+        if !disclosed.iter().any(|(name, _)| name == expected) {
+            return Err(VerificationError::MissingDisclosure(expected.clone()));
+        }
+    }
+    for expected in &options.expected_predicates {
+        let candidate = predicate_proofs
+            .iter()
+            .find(|candidate| candidate.attribute == expected.attribute)
+            .ok_or_else(|| VerificationError::MissingPredicate(expected.attribute.clone()))?;
+        if candidate.proof.predicate != expected.predicate {
+            return Err(VerificationError::PredicateMismatch {
+                attribute: expected.attribute.clone(),
+            });
+        }
+        if !dregg_bridge::present::verify_predicate_proof(
+            &candidate.proof,
+            candidate.proof.fact_commitment,
+        ) {
+            return Err(VerificationError::PredicateProofInvalid {
+                attribute: expected.attribute.clone(),
+            });
+        }
+    }
+    if let Some(revocation) = &options.revocation {
+        let expected_root = options.expected_revocation_root.unwrap_or(revocation.root);
+        match revocation.verify_non_revocation(&expected_root) {
+            Ok(()) => {}
+            Err(NonRevocationError::Revoked) => return Err(VerificationError::Revoked),
+            Err(NonRevocationError::RootMismatch) => {
+                return Err(VerificationError::RevocationRootMismatch);
+            }
+            Err(NonRevocationError::UnexpectedRoot) => {
+                return Err(VerificationError::RevocationUnexpectedRoot);
+            }
+        }
+    }
+
+    Ok(VerifiedPresentation {
+        disclosed: disclosed.to_vec(),
+        federation_root: options
+            .expected_federation_root
+            .expect("verify_wire checked the trusted root"),
         anonymous,
     })
 }

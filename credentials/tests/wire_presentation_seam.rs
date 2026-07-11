@@ -93,7 +93,10 @@ fn verifier_returns_only_checked_disclosure_and_public_context() {
 
     assert_eq!(verified.disclosed.len(), 1);
     assert_eq!(verified.disclosed[0].0, "department");
-    assert_eq!(verified.federation_root, options.expected_federation_root.unwrap());
+    assert_eq!(
+        verified.federation_root,
+        options.expected_federation_root.unwrap()
+    );
     assert!(!verified.anonymous);
 }
 
