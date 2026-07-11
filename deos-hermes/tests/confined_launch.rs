@@ -70,9 +70,18 @@ fn confined_hermes_round_trips_acp_over_the_endpoint_and_is_sandboxed() {
     let mut client = AcpClient::new(transport, gateway, 10);
 
     // (1) DRIVE the ACP session end-to-end over the Endpoint.
-    let run = client
-        .run_prompt("/sandboxed/cwd", "do the confined turn")
-        .expect("the ACP loop runs end-to-end over the firmament Endpoint");
+    let run = match client.run_prompt("/sandboxed/cwd", "do the confined turn") {
+        Ok(run) => run,
+        Err(error) => {
+            let verdict = agent
+                .join_verdict()
+                .expect("reap confined child after ACP transport failure");
+            panic!(
+                "the ACP loop runs end-to-end over the firmament Endpoint: {error}; \
+                 confined child exit/verdict={verdict:#x}"
+            );
+        }
+    };
 
     // The session round-tripped: agent text streamed, three permission verdicts.
     assert!(
