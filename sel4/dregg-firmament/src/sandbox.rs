@@ -138,6 +138,54 @@ impl std::fmt::Display for ConfineError {
 
 impl std::error::Error for ConfineError {}
 
+/// The user-namespace identity map being installed after `unshare(2)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NamespaceSetupOperation {
+    UidMap,
+    GidMap,
+}
+
+impl NamespaceSetupOperation {
+    pub fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::UidMap => "namespace_uid_map",
+            Self::GidMap => "namespace_gid_map",
+        }
+    }
+}
+
+/// A typed UID/GID map setup failure that preserves the host errno.
+#[derive(Debug)]
+pub struct NamespaceSetupFailure {
+    operation: NamespaceSetupOperation,
+    error: std::io::Error,
+}
+
+impl NamespaceSetupFailure {
+    pub fn new(operation: NamespaceSetupOperation, error: std::io::Error) -> Self {
+        Self { operation, error }
+    }
+
+    /// Only an explicit host-policy refusal makes this optional namespace layer
+    /// unavailable. Missing proc entries and every other setup error stay fatal.
+    pub fn is_host_policy_unavailable(&self) -> bool {
+        matches!(self.error.raw_os_error(), Some(libc::EPERM | libc::EACCES))
+    }
+
+    pub fn operation(&self) -> NamespaceSetupOperation {
+        self.operation
+    }
+
+    pub fn error(&self) -> &std::io::Error {
+        &self.error
+    }
+
+    #[cfg(target_os = "linux")]
+    fn into_confine_error(self) -> ConfineError {
+        ConfineError::linux_io(self.operation.diagnostic_name(), self.error)
+    }
+}
+
 impl ConfineError {
     #[cfg(target_os = "linux")]
     fn linux(operation: &'static str, message: impl Into<String>) -> Self {
@@ -397,11 +445,7 @@ mod linux {
     /// Apply the Linux confinement stack to this (child) process.
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
         super::emit_diagnostic("operation=namespace_unshare state=begin");
-        if let Err(error) = unshare_namespaces() {
-            if !super::namespace_is_unavailable(&error) {
-                return Err(ConfineError::linux_io("namespace_unshare", error));
-            }
-        }
+        unshare_namespaces()?;
         super::emit_diagnostic("operation=namespace_unshare state=complete_or_unavailable");
         super::emit_diagnostic("operation=no_new_privs state=begin");
         no_new_privs()?;
@@ -421,7 +465,7 @@ mod linux {
 
     /// unshare USER+NET+NS+PID namespaces and write the uid/gid maps. An empty
     /// net namespace gives the child no network route at all (the net-cap denial).
-    fn unshare_namespaces() -> Result<(), std::io::Error> {
+    fn unshare_namespaces() -> Result<(), ConfineError> {
         use std::io::Write;
         // The real uid/gid to map root-in-namespace back to.
         let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
@@ -429,20 +473,40 @@ mod linux {
             libc::CLONE_NEWUSER | libc::CLONE_NEWNET | libc::CLONE_NEWNS | libc::CLONE_NEWPID;
         let rc = unsafe { libc::unshare(flags) };
         if rc != 0 {
-            return Err(std::io::Error::last_os_error());
+            let error = std::io::Error::last_os_error();
+            if super::namespace_is_unavailable(&error) {
+                return Ok(());
+            }
+            return Err(ConfineError::linux_io("namespace_unshare", error));
         }
-        // setgroups must be denied before writing gid_map in a userns.
-        let _ = std::fs::write("/proc/self/setgroups", b"deny");
-        std::fs::OpenOptions::new()
+        // setgroups must be denied before writing gid_map in a userns. Unlike
+        // UID/GID map policy refusal, every failure at this setup step is fatal.
+        std::fs::write("/proc/self/setgroups", b"deny")
+            .map_err(|error| ConfineError::linux_io("namespace_setgroups", error))?;
+        let uid_map = std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/uid_map")
             .and_then(|mut f| f.write_all(format!("0 {uid} 1\n").as_bytes()))
-            .map_err(|e| std::io::Error::other(format!("uid_map: {e}")))?;
-        std::fs::OpenOptions::new()
+            .map_err(|error| {
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::UidMap, error)
+            });
+        if let Err(failure) = uid_map {
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
+        let gid_map = std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/gid_map")
             .and_then(|mut f| f.write_all(format!("0 {gid} 1\n").as_bytes()))
-            .map_err(|e| std::io::Error::other(format!("gid_map: {e}")))?;
+            .map_err(|error| {
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::GidMap, error)
+            });
+        if let Err(failure) = gid_map {
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
         Ok(())
     }
 

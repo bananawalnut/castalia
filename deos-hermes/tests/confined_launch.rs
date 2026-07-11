@@ -38,10 +38,10 @@ use deos_hermes::confined::{probe, spawn_hermes_in_pd};
 #[cfg(target_os = "linux")]
 use deos_hermes::egress::EgressPolicy;
 use deos_hermes::{AcpClient, GrantRegistry, HermesGateway, ScriptedCall};
-use dregg_firmament::ConfineError;
 #[cfg(target_os = "linux")]
 use dregg_firmament::process_kernel::CONFINE_FAILED_EXIT;
 use dregg_firmament::process_kernel::ProcessKernel;
+use dregg_firmament::{ConfineError, NamespaceSetupFailure, NamespaceSetupOperation};
 use dregg_sdk::{AgentCipherclerk, AgentRuntime};
 
 #[test]
@@ -52,6 +52,36 @@ fn confinement_diagnostic_exposes_only_operation_and_errno() {
     );
 
     assert_eq!(error.diagnostic(), "operation=landlock_create errno=1");
+}
+
+#[test]
+fn host_refused_user_namespace_id_maps_are_optional_layer_unavailability() {
+    for operation in [
+        NamespaceSetupOperation::UidMap,
+        NamespaceSetupOperation::GidMap,
+    ] {
+        for errno in [libc::EPERM, libc::EACCES] {
+            let refused =
+                NamespaceSetupFailure::new(operation, std::io::Error::from_raw_os_error(errno));
+            assert!(refused.is_host_policy_unavailable());
+        }
+    }
+
+    let missing_proc_entry = NamespaceSetupFailure::new(
+        NamespaceSetupOperation::UidMap,
+        std::io::Error::from_raw_os_error(libc::ENOENT),
+    );
+    assert!(
+        !missing_proc_entry.is_host_policy_unavailable(),
+        "unexpected namespace setup errors must remain fatal"
+    );
+    for errno in [libc::EINVAL, libc::ENOSYS] {
+        let unexpected = NamespaceSetupFailure::new(
+            NamespaceSetupOperation::GidMap,
+            std::io::Error::from_raw_os_error(errno),
+        );
+        assert!(!unexpected.is_host_policy_unavailable());
+    }
 }
 
 #[test]
