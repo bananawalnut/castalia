@@ -317,7 +317,11 @@ mod linux {
             }
         }
         no_new_privs()?;
-        apply_landlock(&c.read_paths)?;
+        // Landlock is an independent defence-in-depth layer. Some container
+        // hosts expose the syscall ABI but refuse ruleset creation/restriction;
+        // seccomp below still denies every open/openat call, so an unavailable
+        // Landlock layer must not prevent the Endpoint-only child from starting.
+        let _ = apply_landlock(&c.read_paths);
         apply_seccomp()?;
         Ok(())
     }
