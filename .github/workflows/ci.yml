@@ -132,21 +132,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-      # Run `cargo audit` directly rather than via `rustsec/audit-check@v2`
-      # (the action's `ignore` input is silently dropped — it reported an empty
-      # ignore set in its own JSON, red-failing the lane on the assessed
-      # transitive advisories). `cargo audit` only auto-reads config from
-      # `.cargo/audit.toml`, NOT the repo-root `/audit.toml`, so we pass the
-      # ignore list explicitly via `--ignore`, sourced FROM `/audit.toml`
-      # (the single source of truth — each id carries its chain + reachability
-      # reason + the upstream bump that retires it). cargo-audit surfaces
-      # informational advisories (unmaintained / yanked) as non-fatal warnings
-      # by default, exactly the policy audit.toml documents. Drop a line from
-      # audit.toml the moment its upstream ships a graph-compatible patched
-      # release — this step picks the change up automatically.
+      # The root lockfile also captures the separately shipped GPUI desktop lane.
+      # Build a fail-closed lockfile projection from Cargo metadata for the two
+      # cargo-dist production packages (dregg-cli and dregg-node), excluding dev
+      # dependencies, before scanning. Desktop installer audit/build failures stay
+      # on their own workflow and cannot be presented as production-binary findings.
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
-      - name: cargo audit (ignores sourced from /audit.toml)
+      - name: Generate production audit lockfile
+        run: |
+          python3 scripts/test_production_audit_lock.py
+          python3 scripts/production_audit_lock.py \
+            --target x86_64-unknown-linux-gnu \
+            --output /tmp/castalia-production.lock
+      - name: cargo audit production packages (ignores sourced from /audit.toml)
         run: |
           set -euo pipefail
           # Extract the RUSTSEC ids from the [advisories].ignore array in
@@ -155,7 +154,7 @@ jobs:
           IGNORE_ARGS=()
           for id in "${IDS[@]}"; do IGNORE_ARGS+=(--ignore "$id"); done
           echo "Ignoring ${#IDS[@]} assessed advisories: ${IDS[*]}"
-          cargo audit "${IGNORE_ARGS[@]}"
+          cargo audit --file /tmp/castalia-production.lock "${IGNORE_ARGS[@]}"
 
   lean-marshal-gate:
     name: Lean marshal gate
