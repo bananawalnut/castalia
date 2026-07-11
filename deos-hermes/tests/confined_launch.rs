@@ -38,10 +38,21 @@ use deos_hermes::confined::{probe, spawn_hermes_in_pd};
 #[cfg(target_os = "linux")]
 use deos_hermes::egress::EgressPolicy;
 use deos_hermes::{AcpClient, GrantRegistry, HermesGateway, ScriptedCall};
+use dregg_firmament::ConfineError;
 #[cfg(target_os = "linux")]
 use dregg_firmament::process_kernel::CONFINE_FAILED_EXIT;
 use dregg_firmament::process_kernel::ProcessKernel;
 use dregg_sdk::{AgentCipherclerk, AgentRuntime};
+
+#[test]
+fn confinement_diagnostic_exposes_only_operation_and_errno() {
+    let error = ConfineError::linux_io(
+        "landlock_create",
+        std::io::Error::from_raw_os_error(libc::EPERM),
+    );
+
+    assert_eq!(error.diagnostic(), "operation=landlock_create errno=1");
+}
 
 #[test]
 fn confined_hermes_round_trips_acp_over_the_endpoint_and_is_sandboxed() {

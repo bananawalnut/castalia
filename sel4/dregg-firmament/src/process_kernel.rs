@@ -1422,7 +1422,10 @@ impl ProcessKernel {
                 let c =
                     crate::sandbox::Confinement::endpoint_only(child_fd).with_fds([child_extra_fd]);
                 if let Err(e) = crate::sandbox::confine_child(&c) {
-                    eprintln!("[pd] CONFINEMENT FAILED — refusing to run body: {e}");
+                    eprintln!(
+                        "[pd] CONFINEMENT FAILED — refusing to run body: {}",
+                        e.diagnostic()
+                    );
                     use std::io::Write as _;
                     let _ = std::io::stderr().flush();
                     unsafe { libc::_exit(CONFINE_FAILED_EXIT) };
@@ -1509,7 +1512,10 @@ impl ProcessKernel {
                 if let Err(e) = crate::sandbox::confine_child(&c) {
                     // Fail-closed: confinement is the WHOLE point. If it could
                     // not be applied we refuse to run the body un-confined.
-                    eprintln!("[pd] CONFINEMENT FAILED — refusing to run body: {e}");
+                    eprintln!(
+                        "[pd] CONFINEMENT FAILED — refusing to run body: {}",
+                        e.diagnostic()
+                    );
                     use std::io::Write as _;
                     let _ = std::io::stderr().flush();
                     unsafe { libc::_exit(CONFINE_FAILED_EXIT) };

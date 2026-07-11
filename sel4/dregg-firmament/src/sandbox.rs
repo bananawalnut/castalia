@@ -104,8 +104,13 @@ impl Confinement {
 pub enum ConfineError {
     /// `sandbox_init` (macOS) failed with this message.
     SandboxInit(String),
-    /// A Linux confinement step (unshare / prctl / seccomp / landlock) failed.
-    Linux(String),
+    /// A Linux confinement step failed. The operation is a fixed, non-secret
+    /// classifier; errno is present when the syscall exposed one.
+    Linux {
+        operation: &'static str,
+        errno: Option<i32>,
+        message: String,
+    },
     /// Closing the non-granted fds failed.
     FdClose(String),
     /// This platform has no implemented backing (neither macOS nor Linux).
@@ -116,7 +121,15 @@ impl std::fmt::Display for ConfineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfineError::SandboxInit(m) => write!(f, "macOS sandbox_init failed: {m}"),
-            ConfineError::Linux(m) => write!(f, "linux confinement failed: {m}"),
+            ConfineError::Linux {
+                operation,
+                errno,
+                message,
+            } => write!(
+                f,
+                "linux confinement failed at {operation} (errno={}): {message}",
+                errno.map_or_else(|| "unknown".to_string(), |value| value.to_string())
+            ),
             ConfineError::FdClose(m) => write!(f, "closing inherited fds failed: {m}"),
             ConfineError::Unsupported => write!(f, "no sandbox backing on this platform"),
         }
@@ -124,6 +137,54 @@ impl std::fmt::Display for ConfineError {
 }
 
 impl std::error::Error for ConfineError {}
+
+impl ConfineError {
+    #[cfg(target_os = "linux")]
+    fn linux(operation: &'static str, message: impl Into<String>) -> Self {
+        Self::Linux {
+            operation,
+            errno: None,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn linux_errno(
+        operation: &'static str,
+        errno: Option<i32>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::Linux {
+            operation,
+            errno,
+            message: message.into(),
+        }
+    }
+
+    pub fn linux_io(operation: &'static str, error: std::io::Error) -> Self {
+        Self::Linux {
+            operation,
+            errno: error.raw_os_error(),
+            message: error.to_string(),
+        }
+    }
+
+    /// A secret-safe failure report: fixed operation name plus numeric errno,
+    /// never a granted path or free-form error payload.
+    pub fn diagnostic(&self) -> String {
+        match self {
+            Self::Linux {
+                operation, errno, ..
+            } => format!(
+                "operation={operation} errno={}",
+                errno.map_or_else(|| "unknown".to_string(), |value| value.to_string())
+            ),
+            Self::SandboxInit(_) => "operation=sandbox_init errno=unknown".to_string(),
+            Self::FdClose(_) => "operation=fd_isolation errno=unknown".to_string(),
+            Self::Unsupported => "operation=platform_support errno=unknown".to_string(),
+        }
+    }
+}
 
 /// CONFINE the calling process (a freshly-forked child PD) to its granted
 /// authority — close all non-granted fds, then drop ambient OS authority via the
@@ -324,7 +385,7 @@ mod linux {
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
         if let Err(error) = unshare_namespaces() {
             if !super::namespace_is_unavailable(&error) {
-                return Err(ConfineError::Linux(format!("unshare failed: {error}")));
+                return Err(ConfineError::linux_io("namespace_unshare", error));
             }
         }
         no_new_privs()?;
@@ -369,10 +430,10 @@ mod linux {
     fn no_new_privs() -> Result<(), ConfineError> {
         let rc = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if rc != 0 {
-            return Err(ConfineError::Linux(format!(
-                "prctl(NO_NEW_PRIVS): {}",
-                std::io::Error::last_os_error()
-            )));
+            return Err(ConfineError::linux_io(
+                "no_new_privs",
+                std::io::Error::last_os_error(),
+            ));
         }
         Ok(())
     }
@@ -429,12 +490,12 @@ mod linux {
             SeccompAction::Allow,                     // matched (allow-listed) → allow
             arch,
         )
-        .map_err(|e| ConfineError::Linux(format!("seccomp build: {e}")))?;
+        .map_err(|e| ConfineError::linux("seccomp_build", e.to_string()))?;
 
         let prog: BpfProgram = filter
             .try_into()
-            .map_err(|e| ConfineError::Linux(format!("seccomp compile: {e}")))?;
-        apply_filter(&prog).map_err(|e| ConfineError::Linux(format!("seccomp apply: {e}")))?;
+            .map_err(|e| ConfineError::linux("seccomp_compile", e.to_string()))?;
+        apply_filter(&prog).map_err(|e| ConfineError::linux("seccomp_apply", e.to_string()))?;
         Ok(())
     }
 
@@ -450,35 +511,37 @@ mod linux {
             RulesetCreatedAttr, RulesetError, RulesetStatus, ABI,
         };
 
-        fn syscall_is_unavailable(error: &std::io::Error) -> bool {
-            error
-                .raw_os_error()
-                .is_some_and(super::landlock_errno_is_unavailable)
-        }
-
-        fn ruleset_error_is_unavailable(error: &RulesetError) -> bool {
+        fn ruleset_errno(error: &RulesetError) -> Option<i32> {
             match error {
                 RulesetError::CreateRuleset(CreateRulesetError::CreateRulesetCall {
                     source,
                     ..
-                }) => syscall_is_unavailable(source),
+                }) => source.raw_os_error(),
                 RulesetError::RestrictSelf(RestrictSelfError::RestrictSelfCall {
                     source, ..
-                }) => syscall_is_unavailable(source),
-                _ => false,
+                }) => source.raw_os_error(),
+                _ => None,
             }
+        }
+
+        fn ruleset_error_is_unavailable(error: &RulesetError) -> bool {
+            ruleset_errno(error).is_some_and(super::landlock_errno_is_unavailable)
         }
 
         let abi = ABI::V1;
         let read_only = AccessFs::from_read(abi);
         let ruleset = Ruleset::default()
             .handle_access(AccessFs::from_all(abi))
-            .map_err(|e| ConfineError::Linux(format!("landlock handle: {e}")))?;
+            .map_err(|e| ConfineError::linux("landlock_handle", e.to_string()))?;
         let mut ruleset = match ruleset.create() {
             Ok(ruleset) => ruleset,
             Err(error) if ruleset_error_is_unavailable(&error) => return Ok(()),
             Err(error) => {
-                return Err(ConfineError::Linux(format!("landlock create: {error}")));
+                return Err(ConfineError::linux_errno(
+                    "landlock_create",
+                    ruleset_errno(&error),
+                    error.to_string(),
+                ));
             }
         };
 
@@ -487,19 +550,23 @@ mod linux {
             // directly, no longer a Result); only PathFd::new + add_rule can fail.
             let rule = landlock::PathBeneath::new(
                 landlock::PathFd::new(path)
-                    .map_err(|e| ConfineError::Linux(format!("landlock pathfd {path}: {e}")))?,
+                    .map_err(|e| ConfineError::linux("landlock_pathfd", e.to_string()))?,
                 read_only,
             );
             ruleset = ruleset
                 .add_rule(rule)
-                .map_err(|e| ConfineError::Linux(format!("landlock rule {path}: {e}")))?;
+                .map_err(|e| ConfineError::linux("landlock_add_rule", e.to_string()))?;
         }
 
         match ruleset.restrict_self() {
             Ok(status) if matches!(status.ruleset, RulesetStatus::NotEnforced) => Ok(()),
             Ok(_) => Ok(()),
             Err(error) if ruleset_error_is_unavailable(&error) => Ok(()),
-            Err(error) => Err(ConfineError::Linux(format!("landlock restrict: {error}"))),
+            Err(error) => Err(ConfineError::linux_errno(
+                "landlock_restrict_self",
+                ruleset_errno(&error),
+                error.to_string(),
+            )),
         }
     }
 }
@@ -509,6 +576,20 @@ mod linux {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn confinement_diagnostic_exposes_only_operation_and_errno() {
+        let error = ConfineError::linux_io(
+            "landlock_create",
+            std::io::Error::from_raw_os_error(libc::EPERM),
+        );
+
+        assert_eq!(
+            error.diagnostic(),
+            "operation=landlock_create errno=1",
+            "diagnostics must identify the failed primitive without paths or other payload data"
+        );
+    }
 
     #[test]
     fn endpoint_only_keeps_just_the_control_fd() {
