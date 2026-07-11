@@ -186,6 +186,19 @@ impl ConfineError {
     }
 }
 
+/// Write a confinement trace line directly to stderr. The child has just
+/// forked, so avoid buffered stdio locks; callers provide only fixed operation
+/// names or the redacted [`ConfineError::diagnostic`] string.
+pub(crate) fn emit_diagnostic(message: &str) {
+    let prefix = b"[pd-confinement] ";
+    let newline = b"\n";
+    unsafe {
+        libc::write(libc::STDERR_FILENO, prefix.as_ptr().cast(), prefix.len());
+        libc::write(libc::STDERR_FILENO, message.as_ptr().cast(), message.len());
+        libc::write(libc::STDERR_FILENO, newline.as_ptr().cast(), newline.len());
+    }
+}
+
 /// CONFINE the calling process (a freshly-forked child PD) to its granted
 /// authority — close all non-granted fds, then drop ambient OS authority via the
 /// host sandbox. Call this in the CHILD, after `fork()`, BEFORE the PD `body`.
@@ -383,18 +396,26 @@ mod linux {
 
     /// Apply the Linux confinement stack to this (child) process.
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
+        super::emit_diagnostic("operation=namespace_unshare state=begin");
         if let Err(error) = unshare_namespaces() {
             if !super::namespace_is_unavailable(&error) {
                 return Err(ConfineError::linux_io("namespace_unshare", error));
             }
         }
+        super::emit_diagnostic("operation=namespace_unshare state=complete_or_unavailable");
+        super::emit_diagnostic("operation=no_new_privs state=begin");
         no_new_privs()?;
+        super::emit_diagnostic("operation=no_new_privs state=complete");
         // Landlock is an independent defence-in-depth layer. Only an explicitly
         // recognized unavailable/host-refused outcome may fall back to seccomp;
         // malformed rules, invalid paths, rule-add failures, and unexpected
         // restrict_self failures remain fatal.
+        super::emit_diagnostic("operation=landlock state=begin");
         apply_landlock(&c.read_paths)?;
+        super::emit_diagnostic("operation=landlock state=complete_or_unavailable");
+        super::emit_diagnostic("operation=seccomp_apply state=begin");
         apply_seccomp()?;
+        super::emit_diagnostic("operation=seccomp_apply state=complete");
         Ok(())
     }
 
