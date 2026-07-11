@@ -27,12 +27,15 @@
 //!   it) — fine, the child is trusted firmament code between fork and body.
 //!
 //! - **Linux (compiled here as a cfg-stub, ENFORCED on Linux):**
-//!   `unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID)` + a uid-map (an empty net
-//!   namespace = no route to any network), `prctl(PR_SET_NO_NEW_PRIVS)`, a
+//!   `unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID)` + a uid-map when unprivileged
+//!   namespaces are available (an empty net namespace = no route to any network),
+//!   `prctl(PR_SET_NO_NEW_PRIVS)`, a
 //!   default-deny seccomp-bpf allow-list (`seccompiler`), Landlock path-rules
 //!   (`landlock`) for any granted read paths, and `close_range` keeping only the
-//!   granted fds. On macOS the Linux body compiles to a no-op stub so the crate
-//!   builds on both; it only RUNS on Linux.
+//!   granted fds. Namespace denial by the host does not abort the child because
+//!   seccomp still denies socket/open/exec and the remaining layers still apply;
+//!   every other namespace error remains fatal. On macOS the Linux body compiles
+//!   to a no-op stub so the crate builds on both; it only RUNS on Linux.
 //!
 //! ## The trust statement (don't-launder-vacuity)
 //!
@@ -193,6 +196,17 @@ fn max_open_fds() -> RawFd {
     }
 }
 
+/// Whether a namespace setup error means the host does not expose unprivileged
+/// namespaces to this process. In that case Linux confinement can still proceed
+/// through its independent no-new-privileges, Landlock, and seccomp layers.
+#[cfg(any(target_os = "linux", test))]
+fn namespace_is_unavailable(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(errno) if matches!(errno, libc::EPERM | libc::EACCES | libc::ENOSYS)
+    )
+}
+
 // ───────────────────────────── macOS backend ────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -282,8 +296,9 @@ mod macos {
 //
 // Compiles on macOS as an unreachable cfg-stub (the module body is gated to
 // `target_os = "linux"`); RUNS on Linux. The steps:
-//   1. unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID) + a uid-map (root-in-namespace
-//      maps to the real uid) — an EMPTY net namespace means no route anywhere.
+//   1. When the host permits it, unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID) + a
+//      uid-map (root-in-namespace maps to the real uid) — an EMPTY net namespace
+//      means no route anywhere. Host policy may disable this independent layer.
 //   2. prctl(PR_SET_NO_NEW_PRIVS, 1) — no setuid/fscaps escalation.
 //   3. a default-deny seccomp-bpf allow-list (read/write/close/exit/… only) via
 //      `seccompiler` — socket()/open()/execve() trap to EPERM/SIGSYS.
@@ -296,7 +311,11 @@ mod linux {
 
     /// Apply the Linux confinement stack to this (child) process.
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
-        unshare_namespaces()?;
+        if let Err(error) = unshare_namespaces() {
+            if !super::namespace_is_unavailable(&error) {
+                return Err(ConfineError::Linux(format!("unshare failed: {error}")));
+            }
+        }
         no_new_privs()?;
         apply_landlock(&c.read_paths)?;
         apply_seccomp()?;
@@ -305,7 +324,7 @@ mod linux {
 
     /// unshare USER+NET+NS+PID namespaces and write the uid/gid maps. An empty
     /// net namespace gives the child no network route at all (the net-cap denial).
-    fn unshare_namespaces() -> Result<(), ConfineError> {
+    fn unshare_namespaces() -> Result<(), std::io::Error> {
         use std::io::Write;
         // The real uid/gid to map root-in-namespace back to.
         let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
@@ -313,10 +332,7 @@ mod linux {
             libc::CLONE_NEWUSER | libc::CLONE_NEWNET | libc::CLONE_NEWNS | libc::CLONE_NEWPID;
         let rc = unsafe { libc::unshare(flags) };
         if rc != 0 {
-            return Err(ConfineError::Linux(format!(
-                "unshare failed: {}",
-                std::io::Error::last_os_error()
-            )));
+            return Err(std::io::Error::last_os_error());
         }
         // setgroups must be denied before writing gid_map in a userns.
         let _ = std::fs::write("/proc/self/setgroups", b"deny");
@@ -324,12 +340,12 @@ mod linux {
             .write(true)
             .open("/proc/self/uid_map")
             .and_then(|mut f| f.write_all(format!("0 {uid} 1\n").as_bytes()))
-            .map_err(|e| ConfineError::Linux(format!("uid_map: {e}")))?;
+            .map_err(|e| std::io::Error::other(format!("uid_map: {e}")))?;
         std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/gid_map")
             .and_then(|mut f| f.write_all(format!("0 {gid} 1\n").as_bytes()))
-            .map_err(|e| ConfineError::Linux(format!("gid_map: {e}")))?;
+            .map_err(|e| std::io::Error::other(format!("gid_map: {e}")))?;
         Ok(())
     }
 
@@ -466,6 +482,18 @@ mod tests {
     fn with_read_path_records_the_grant() {
         let c = Confinement::endpoint_only(4).with_read_path("/etc/hosts");
         assert_eq!(c.read_paths, vec!["/etc/hosts".to_string()]);
+    }
+
+    #[test]
+    fn unavailable_linux_namespaces_fall_back_to_the_independent_sandbox_layers() {
+        for errno in [libc::EPERM, libc::EACCES, libc::ENOSYS] {
+            assert!(namespace_is_unavailable(
+                &std::io::Error::from_raw_os_error(errno)
+            ));
+        }
+        assert!(!namespace_is_unavailable(
+            &std::io::Error::from_raw_os_error(libc::EINVAL)
+        ));
     }
 
     // The macOS profile builder is pure (no FFI) — exercise its text shape so a
