@@ -479,10 +479,16 @@ mod linux {
             }
             return Err(ConfineError::linux_io("namespace_unshare", error));
         }
-        // setgroups must be denied before writing gid_map in a userns. Unlike
-        // UID/GID map policy refusal, every failure at this setup step is fatal.
-        std::fs::write("/proc/self/setgroups", b"deny")
-            .map_err(|error| ConfineError::linux_io("namespace_setgroups", error))?;
+        // setgroups denial is part of GID-map setup: a host-policy refusal has
+        // the same narrow optional-layer treatment, while ENOENT/other errors
+        // remain fatal through the typed GidMap classifier.
+        if let Err(error) = std::fs::write("/proc/self/setgroups", b"deny") {
+            let failure =
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::GidMap, error);
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
         let uid_map = std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/uid_map")
