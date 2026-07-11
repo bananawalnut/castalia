@@ -207,6 +207,17 @@ fn namespace_is_unavailable(error: &std::io::Error) -> bool {
     )
 }
 
+/// Whether a Landlock syscall errno explicitly means the kernel does not provide
+/// the requested isolation to this process. Configuration, path, and rule errors
+/// are never classified through this predicate and remain fatal.
+#[cfg(any(target_os = "linux", test))]
+fn landlock_errno_is_unavailable(errno: i32) -> bool {
+    matches!(
+        errno,
+        libc::EPERM | libc::EACCES | libc::ENOSYS | libc::EOPNOTSUPP
+    )
+}
+
 // ───────────────────────────── macOS backend ────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -317,11 +328,11 @@ mod linux {
             }
         }
         no_new_privs()?;
-        // Landlock is an independent defence-in-depth layer. Some container
-        // hosts expose the syscall ABI but refuse ruleset creation/restriction;
-        // seccomp below still denies every open/openat call, so an unavailable
-        // Landlock layer must not prevent the Endpoint-only child from starting.
-        let _ = apply_landlock(&c.read_paths);
+        // Landlock is an independent defence-in-depth layer. Only an explicitly
+        // recognized unavailable/host-refused outcome may fall back to seccomp;
+        // malformed rules, invalid paths, rule-add failures, and unexpected
+        // restrict_self failures remain fatal.
+        apply_landlock(&c.read_paths)?;
         apply_seccomp()?;
         Ok(())
     }
@@ -435,16 +446,41 @@ mod linux {
     /// at the seccomp layer).
     fn apply_landlock(read_paths: &[String]) -> Result<(), ConfineError> {
         use landlock::{
-            Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
+            Access, AccessFs, CreateRulesetError, RestrictSelfError, Ruleset, RulesetAttr,
+            RulesetCreatedAttr, RulesetError, RulesetStatus, ABI,
         };
+
+        fn syscall_is_unavailable(error: &std::io::Error) -> bool {
+            error
+                .raw_os_error()
+                .is_some_and(super::landlock_errno_is_unavailable)
+        }
+
+        fn ruleset_error_is_unavailable(error: &RulesetError) -> bool {
+            match error {
+                RulesetError::CreateRuleset(CreateRulesetError::CreateRulesetCall {
+                    source,
+                    ..
+                }) => syscall_is_unavailable(source),
+                RulesetError::RestrictSelf(RestrictSelfError::RestrictSelfCall {
+                    source, ..
+                }) => syscall_is_unavailable(source),
+                _ => false,
+            }
+        }
 
         let abi = ABI::V1;
         let read_only = AccessFs::from_read(abi);
-        let mut ruleset = Ruleset::default()
+        let ruleset = Ruleset::default()
             .handle_access(AccessFs::from_all(abi))
-            .map_err(|e| ConfineError::Linux(format!("landlock handle: {e}")))?
-            .create()
-            .map_err(|e| ConfineError::Linux(format!("landlock create: {e}")))?;
+            .map_err(|e| ConfineError::Linux(format!("landlock handle: {e}")))?;
+        let mut ruleset = match ruleset.create() {
+            Ok(ruleset) => ruleset,
+            Err(error) if ruleset_error_is_unavailable(&error) => return Ok(()),
+            Err(error) => {
+                return Err(ConfineError::Linux(format!("landlock create: {error}")));
+            }
+        };
 
         for path in read_paths {
             // landlock 0.4.x: `PathBeneath::new` is infallible (returns the rule
@@ -459,13 +495,12 @@ mod linux {
                 .map_err(|e| ConfineError::Linux(format!("landlock rule {path}: {e}")))?;
         }
 
-        let status = ruleset
-            .restrict_self()
-            .map_err(|e| ConfineError::Linux(format!("landlock restrict: {e}")))?;
-        // If the running kernel lacks Landlock, the restriction is a no-op here;
-        // the seccomp `open` denial is the backstop, so this is not fatal.
-        let _ = matches!(status.ruleset, RulesetStatus::NotEnforced);
-        Ok(())
+        match ruleset.restrict_self() {
+            Ok(status) if matches!(status.ruleset, RulesetStatus::NotEnforced) => Ok(()),
+            Ok(_) => Ok(()),
+            Err(error) if ruleset_error_is_unavailable(&error) => Ok(()),
+            Err(error) => Err(ConfineError::Linux(format!("landlock restrict: {error}"))),
+        }
     }
 }
 
@@ -498,6 +533,16 @@ mod tests {
         assert!(!namespace_is_unavailable(
             &std::io::Error::from_raw_os_error(libc::EINVAL)
         ));
+    }
+
+    #[test]
+    fn only_host_refused_landlock_errors_are_unavailable() {
+        for errno in [libc::EPERM, libc::EACCES, libc::ENOSYS, libc::EOPNOTSUPP] {
+            assert!(landlock_errno_is_unavailable(errno));
+        }
+        for errno in [libc::EINVAL, libc::EBADF, libc::ENOENT, libc::EFAULT] {
+            assert!(!landlock_errno_is_unavailable(errno));
+        }
     }
 
     // The macOS profile builder is pure (no FFI) — exercise its text shape so a

@@ -32,8 +32,14 @@
 
 use std::sync::{Arc, RwLock};
 
+#[cfg(target_os = "linux")]
+use deos_hermes::confined::launch_confined_with_egress;
 use deos_hermes::confined::{probe, spawn_hermes_in_pd};
+#[cfg(target_os = "linux")]
+use deos_hermes::egress::EgressPolicy;
 use deos_hermes::{AcpClient, GrantRegistry, HermesGateway, ScriptedCall};
+#[cfg(target_os = "linux")]
+use dregg_firmament::process_kernel::CONFINE_FAILED_EXIT;
 use dregg_firmament::process_kernel::ProcessKernel;
 use dregg_sdk::{AgentCipherclerk, AgentRuntime};
 
@@ -126,10 +132,34 @@ fn confined_hermes_round_trips_acp_over_the_endpoint_and_is_sandboxed() {
         probe::IPC_WORKS,
         "the ACP round-trip over the Endpoint must have completed (verdict={verdict:#x})"
     );
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        verdict & probe::NO_NEW_PRIVS,
+        probe::NO_NEW_PRIVS,
+        "PR_SET_NO_NEW_PRIVS must remain mandatory when user namespaces are unavailable \
+         (verdict={verdict:#x})"
+    );
     assert_eq!(
         verdict,
         probe::ALL,
         "CONFINED-LAUNCH TOOTH: the agent ran ACP over the Endpoint AND was OS-confined \
          (file/network/exec ambient authority denied, one fd held). verdict={verdict:#x}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn malformed_landlock_grant_fails_closed_before_the_child_body() {
+    let kernel = ProcessKernel::new();
+    let mut policy = EgressPolicy::sealed();
+    policy.grant_read("/definitely/missing/castalia-landlock-grant");
+
+    let agent = launch_confined_with_egress(&kernel, &policy, |_sock| 42)
+        .expect("fork confined PD with malformed Landlock grant");
+    let verdict = agent.join_verdict().expect("reap failed confinement child");
+
+    assert_eq!(
+        verdict, CONFINE_FAILED_EXIT,
+        "an invalid granted path must fail confinement before the child body runs"
     );
 }

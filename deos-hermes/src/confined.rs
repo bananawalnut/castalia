@@ -80,7 +80,13 @@ pub mod probe {
     pub const NET_DENIED: i32 = 0x4;
     /// Exactly one non-std fd open — the firmament Endpoint.
     pub const ONLY_ENDPOINT_FD: i32 = 0x8;
-    /// All four confinement teeth held.
+    /// Linux `PR_SET_NO_NEW_PRIVS` is set in the confined child.
+    pub const NO_NEW_PRIVS: i32 = 0x40;
+    /// All confinement teeth held.
+    #[cfg(target_os = "linux")]
+    pub const ALL: i32 = IPC_WORKS | OPEN_DENIED | NET_DENIED | ONLY_ENDPOINT_FD | NO_NEW_PRIVS;
+    /// All confinement teeth held on non-Linux Unix hosts.
+    #[cfg(not(target_os = "linux"))]
     pub const ALL: i32 = IPC_WORKS | OPEN_DENIED | NET_DENIED | ONLY_ENDPOINT_FD;
 
     /// EGRESS tooth — the GRANTED egress subpath WAS readable inside the PD (the
@@ -314,6 +320,10 @@ pub fn run_sandbox_probes() -> i32 {
     // open fds in 3..64; exactly one (the Endpoint) is expected.
     if count_open_fds_above_std(64) == 1 {
         v |= probe::ONLY_ENDPOINT_FD;
+    }
+    #[cfg(target_os = "linux")]
+    if unsafe { libc::prctl(libc::PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) } == 1 {
+        v |= probe::NO_NEW_PRIVS;
     }
     v
 }
