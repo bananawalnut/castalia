@@ -443,7 +443,9 @@ mod linux {
     /// rest (notably `socket`, `open`, `openat`, `execve`) to EPERM. Built with
     /// the `seccompiler` crate.
     fn apply_seccomp() -> Result<(), ConfineError> {
-        use seccompiler::{apply_filter, BpfProgram, SeccompAction, SeccompFilter, TargetArch};
+        use seccompiler::{
+            apply_filter, BackendError, BpfProgram, SeccompAction, SeccompFilter, TargetArch,
+        };
         use std::collections::BTreeMap;
 
         #[cfg(target_arch = "x86_64")]
@@ -494,7 +496,7 @@ mod linux {
 
         let prog: BpfProgram = filter
             .try_into()
-            .map_err(|e| ConfineError::linux("seccomp_compile", e.to_string()))?;
+            .map_err(|e: BackendError| ConfineError::linux("seccomp_compile", e.to_string()))?;
         apply_filter(&prog).map_err(|e| ConfineError::linux("seccomp_apply", e.to_string()))?;
         Ok(())
     }
