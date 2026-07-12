@@ -293,7 +293,9 @@ fn body() {
             "the unedited panel's web render had NO refresh button and the original header"
         );
         assert!(
-            web_after.contains(r#"<span class="deos-bind" data-slot="1">receipts: 12</span>"#),
+            web_after.contains(
+                r#"<span class="deos-bind" data-bind-index="1" data-fmt="raw" data-label="receipts: " data-slot="1">receipts: 12</span>"#,
+            ),
             "the status rows (a function of state) still paint their witnessed values"
         );
         assert_ne!(

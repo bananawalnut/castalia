@@ -138,8 +138,10 @@ SpiderMonkey (`src/web.rs:9`–`13`, `Cargo.toml:120`–`121`). Its walker mirro
 (table at `src/web.rs:14`–`24`.) `render_html(tree, bind_values)` produces the fragment;
 `bind_values[n]` is the live value of the Nth bind in the same tree-walk order the native
 `bind_plan` mints `BindingId`s in, missing index ⇒ 0 (`src/web.rs:47`–`62`). A `bind`
-emits its value AND `data-slot` (so a browser re-read knows which slot to refresh); a
-`button` emits `data-turn`/`data-arg` — the exact payload a click must fire
+emits its value and a canonical metadata row (`data-bind-index`, `data-fmt`,
+`data-label`, then `data-slot`) so field-opening verification, formatted repaint, and
+the witnessed slot-to-value anchor remain available together; a `button` emits
+`data-turn`/`data-arg` — the exact payload a click must fire
 (`src/web.rs:86`–`113`). All text/attribute content is HTML-escaped (`src/web.rs:423`–`436`).
 
 ### Documents and the live turn

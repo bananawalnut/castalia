@@ -112,7 +112,7 @@ fn node(n: &ViewNode, binds: &BindValues, cursor: &mut usize, out: &mut String) 
             // this index, so the in-tab verify can flip THIS field's span once its opening
             // checks against the committed heap root (the served-plain closure).
             out.push_str(&format!(
-                "<span class=\"deos-bind\" data-slot=\"{slot}\" data-bind-index=\"{idx}\" data-fmt=\"{}\" data-label=\"{}\">{}</span>",
+                "<span class=\"deos-bind\" data-bind-index=\"{idx}\" data-fmt=\"{}\" data-label=\"{}\" data-slot=\"{slot}\">{}</span>",
                 fmt.as_str(),
                 escape(label),
                 escape(&text)
