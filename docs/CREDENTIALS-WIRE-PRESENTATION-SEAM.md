@@ -46,6 +46,14 @@ The public-input fingerprint must be pinned by the verifier's request/session;
 deriving the expected value from the received artifact would not establish a
 replay or challenge binding.
 
+This seam neither provisions nor recognizes membership or credentials. It does
+not obtain the expected federation root, credential status, or any other
+expectation from a live signed authority source. A successful root comparison
+means only that the proof's public root equals a value externally injected by
+the caller as a verifier expectation; the comparison is not source-authenticated.
+It therefore cannot establish membership recognition, live authority,
+federation status, finality, or provenance for that value.
+
 It must not request or persist `Presentation`, `AuthorizationTrace`, credentials,
 wallet/holder identifiers, source tokens, or private witnesses. It must not trust
 a caller-supplied verdict alongside the artifact.
@@ -62,9 +70,10 @@ Fixture provenance and the negative matrix are recorded in
 
 ## Non-claims
 
-This narrow seam does not implement secS behavior, replay/nonce or arbitrary
-context binding, live authority, revocation freshness, federation/finality, new
-proof verification, privacy/unlinkability, light-client or recursive-proof state,
+This narrow seam does not implement secS behavior, membership or credential
+provisioning/recognition, replay/nonce or arbitrary context binding, live
+authority, revocation freshness, federation status/finality/provenance, new proof
+verification, privacy/unlinkability, light-client or recursive-proof state,
 selective audit, or production readiness.
 The current non-anonymous local fixture exercises the existing local
 constraint-check posture; it is not evidence of remote cryptographic verification.

@@ -27,9 +27,17 @@ fingerprint, stay outside the artifact. The fixture must not contain
 wallet or holder identifiers, source tokens, private witnesses, or operator
 material.
 
+The fixture seam neither provisions nor recognizes membership or credentials.
+It does not obtain its expected root or any credential expectation from a live
+signed authority source. A successful root comparison uses an externally
+injected verifier expectation, is not source-authenticated, and cannot establish
+membership recognition, live authority, federation status, finality, or
+provenance.
+
 This fixture demonstrates only the Castalia wire boundary. It is not secS adapter
-evidence and does not establish proof verification, revocation freshness,
-unlinkability, live authority, federation/finality, or production readiness.
+evidence and does not establish membership or credential recognition, proof
+verification, revocation freshness, unlinkability, live authority, federation
+status/finality/provenance, or production readiness.
 
 ## Negative fixture matrix
 
