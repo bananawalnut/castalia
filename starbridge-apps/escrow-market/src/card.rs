@@ -141,12 +141,14 @@ fn action(glyph: &str, label: &str, turn: &str) -> Value {
 
 /// **The escrow-market card as a `deos.ui.*` view-tree** (a `serde_json::Value`).
 ///
-/// A rich, live trustless-swap surface: a status header (name + LIVE leg-status pill
-/// + the three cap-tier pills + lifecycle breadcrumb), an "Escrow" section surfacing
-/// the trustline-draw gauge (escrowed vs ceiling), the ceiling / escrowed amounts,
-/// the seller / buyer avatar handles, and the sealed-delivery digest (adept), a
-/// "Settlement" section with the live released / refunded binds (the FLASHWELL
-/// split), and an "Actions" section of the four icon-labelled sealed-escrow buttons.
+/// A rich, live trustless-swap surface: a status header (name, LIVE leg-status
+/// pill, the three cap-tier pills, and lifecycle breadcrumb), an "Escrow" section
+/// surfacing the trustline-draw gauge (escrowed vs ceiling), the ceiling /
+/// escrowed amounts, the seller / buyer avatar handles, and the sealed-delivery
+/// digest (adept), a "Settlement" section with the live released / refunded binds
+/// (the FLASHWELL split), and an "Actions" section of the four icon-labelled
+/// sealed-escrow buttons.
+///
 /// Renderer-independent DATA. The button `turn` names are the
 /// [`service`](crate::service) method symbols.
 pub fn escrow_card_value() -> Value {

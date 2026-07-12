@@ -128,12 +128,13 @@ fn action(glyph: &str, label: &str, turn: &str) -> Value {
 /// **The execution-lease card as a `deos.ui.*` view-tree** (a `serde_json::Value`).
 ///
 /// A live durable-execution-lease dashboard telling the full "rent durable
-/// execution, metered, pay-or-lapse" story: a status header (name + LIVE/LAPSED pill
-/// + the two cap-tier pills + the lease-lifecycle breadcrumb), a "Meter" section
-/// whose KILLER VISUAL is the periods-paid gauge (the budget consumed) plus the
-/// rent/period + period-length + periods-paid binds, a "Durable execution" section
-/// surfacing the checkpoint cursor + state digest + provider, and an "Actions"
-/// section of the open / pay / advance / status buttons. Renderer-independent DATA.
+/// execution, metered, pay-or-lapse" story. It shows a status header with the
+/// name, LIVE/LAPSED pill, two cap-tier pills, and lease-lifecycle breadcrumb; a
+/// "Meter" section whose KILLER VISUAL is the periods-paid gauge (the budget
+/// consumed) plus the rent/period, period-length, and periods-paid binds; a
+/// "Durable execution" section surfacing the checkpoint cursor, state digest,
+/// and provider; and an "Actions" section of the open / pay / advance / status
+/// buttons. Renderer-independent DATA.
 /// The button `turn` names are the [`service`](crate::service) method symbols.
 pub fn lease_card_value() -> Value {
     json!({

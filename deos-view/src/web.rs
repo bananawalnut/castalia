@@ -1367,8 +1367,8 @@ fn embed_json(json: &str) -> String {
     json.replace('<', "\\u003c")
 }
 
-/// Styling for the trustless portal: the trust banner (pending / verified / refused)
-/// + the attestation detail readout + the de-emphasised "unverified" card state.
+/// Styling for the trustless portal: the trust banner (pending / verified / refused),
+/// the attestation detail readout, and the de-emphasised "unverified" card state.
 /// Shares the cockpit dark palette (`CSS`'s `:root`).
 const TRUSTLESS_CSS: &str = "
 .deos-portal{max-width:560px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:.6rem;}

@@ -183,6 +183,7 @@ impl CellWorld {
     /// Mint a cell onto the shared ledger AND record a cap-table row for it under `name`:
     /// the JS app holds `held` toward this cell and may fire its `affordances`. Returns the
     /// minted cell id.
+    #[allow(clippy::too_many_arguments)] // cell fixtures must spell key, token, balance, seeds, affordances, and held cap explicitly
     pub fn add_cell(
         &mut self,
         name: &str,

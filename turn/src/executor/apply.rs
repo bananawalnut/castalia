@@ -1080,7 +1080,7 @@ impl TurnExecutor {
     /// admits the transfer on three independent gates, all fail-closed:
     ///
     /// 1. **Hidden STARK side** — every input's membership in the commitment tree
-    ///    + correct nullifier derivation, proved through `HidingFriPcs` (owner /
+    ///    and correct nullifier derivation, proved through `HidingFriPcs` (owner /
     ///    key / Merkle path blind). Reconstructed from the wire payload and
     ///    verified by `ShieldedTransfer::verify_stark_side`, which also rejects an
     ///    in-transfer duplicate nullifier.
