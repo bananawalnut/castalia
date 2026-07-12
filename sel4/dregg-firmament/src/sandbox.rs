@@ -340,6 +340,18 @@ fn landlock_errno_is_unavailable(errno: i32) -> bool {
     )
 }
 
+#[cfg(any(target_os = "linux", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathPolicyEnforcement {
+    FullyEnforced,
+    Unavailable,
+}
+
+#[cfg(any(target_os = "linux", test))]
+fn path_open_syscalls_allowed(has_read_grant: bool, enforcement: PathPolicyEnforcement) -> bool {
+    has_read_grant && enforcement == PathPolicyEnforcement::FullyEnforced
+}
+
 // ───────────────────────────── macOS backend ────────────────────────────────
 
 #[cfg(target_os = "macos")]
@@ -433,14 +445,15 @@ mod macos {
 //      uid-map (root-in-namespace maps to the real uid) — an EMPTY net namespace
 //      means no route anywhere. Host policy may disable this independent layer.
 //   2. prctl(PR_SET_NO_NEW_PRIVS, 1) — no setuid/fscaps escalation.
-//   3. a default-deny seccomp-bpf allow-list (read/write/close/exit/… only) via
-//      `seccompiler` — socket()/open()/execve() trap to EPERM/SIGSYS.
-//   4. Landlock read rules for any granted read paths via `landlock`.
+//   3. Landlock read rules for any granted read paths via `landlock`.
+//   4. a default-deny seccomp-bpf allow-list (read/write/close/exit/… only) via
+//      `seccompiler` — socket()/execve() trap to EPERM/SIGSYS, while path-opening
+//      is exposed only when a non-empty grant is fully enforced by Landlock.
 //   5. (close_all_but already ran in the shared path, keeping the control fd.)
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use super::{ConfineError, Confinement};
+    use super::{ConfineError, Confinement, PathPolicyEnforcement};
 
     /// Apply the Linux confinement stack to this (child) process.
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
@@ -455,10 +468,13 @@ mod linux {
         // malformed rules, invalid paths, rule-add failures, and unexpected
         // restrict_self failures remain fatal.
         super::emit_diagnostic("operation=landlock state=begin");
-        apply_landlock(&c.read_paths)?;
+        let path_policy = apply_landlock(&c.read_paths)?;
         super::emit_diagnostic("operation=landlock state=complete_or_unavailable");
         super::emit_diagnostic("operation=seccomp_apply state=begin");
-        apply_seccomp()?;
+        apply_seccomp(super::path_open_syscalls_allowed(
+            !c.read_paths.is_empty(),
+            path_policy,
+        ))?;
         super::emit_diagnostic("operation=seccomp_apply state=complete");
         Ok(())
     }
@@ -533,7 +549,7 @@ mod linux {
     /// confined PD body needs (read/write/close/exit/sigreturn/…) and traps the
     /// rest (notably `socket`, `open`, `openat`, `execve`) to EPERM. Built with
     /// the `seccompiler` crate.
-    fn apply_seccomp() -> Result<(), ConfineError> {
+    fn apply_seccomp(allow_path_open: bool) -> Result<(), ConfineError> {
         use seccompiler::{
             apply_filter, BackendError, BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp,
             SeccompCondition, SeccompFilter, SeccompRule, TargetArch,
@@ -577,6 +593,11 @@ mod linux {
             libc::SYS_fcntl,
         ];
         let mut rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        if allow_path_open {
+            rules.insert(libc::SYS_openat, vec![]);
+            #[cfg(target_arch = "x86_64")]
+            rules.insert(libc::SYS_open, vec![]);
+        }
         // Permit only the read-only probe that proves the mandatory flag stayed
         // set. Do not broadly allow prctl operations after seccomp is installed.
         let get_no_new_privs = SeccompCondition::new(
@@ -610,7 +631,7 @@ mod linux {
     /// namespace + seccomp `open` denial already deny ambient FS authority, so
     /// we treat an ABI-unsupported result as best-effort (the deny still holds
     /// at the seccomp layer).
-    fn apply_landlock(read_paths: &[String]) -> Result<(), ConfineError> {
+    fn apply_landlock(read_paths: &[String]) -> Result<PathPolicyEnforcement, ConfineError> {
         use landlock::{
             Access, AccessFs, CreateRulesetError, RestrictSelfError, Ruleset, RulesetAttr,
             RulesetCreatedAttr, RulesetError, RulesetStatus, ABI,
@@ -640,7 +661,9 @@ mod linux {
             .map_err(|e| ConfineError::linux("landlock_handle", e.to_string()))?;
         let mut ruleset = match ruleset.create() {
             Ok(ruleset) => ruleset,
-            Err(error) if ruleset_error_is_unavailable(&error) => return Ok(()),
+            Err(error) if ruleset_error_is_unavailable(&error) => {
+                return Ok(PathPolicyEnforcement::Unavailable);
+            }
             Err(error) => {
                 return Err(ConfineError::linux_errno(
                     "landlock_create",
@@ -664,9 +687,15 @@ mod linux {
         }
 
         match ruleset.restrict_self() {
-            Ok(status) if matches!(status.ruleset, RulesetStatus::NotEnforced) => Ok(()),
-            Ok(_) => Ok(()),
-            Err(error) if ruleset_error_is_unavailable(&error) => Ok(()),
+            Ok(status) => Ok(match status.ruleset {
+                RulesetStatus::FullyEnforced => PathPolicyEnforcement::FullyEnforced,
+                RulesetStatus::PartiallyEnforced | RulesetStatus::NotEnforced => {
+                    PathPolicyEnforcement::Unavailable
+                }
+            }),
+            Err(error) if ruleset_error_is_unavailable(&error) => {
+                Ok(PathPolicyEnforcement::Unavailable)
+            }
             Err(error) => Err(ConfineError::linux_errno(
                 "landlock_restrict_self",
                 ruleset_errno(&error),
@@ -728,6 +757,21 @@ mod tests {
         }
         for errno in [libc::EINVAL, libc::EBADF, libc::ENOENT, libc::EFAULT] {
             assert!(!landlock_errno_is_unavailable(errno));
+        }
+    }
+
+    #[test]
+    fn path_open_syscalls_require_both_a_grant_and_enforced_path_policy() {
+        for (has_read_grant, enforcement, expected) in [
+            (false, PathPolicyEnforcement::Unavailable, false),
+            (false, PathPolicyEnforcement::FullyEnforced, false),
+            (true, PathPolicyEnforcement::Unavailable, false),
+            (true, PathPolicyEnforcement::FullyEnforced, true),
+        ] {
+            assert_eq!(
+                path_open_syscalls_allowed(has_read_grant, enforcement),
+                expected
+            );
         }
     }
 
