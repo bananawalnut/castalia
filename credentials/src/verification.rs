@@ -23,6 +23,20 @@ use crate::presentation::{Presentation, WirePresentation};
 use crate::revocation::{NonRevocationError, RevocationProof};
 use crate::schema::{AttrValue, CredentialSchema, PredicateRequest};
 
+/// Evidence strength derived from proof shape, never from a caller label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireEvidenceTier {
+    LocalConstraintCheck,
+    CryptographicProof,
+}
+
+/// Verification state this seam can establish without claiming proof verification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireVerificationState {
+    LocalConstraintChecked,
+    CryptographicallyVerified,
+}
+
 /// Options carried by the verifier.
 #[derive(Clone, Debug, Default)]
 pub struct VerificationOptions {
@@ -58,6 +72,27 @@ pub struct VerificationOptions {
     /// anchored against. When `Some`, this is compared against the
     /// proof's recovered federation root.
     pub expected_federation_root: Option<[u8; 32]>,
+
+    /// Verifier-owned request fields committed by `request_predicate`.
+    pub expected_app_id: Option<String>,
+    pub expected_action: Option<String>,
+    /// The current model uses `app_id` as the verifier audience/resource.
+    pub expected_audience: Option<String>,
+
+    /// Reserved semantics absent from current presentation public inputs.
+    pub expected_context: Option<String>,
+    pub expected_nonce: Option<[u8; 32]>,
+
+    /// Verifier-owned proof-time window.
+    pub verification_time: Option<i64>,
+    pub max_proof_age_secs: Option<u64>,
+
+    /// Verifier-owned strength and state requirements.
+    pub expected_evidence_tier: Option<WireEvidenceTier>,
+    pub expected_wire_state: Option<WireVerificationState>,
+
+    /// Fingerprint pinned by the verifier when issuing the request/session.
+    pub expected_public_inputs_fingerprint: Option<[u8; 32]>,
 }
 
 impl VerificationOptions {
@@ -96,6 +131,24 @@ pub enum VerificationError {
     FederationRootMismatch { expected_hex: String },
     #[error("wire verifier requires an externally trusted federation root")]
     MissingExpectedFederationRoot,
+    #[error("wire verifier requires verifier-owned `{field}` binding")]
+    MissingExpectedWireBinding { field: &'static str },
+    #[error("wire presentation does not bind supported request field `{field}`")]
+    RequestBindingMismatch { field: &'static str },
+    #[error("wire presentation model does not support verifier binding `{field}`")]
+    UnsupportedWireBinding { field: &'static str },
+    #[error("proof timestamp is older than the verifier-owned age window")]
+    ProofExpired,
+    #[error("proof timestamp is later than verifier time")]
+    ProofFromFuture,
+    #[error("wire evidence tier does not satisfy verifier expectation")]
+    EvidenceTierMismatch,
+    #[error("wire verification state does not satisfy verifier expectation")]
+    VerificationStateMismatch,
+    #[error("wire-carried verification verdict is not independently trusted by this seam")]
+    UntrustedWireVerificationState,
+    #[error("presentation public inputs do not match the verifier-pinned fingerprint")]
+    PublicInputsFingerprintMismatch,
     #[error("credential is revoked")]
     Revoked,
     #[error(
@@ -146,6 +199,13 @@ pub fn verify_wire(
     presentation: &WirePresentation,
     options: &VerificationOptions,
 ) -> Result<VerifiedPresentation, VerificationError> {
+    if options.expected_context.is_some() {
+        return Err(VerificationError::UnsupportedWireBinding { field: "context" });
+    }
+    if options.expected_nonce.is_some() {
+        return Err(VerificationError::UnsupportedWireBinding { field: "nonce" });
+    }
+
     let expected_root = options
         .expected_federation_root
         .ok_or(VerificationError::MissingExpectedFederationRoot)?;
@@ -158,6 +218,89 @@ pub fn verify_wire(
         return Err(VerificationError::FederationRootMismatch {
             expected_hex: hex_encode(&expected_root),
         });
+    }
+
+    let expected_fingerprint = options.expected_public_inputs_fingerprint.ok_or(
+        VerificationError::MissingExpectedWireBinding {
+            field: "public_inputs_fingerprint",
+        },
+    )?;
+    if presentation.public_inputs_fingerprint() != expected_fingerprint {
+        return Err(VerificationError::PublicInputsFingerprintMismatch);
+    }
+
+    let expected_app = options
+        .expected_app_id
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "app_id" })?;
+    let expected_action = options
+        .expected_action
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "action" })?;
+    let expected_audience = options
+        .expected_audience
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "audience" })?;
+    let public_request = presentation
+        .proof
+        .circuit_proof
+        .public_inputs
+        .request_predicate;
+    if public_request != dregg_circuit::compute_action_binding(expected_action, expected_app) {
+        let field = if expected_app == expected_audience {
+            "action"
+        } else {
+            "app_id"
+        };
+        return Err(VerificationError::RequestBindingMismatch { field });
+    }
+    if expected_audience != expected_app {
+        return Err(VerificationError::RequestBindingMismatch { field: "audience" });
+    }
+
+    let verification_time =
+        options
+            .verification_time
+            .ok_or(VerificationError::MissingExpectedWireBinding {
+                field: "verification_time",
+            })?;
+    let max_age =
+        options
+            .max_proof_age_secs
+            .ok_or(VerificationError::MissingExpectedWireBinding {
+                field: "max_proof_age_secs",
+            })?;
+    let proof_time = i64::from(
+        presentation
+            .proof
+            .circuit_proof
+            .public_inputs
+            .timestamp
+            .as_u32(),
+    );
+    if proof_time > verification_time {
+        return Err(VerificationError::ProofFromFuture);
+    }
+    if verification_time.saturating_sub(proof_time) as u64 > max_age {
+        return Err(VerificationError::ProofExpired);
+    }
+
+    let observed_tier = if presentation.proof.real_stark_proof.is_some()
+        || presentation.proof.ivc_proof.is_some()
+        || presentation.proof.validated_ivc_proof.is_some()
+    {
+        WireEvidenceTier::CryptographicProof
+    } else {
+        WireEvidenceTier::LocalConstraintCheck
+    };
+    if options.expected_evidence_tier != Some(observed_tier) {
+        return Err(VerificationError::EvidenceTierMismatch);
+    }
+    if presentation.proof.verification != PresentationVerification::LocalOnly {
+        return Err(VerificationError::UntrustedWireVerificationState);
+    }
+    if options.expected_wire_state != Some(WireVerificationState::LocalConstraintChecked) {
+        return Err(VerificationError::VerificationStateMismatch);
     }
 
     verify_wire_inner(

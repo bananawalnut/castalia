@@ -71,8 +71,8 @@ pub use presentation::{
 pub use revocation::{RevocationProof, RevocationRegistry, revoke};
 pub use schema::{AttrValue, AttributeAttenuation, CredentialAttributes, CredentialSchema};
 pub use verification::{
-    VerificationError, VerificationOptions, VerifiedPresentation, verify, verify_anonymous,
-    verify_wire, verify_wire_json,
+    VerificationError, VerificationOptions, VerifiedPresentation, WireEvidenceTier,
+    WireVerificationState, verify, verify_anonymous, verify_wire, verify_wire_json,
 };
 
 // Re-export underlying types so callers don't need to depend on

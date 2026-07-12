@@ -20,10 +20,12 @@ Allowed serialized content:
 - typed predicate proofs;
 - the anonymous-mode bit.
 
-Verifier-owned expectations, including the trusted federation root, stay outside
-the artifact. The fixture must not contain `Presentation`, `AuthorizationTrace`,
-raw credentials, detached raw proof bytes, wallet or holder identifiers, source
-tokens, private witnesses, or operator material.
+Verifier-owned expectations, including the trusted federation root, request
+app/action/audience, time window, evidence tier/state, and pinned public-input
+fingerprint, stay outside the artifact. The fixture must not contain
+`Presentation`, `AuthorizationTrace`, raw credentials, detached raw proof bytes,
+wallet or holder identifiers, source tokens, private witnesses, or operator
+material.
 
 This fixture demonstrates only the Castalia wire boundary. It is not secS adapter
 evidence and does not establish proof verification, revocation freshness,
@@ -41,6 +43,18 @@ executable:
 | trace/private holder field | `VerificationError::MalformedWire` |
 | missing verifier-owned federation root | `VerificationError::MissingExpectedFederationRoot` |
 | mismatched verifier-owned federation root | `VerificationError::FederationRootMismatch` |
+| wrong app/action/audience | `VerificationError::RequestBindingMismatch` |
+| context or nonce expectation | `VerificationError::UnsupportedWireBinding` |
+| proof timestamp outside verifier window | `VerificationError::ProofExpired` / `ProofFromFuture` |
+| stronger evidence tier/state required | `EvidenceTierMismatch` / `VerificationStateMismatch` |
+| caller-mutated `verification = Valid` | `UntrustedWireVerificationState` |
+| changed proof public inputs | `PublicInputsFingerprintMismatch` |
 
 Unknown versions are not guessed or silently normalized. A future version needs
 an explicit typed envelope and its own reviewed compatibility policy.
+
+The current fixture has no context or nonce public input and carries only the
+existing local constraint-check posture. Those semantics remain explicitly
+unsupported rather than inferred from adjacent JSON. The verifier must pin the
+expected public-input fingerprint independently; computing it from the artifact
+being verified is not replay protection.

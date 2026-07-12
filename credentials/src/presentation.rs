@@ -152,6 +152,20 @@ pub struct WirePresentation {
     pub anonymous: bool,
 }
 
+impl WirePresentation {
+    /// Fingerprint the complete circuit public-input tuple for verifier-owned
+    /// request/session pinning. This identifies public inputs; it does not verify
+    /// the proof carrying them.
+    pub fn public_inputs_fingerprint(&self) -> [u8; 32] {
+        let encoded = serde_json::to_vec(&self.proof.circuit_proof.public_inputs)
+            .expect("serializable presentation public inputs");
+        *blake3::Hasher::new_derive_key("castalia-wire-public-inputs-v1")
+            .update(&encoded)
+            .finalize()
+            .as_bytes()
+    }
+}
+
 /// Produce a credential presentation.
 ///
 /// The `request` parameter is the authorization request the verifier
