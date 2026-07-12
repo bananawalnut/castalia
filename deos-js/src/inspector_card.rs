@@ -308,6 +308,13 @@ fn relabel_text(tree: &mut ViewTree, from: &str, to: &str) -> bool {
             props.title = to.to_string();
             return true;
         }
+        // Friendly section titles remain editable through the canonical face name carried in
+        // `tag`. This preserves the RawFields/Affordances card contract without putting the
+        // implementation vocabulary back into the newcomer-facing title.
+        if props.tag == from {
+            props.title = to.to_string();
+            return true;
+        }
     }
     match tree {
         ViewTree::VStack { children }
@@ -414,7 +421,7 @@ pub fn inspector_view_for(
     if !raw_rows.is_empty() {
         friendly_rows.push(section_adept("the raw details", raw_rows));
     }
-    children.push(section("What this holds", friendly_rows));
+    children.push(section("What this holds", "Cell State", friendly_rows));
 
     // ── Affordances face ──────────────────────────────────────────────────────────────
     let mut aff_rows: Vec<ViewTree> = Vec::new();
@@ -444,17 +451,19 @@ pub fn inspector_view_for(
             },
         });
     }
-    children.push(section("What you can do", aff_rows));
+    children.push(section("What you can do", "Affordances", aff_rows));
 
     ViewTree::VStack { children }
 }
 
 /// A titled section the inspector groups rows under (a friendly header, shown in every view).
-fn section(title: &str, children: Vec<ViewTree>) -> ViewTree {
+fn section(title: &str, face: &str, children: Vec<ViewTree>) -> ViewTree {
     ViewTree::Section {
         props: SectionProps {
             title: title.to_string(),
-            tag: String::new(),
+            // The visible title is intentionally friendly; the tag keeps the canonical face
+            // identity in the renderer-independent card source and supports legacy relabels.
+            tag: face.to_string(),
             adept: false,
         },
         children,
