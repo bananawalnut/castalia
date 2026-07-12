@@ -216,7 +216,9 @@ pub use process_kernel::{
 #[cfg(all(feature = "process-pd-sandbox", unix))]
 pub use process_kernel::CONFINE_FAILED_EXIT;
 #[cfg(all(feature = "process-pd-sandbox", unix))]
-pub use sandbox::{confine_child, ConfineError, Confinement};
+pub use sandbox::{
+    confine_child, ConfineError, Confinement, NamespaceSetupFailure, NamespaceSetupOperation,
+};
 
 // Re-export the REAL dregg rights lattice and id so app code names the genuine
 // types, not a parallel model.
