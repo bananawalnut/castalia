@@ -27,12 +27,15 @@
 //!   it) — fine, the child is trusted firmament code between fork and body.
 //!
 //! - **Linux (compiled here as a cfg-stub, ENFORCED on Linux):**
-//!   `unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID)` + a uid-map (an empty net
-//!   namespace = no route to any network), `prctl(PR_SET_NO_NEW_PRIVS)`, a
+//!   `unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID)` + a uid-map when unprivileged
+//!   namespaces are available (an empty net namespace = no route to any network),
+//!   `prctl(PR_SET_NO_NEW_PRIVS)`, a
 //!   default-deny seccomp-bpf allow-list (`seccompiler`), Landlock path-rules
 //!   (`landlock`) for any granted read paths, and `close_range` keeping only the
-//!   granted fds. On macOS the Linux body compiles to a no-op stub so the crate
-//!   builds on both; it only RUNS on Linux.
+//!   granted fds. Namespace denial by the host does not abort the child because
+//!   seccomp still denies socket/open/exec and the remaining layers still apply;
+//!   every other namespace error remains fatal. On macOS the Linux body compiles
+//!   to a no-op stub so the crate builds on both; it only RUNS on Linux.
 //!
 //! ## The trust statement (don't-launder-vacuity)
 //!
@@ -101,8 +104,13 @@ impl Confinement {
 pub enum ConfineError {
     /// `sandbox_init` (macOS) failed with this message.
     SandboxInit(String),
-    /// A Linux confinement step (unshare / prctl / seccomp / landlock) failed.
-    Linux(String),
+    /// A Linux confinement step failed. The operation is a fixed, non-secret
+    /// classifier; errno is present when the syscall exposed one.
+    Linux {
+        operation: &'static str,
+        errno: Option<i32>,
+        message: String,
+    },
     /// Closing the non-granted fds failed.
     FdClose(String),
     /// This platform has no implemented backing (neither macOS nor Linux).
@@ -113,7 +121,15 @@ impl std::fmt::Display for ConfineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfineError::SandboxInit(m) => write!(f, "macOS sandbox_init failed: {m}"),
-            ConfineError::Linux(m) => write!(f, "linux confinement failed: {m}"),
+            ConfineError::Linux {
+                operation,
+                errno,
+                message,
+            } => write!(
+                f,
+                "linux confinement failed at {operation} (errno={}): {message}",
+                errno.map_or_else(|| "unknown".to_string(), |value| value.to_string())
+            ),
             ConfineError::FdClose(m) => write!(f, "closing inherited fds failed: {m}"),
             ConfineError::Unsupported => write!(f, "no sandbox backing on this platform"),
         }
@@ -121,6 +137,115 @@ impl std::fmt::Display for ConfineError {
 }
 
 impl std::error::Error for ConfineError {}
+
+/// The user-namespace identity map being installed after `unshare(2)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NamespaceSetupOperation {
+    UidMap,
+    GidMap,
+}
+
+impl NamespaceSetupOperation {
+    pub fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::UidMap => "namespace_uid_map",
+            Self::GidMap => "namespace_gid_map",
+        }
+    }
+}
+
+/// A typed UID/GID map setup failure that preserves the host errno.
+#[derive(Debug)]
+pub struct NamespaceSetupFailure {
+    operation: NamespaceSetupOperation,
+    error: std::io::Error,
+}
+
+impl NamespaceSetupFailure {
+    pub fn new(operation: NamespaceSetupOperation, error: std::io::Error) -> Self {
+        Self { operation, error }
+    }
+
+    /// Only an explicit host-policy refusal makes this optional namespace layer
+    /// unavailable. Missing proc entries and every other setup error stay fatal.
+    pub fn is_host_policy_unavailable(&self) -> bool {
+        matches!(self.error.raw_os_error(), Some(libc::EPERM | libc::EACCES))
+    }
+
+    pub fn operation(&self) -> NamespaceSetupOperation {
+        self.operation
+    }
+
+    pub fn error(&self) -> &std::io::Error {
+        &self.error
+    }
+
+    #[cfg(target_os = "linux")]
+    fn into_confine_error(self) -> ConfineError {
+        ConfineError::linux_io(self.operation.diagnostic_name(), self.error)
+    }
+}
+
+impl ConfineError {
+    #[cfg(target_os = "linux")]
+    fn linux(operation: &'static str, message: impl Into<String>) -> Self {
+        Self::Linux {
+            operation,
+            errno: None,
+            message: message.into(),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn linux_errno(
+        operation: &'static str,
+        errno: Option<i32>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::Linux {
+            operation,
+            errno,
+            message: message.into(),
+        }
+    }
+
+    pub fn linux_io(operation: &'static str, error: std::io::Error) -> Self {
+        Self::Linux {
+            operation,
+            errno: error.raw_os_error(),
+            message: error.to_string(),
+        }
+    }
+
+    /// A secret-safe failure report: fixed operation name plus numeric errno,
+    /// never a granted path or free-form error payload.
+    pub fn diagnostic(&self) -> String {
+        match self {
+            Self::Linux {
+                operation, errno, ..
+            } => format!(
+                "operation={operation} errno={}",
+                errno.map_or_else(|| "unknown".to_string(), |value| value.to_string())
+            ),
+            Self::SandboxInit(_) => "operation=sandbox_init errno=unknown".to_string(),
+            Self::FdClose(_) => "operation=fd_isolation errno=unknown".to_string(),
+            Self::Unsupported => "operation=platform_support errno=unknown".to_string(),
+        }
+    }
+}
+
+/// Write a confinement trace line directly to stderr. The child has just
+/// forked, so avoid buffered stdio locks; callers provide only fixed operation
+/// names or the redacted [`ConfineError::diagnostic`] string.
+pub(crate) fn emit_diagnostic(message: &str) {
+    let prefix = b"[pd-confinement] ";
+    let newline = b"\n";
+    unsafe {
+        libc::write(libc::STDERR_FILENO, prefix.as_ptr().cast(), prefix.len());
+        libc::write(libc::STDERR_FILENO, message.as_ptr().cast(), message.len());
+        libc::write(libc::STDERR_FILENO, newline.as_ptr().cast(), newline.len());
+    }
+}
 
 /// CONFINE the calling process (a freshly-forked child PD) to its granted
 /// authority — close all non-granted fds, then drop ambient OS authority via the
@@ -191,6 +316,28 @@ fn max_open_fds() -> RawFd {
     } else {
         cap
     }
+}
+
+/// Whether a namespace setup error means the host does not expose unprivileged
+/// namespaces to this process. In that case Linux confinement can still proceed
+/// through its independent no-new-privileges, Landlock, and seccomp layers.
+#[cfg(any(target_os = "linux", test))]
+fn namespace_is_unavailable(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(errno) if matches!(errno, libc::EPERM | libc::EACCES | libc::ENOSYS)
+    )
+}
+
+/// Whether a Landlock syscall errno explicitly means the kernel does not provide
+/// the requested isolation to this process. Configuration, path, and rule errors
+/// are never classified through this predicate and remain fatal.
+#[cfg(any(target_os = "linux", test))]
+fn landlock_errno_is_unavailable(errno: i32) -> bool {
+    matches!(
+        errno,
+        libc::EPERM | libc::EACCES | libc::ENOSYS | libc::EOPNOTSUPP
+    )
 }
 
 // ───────────────────────────── macOS backend ────────────────────────────────
@@ -282,8 +429,9 @@ mod macos {
 //
 // Compiles on macOS as an unreachable cfg-stub (the module body is gated to
 // `target_os = "linux"`); RUNS on Linux. The steps:
-//   1. unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID) + a uid-map (root-in-namespace
-//      maps to the real uid) — an EMPTY net namespace means no route anywhere.
+//   1. When the host permits it, unshare(CLONE_NEWUSER|NEWNET|NEWNS|NEWPID) + a
+//      uid-map (root-in-namespace maps to the real uid) — an EMPTY net namespace
+//      means no route anywhere. Host policy may disable this independent layer.
 //   2. prctl(PR_SET_NO_NEW_PRIVS, 1) — no setuid/fscaps escalation.
 //   3. a default-deny seccomp-bpf allow-list (read/write/close/exit/… only) via
 //      `seccompiler` — socket()/open()/execve() trap to EPERM/SIGSYS.
@@ -296,10 +444,22 @@ mod linux {
 
     /// Apply the Linux confinement stack to this (child) process.
     pub fn confine(c: &Confinement) -> Result<(), ConfineError> {
+        super::emit_diagnostic("operation=namespace_unshare state=begin");
         unshare_namespaces()?;
+        super::emit_diagnostic("operation=namespace_unshare state=complete_or_unavailable");
+        super::emit_diagnostic("operation=no_new_privs state=begin");
         no_new_privs()?;
+        super::emit_diagnostic("operation=no_new_privs state=complete");
+        // Landlock is an independent defence-in-depth layer. Only an explicitly
+        // recognized unavailable/host-refused outcome may fall back to seccomp;
+        // malformed rules, invalid paths, rule-add failures, and unexpected
+        // restrict_self failures remain fatal.
+        super::emit_diagnostic("operation=landlock state=begin");
         apply_landlock(&c.read_paths)?;
+        super::emit_diagnostic("operation=landlock state=complete_or_unavailable");
+        super::emit_diagnostic("operation=seccomp_apply state=begin");
         apply_seccomp()?;
+        super::emit_diagnostic("operation=seccomp_apply state=complete");
         Ok(())
     }
 
@@ -313,23 +473,46 @@ mod linux {
             libc::CLONE_NEWUSER | libc::CLONE_NEWNET | libc::CLONE_NEWNS | libc::CLONE_NEWPID;
         let rc = unsafe { libc::unshare(flags) };
         if rc != 0 {
-            return Err(ConfineError::Linux(format!(
-                "unshare failed: {}",
-                std::io::Error::last_os_error()
-            )));
+            let error = std::io::Error::last_os_error();
+            if super::namespace_is_unavailable(&error) {
+                return Ok(());
+            }
+            return Err(ConfineError::linux_io("namespace_unshare", error));
         }
-        // setgroups must be denied before writing gid_map in a userns.
-        let _ = std::fs::write("/proc/self/setgroups", b"deny");
-        std::fs::OpenOptions::new()
+        // setgroups denial is part of GID-map setup: a host-policy refusal has
+        // the same narrow optional-layer treatment, while ENOENT/other errors
+        // remain fatal through the typed GidMap classifier.
+        if let Err(error) = std::fs::write("/proc/self/setgroups", b"deny") {
+            let failure =
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::GidMap, error);
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
+        let uid_map = std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/uid_map")
             .and_then(|mut f| f.write_all(format!("0 {uid} 1\n").as_bytes()))
-            .map_err(|e| ConfineError::Linux(format!("uid_map: {e}")))?;
-        std::fs::OpenOptions::new()
+            .map_err(|error| {
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::UidMap, error)
+            });
+        if let Err(failure) = uid_map {
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
+        let gid_map = std::fs::OpenOptions::new()
             .write(true)
             .open("/proc/self/gid_map")
             .and_then(|mut f| f.write_all(format!("0 {gid} 1\n").as_bytes()))
-            .map_err(|e| ConfineError::Linux(format!("gid_map: {e}")))?;
+            .map_err(|error| {
+                super::NamespaceSetupFailure::new(super::NamespaceSetupOperation::GidMap, error)
+            });
+        if let Err(failure) = gid_map {
+            if !failure.is_host_policy_unavailable() {
+                return Err(failure.into_confine_error());
+            }
+        }
         Ok(())
     }
 
@@ -338,10 +521,10 @@ mod linux {
     fn no_new_privs() -> Result<(), ConfineError> {
         let rc = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if rc != 0 {
-            return Err(ConfineError::Linux(format!(
-                "prctl(NO_NEW_PRIVS): {}",
-                std::io::Error::last_os_error()
-            )));
+            return Err(ConfineError::linux_io(
+                "no_new_privs",
+                std::io::Error::last_os_error(),
+            ));
         }
         Ok(())
     }
@@ -351,7 +534,10 @@ mod linux {
     /// rest (notably `socket`, `open`, `openat`, `execve`) to EPERM. Built with
     /// the `seccompiler` crate.
     fn apply_seccomp() -> Result<(), ConfineError> {
-        use seccompiler::{apply_filter, BpfProgram, SeccompAction, SeccompFilter, TargetArch};
+        use seccompiler::{
+            apply_filter, BackendError, BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp,
+            SeccompCondition, SeccompFilter, SeccompRule, TargetArch,
+        };
         use std::collections::BTreeMap;
 
         #[cfg(target_arch = "x86_64")]
@@ -390,7 +576,18 @@ mod linux {
             libc::SYS_ppoll,
             libc::SYS_fcntl,
         ];
-        let rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        let mut rules: BTreeMap<i64, Vec<_>> = allow.iter().map(|&n| (n, vec![])).collect();
+        // Permit only the read-only probe that proves the mandatory flag stayed
+        // set. Do not broadly allow prctl operations after seccomp is installed.
+        let get_no_new_privs = SeccompCondition::new(
+            0,
+            SeccompCmpArgLen::Dword,
+            SeccompCmpOp::Eq,
+            libc::PR_GET_NO_NEW_PRIVS as u64,
+        )
+        .and_then(|condition| SeccompRule::new(vec![condition]))
+        .map_err(|error| ConfineError::linux("seccomp_prctl_rule", error.to_string()))?;
+        rules.insert(libc::SYS_prctl, vec![get_no_new_privs]);
 
         let filter = SeccompFilter::new(
             rules,
@@ -398,12 +595,12 @@ mod linux {
             SeccompAction::Allow,                     // matched (allow-listed) → allow
             arch,
         )
-        .map_err(|e| ConfineError::Linux(format!("seccomp build: {e}")))?;
+        .map_err(|e| ConfineError::linux("seccomp_build", e.to_string()))?;
 
         let prog: BpfProgram = filter
             .try_into()
-            .map_err(|e| ConfineError::Linux(format!("seccomp compile: {e}")))?;
-        apply_filter(&prog).map_err(|e| ConfineError::Linux(format!("seccomp apply: {e}")))?;
+            .map_err(|e: BackendError| ConfineError::linux("seccomp_compile", e.to_string()))?;
+        apply_filter(&prog).map_err(|e| ConfineError::linux("seccomp_apply", e.to_string()))?;
         Ok(())
     }
 
@@ -415,37 +612,67 @@ mod linux {
     /// at the seccomp layer).
     fn apply_landlock(read_paths: &[String]) -> Result<(), ConfineError> {
         use landlock::{
-            Access, AccessFs, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus, ABI,
+            Access, AccessFs, CreateRulesetError, RestrictSelfError, Ruleset, RulesetAttr,
+            RulesetCreatedAttr, RulesetError, RulesetStatus, ABI,
         };
+
+        fn ruleset_errno(error: &RulesetError) -> Option<i32> {
+            match error {
+                RulesetError::CreateRuleset(CreateRulesetError::CreateRulesetCall {
+                    source,
+                    ..
+                }) => source.raw_os_error(),
+                RulesetError::RestrictSelf(RestrictSelfError::RestrictSelfCall {
+                    source, ..
+                }) => source.raw_os_error(),
+                _ => None,
+            }
+        }
+
+        fn ruleset_error_is_unavailable(error: &RulesetError) -> bool {
+            ruleset_errno(error).is_some_and(super::landlock_errno_is_unavailable)
+        }
 
         let abi = ABI::V1;
         let read_only = AccessFs::from_read(abi);
-        let mut ruleset = Ruleset::default()
+        let ruleset = Ruleset::default()
             .handle_access(AccessFs::from_all(abi))
-            .map_err(|e| ConfineError::Linux(format!("landlock handle: {e}")))?
-            .create()
-            .map_err(|e| ConfineError::Linux(format!("landlock create: {e}")))?;
+            .map_err(|e| ConfineError::linux("landlock_handle", e.to_string()))?;
+        let mut ruleset = match ruleset.create() {
+            Ok(ruleset) => ruleset,
+            Err(error) if ruleset_error_is_unavailable(&error) => return Ok(()),
+            Err(error) => {
+                return Err(ConfineError::linux_errno(
+                    "landlock_create",
+                    ruleset_errno(&error),
+                    error.to_string(),
+                ));
+            }
+        };
 
         for path in read_paths {
             // landlock 0.4.x: `PathBeneath::new` is infallible (returns the rule
             // directly, no longer a Result); only PathFd::new + add_rule can fail.
             let rule = landlock::PathBeneath::new(
                 landlock::PathFd::new(path)
-                    .map_err(|e| ConfineError::Linux(format!("landlock pathfd {path}: {e}")))?,
+                    .map_err(|e| ConfineError::linux("landlock_pathfd", e.to_string()))?,
                 read_only,
             );
             ruleset = ruleset
                 .add_rule(rule)
-                .map_err(|e| ConfineError::Linux(format!("landlock rule {path}: {e}")))?;
+                .map_err(|e| ConfineError::linux("landlock_add_rule", e.to_string()))?;
         }
 
-        let status = ruleset
-            .restrict_self()
-            .map_err(|e| ConfineError::Linux(format!("landlock restrict: {e}")))?;
-        // If the running kernel lacks Landlock, the restriction is a no-op here;
-        // the seccomp `open` denial is the backstop, so this is not fatal.
-        let _ = matches!(status.ruleset, RulesetStatus::NotEnforced);
-        Ok(())
+        match ruleset.restrict_self() {
+            Ok(status) if matches!(status.ruleset, RulesetStatus::NotEnforced) => Ok(()),
+            Ok(_) => Ok(()),
+            Err(error) if ruleset_error_is_unavailable(&error) => Ok(()),
+            Err(error) => Err(ConfineError::linux_errno(
+                "landlock_restrict_self",
+                ruleset_errno(&error),
+                error.to_string(),
+            )),
+        }
     }
 }
 
@@ -454,6 +681,20 @@ mod linux {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn confinement_diagnostic_exposes_only_operation_and_errno() {
+        let error = ConfineError::linux_io(
+            "landlock_create",
+            std::io::Error::from_raw_os_error(libc::EPERM),
+        );
+
+        assert_eq!(
+            error.diagnostic(),
+            "operation=landlock_create errno=1",
+            "diagnostics must identify the failed primitive without paths or other payload data"
+        );
+    }
 
     #[test]
     fn endpoint_only_keeps_just_the_control_fd() {
@@ -466,6 +707,28 @@ mod tests {
     fn with_read_path_records_the_grant() {
         let c = Confinement::endpoint_only(4).with_read_path("/etc/hosts");
         assert_eq!(c.read_paths, vec!["/etc/hosts".to_string()]);
+    }
+
+    #[test]
+    fn unavailable_linux_namespaces_fall_back_to_the_independent_sandbox_layers() {
+        for errno in [libc::EPERM, libc::EACCES, libc::ENOSYS] {
+            assert!(namespace_is_unavailable(
+                &std::io::Error::from_raw_os_error(errno)
+            ));
+        }
+        assert!(!namespace_is_unavailable(
+            &std::io::Error::from_raw_os_error(libc::EINVAL)
+        ));
+    }
+
+    #[test]
+    fn only_host_refused_landlock_errors_are_unavailable() {
+        for errno in [libc::EPERM, libc::EACCES, libc::ENOSYS, libc::EOPNOTSUPP] {
+            assert!(landlock_errno_is_unavailable(errno));
+        }
+        for errno in [libc::EINVAL, libc::EBADF, libc::ENOENT, libc::EFAULT] {
+            assert!(!landlock_errno_is_unavailable(errno));
+        }
     }
 
     // The macOS profile builder is pure (no FFI) — exercise its text shape so a

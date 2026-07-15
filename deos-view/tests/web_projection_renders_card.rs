@@ -39,7 +39,9 @@ fn counter_card_view_tree_renders_to_browser_loadable_html_with_a_live_bind() {
         "the text node painted as a deos-text span"
     );
     assert!(
-        frag0.contains(r#"<span class="deos-bind" data-slot="0""#)
+        frag0.contains(
+            r#"<span class="deos-bind" data-bind-index="0" data-fmt="raw" data-label="count: " data-slot="0">count: 0</span>"#,
+        )
             && frag0.contains(">count: 0</span>"),
         "the bind painted its live value 0 AND carries its model slot (the signal source): {frag0}"
     );
@@ -82,6 +84,21 @@ fn counter_card_view_tree_renders_to_browser_loadable_html_with_a_live_bind() {
 }
 
 #[test]
+fn witnessed_status_row_keeps_the_canonical_slot_and_value_anchor() {
+    let tree = parse_view_tree(r#"{"kind":"bind","props":{"slot":1,"label":"receipts: "}}"#)
+        .expect("parse a witnessed status row");
+
+    let html = render_html(&tree, &[12]);
+
+    assert!(
+        html.contains(
+            r#"data-bind-index="0" data-fmt="raw" data-label="receipts: " data-slot="1">receipts: 12</span>"#,
+        ),
+        "the status row preserves its verification/repaint metadata and canonical slot-to-value anchor: {html}"
+    );
+}
+
+#[test]
 fn web_renderer_maps_every_node_kind() {
     // The inspector-shaped card exercises text/bind/row/table/button — every container +
     // leaf the web vocabulary handles, mirroring the native renderer's node match arms.
@@ -108,7 +125,7 @@ fn web_renderer_maps_every_node_kind() {
         "deos-table",
         "deos-row",
         "deos-list",
-        r#"class="deos-bind" data-slot="0""#,
+        r#"class="deos-bind" data-bind-index="0" data-fmt="raw" data-label="" data-slot="0""#,
         ">42<",
         r#"class="deos-input" data-bind-view="draft""#,
         r#"data-turn="inc""#,
