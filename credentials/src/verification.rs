@@ -19,9 +19,23 @@ use thiserror::Error;
 
 use dregg_circuit::PresentationVerification;
 
-use crate::presentation::Presentation;
+use crate::presentation::{Presentation, WirePresentation};
 use crate::revocation::{NonRevocationError, RevocationProof};
 use crate::schema::{AttrValue, CredentialSchema, PredicateRequest};
+
+/// Evidence strength derived from proof shape, never from a caller label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireEvidenceTier {
+    LocalConstraintCheck,
+    CryptographicProof,
+}
+
+/// Verification state this seam can establish without claiming proof verification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WireVerificationState {
+    LocalConstraintChecked,
+    CryptographicallyVerified,
+}
 
 /// Options carried by the verifier.
 #[derive(Clone, Debug, Default)]
@@ -58,6 +72,27 @@ pub struct VerificationOptions {
     /// anchored against. When `Some`, this is compared against the
     /// proof's recovered federation root.
     pub expected_federation_root: Option<[u8; 32]>,
+
+    /// Verifier-owned request fields committed by `request_predicate`.
+    pub expected_app_id: Option<String>,
+    pub expected_action: Option<String>,
+    /// The current model uses `app_id` as the verifier audience/resource.
+    pub expected_audience: Option<String>,
+
+    /// Reserved semantics absent from current presentation public inputs.
+    pub expected_context: Option<String>,
+    pub expected_nonce: Option<[u8; 32]>,
+
+    /// Verifier-owned proof-time window.
+    pub verification_time: Option<i64>,
+    pub max_proof_age_secs: Option<u64>,
+
+    /// Verifier-owned strength and state requirements.
+    pub expected_evidence_tier: Option<WireEvidenceTier>,
+    pub expected_wire_state: Option<WireVerificationState>,
+
+    /// Fingerprint pinned by the verifier when issuing the request/session.
+    pub expected_public_inputs_fingerprint: Option<[u8; 32]>,
 }
 
 impl VerificationOptions {
@@ -80,6 +115,8 @@ pub struct VerifiedPresentation {
 /// Verification failure.
 #[derive(Debug, Error)]
 pub enum VerificationError {
+    #[error("wire presentation JSON is malformed: {0}")]
+    MalformedWire(String),
     #[error("bridge proof verification failed: {0:?}")]
     Bridge(PresentationVerification),
     #[error("required schema `{expected}` but presentation does not match")]
@@ -92,6 +129,26 @@ pub enum VerificationError {
     AnonymityMismatch,
     #[error("federation root mismatch (expected `{expected_hex}`)")]
     FederationRootMismatch { expected_hex: String },
+    #[error("wire verifier requires an externally trusted federation root")]
+    MissingExpectedFederationRoot,
+    #[error("wire verifier requires verifier-owned `{field}` binding")]
+    MissingExpectedWireBinding { field: &'static str },
+    #[error("wire presentation does not bind supported request field `{field}`")]
+    RequestBindingMismatch { field: &'static str },
+    #[error("wire presentation model does not support verifier binding `{field}`")]
+    UnsupportedWireBinding { field: &'static str },
+    #[error("proof timestamp is older than the verifier-owned age window")]
+    ProofExpired,
+    #[error("proof timestamp is later than verifier time")]
+    ProofFromFuture,
+    #[error("wire evidence tier does not satisfy verifier expectation")]
+    EvidenceTierMismatch,
+    #[error("wire verification state does not satisfy verifier expectation")]
+    VerificationStateMismatch,
+    #[error("wire-carried verification verdict is not independently trusted by this seam")]
+    UntrustedWireVerificationState,
+    #[error("presentation public inputs do not match the verifier-pinned fingerprint")]
+    PublicInputsFingerprintMismatch,
     #[error("credential is revoked")]
     Revoked,
     #[error(
@@ -131,6 +188,138 @@ pub fn verify_anonymous(
     let mut opts = options.clone();
     opts.require_anonymous = true;
     verify(presentation, &opts)
+}
+
+/// Verify a wire-safe presentation against verifier-owned public expectations.
+///
+/// This boundary never accepts holder-local [`Presentation`] state or an
+/// authorization trace. The federation root is mandatory because the wire proof
+/// deliberately omits the linkable raw root metadata.
+pub fn verify_wire(
+    presentation: &WirePresentation,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    if options.expected_context.is_some() {
+        return Err(VerificationError::UnsupportedWireBinding { field: "context" });
+    }
+    if options.expected_nonce.is_some() {
+        return Err(VerificationError::UnsupportedWireBinding { field: "nonce" });
+    }
+
+    let expected_root = options
+        .expected_federation_root
+        .ok_or(VerificationError::MissingExpectedFederationRoot)?;
+    let proof_root = presentation
+        .proof
+        .circuit_proof
+        .public_inputs
+        .federation_root;
+    if proof_root != dregg_bridge::present::bb_from_bytes(&expected_root) {
+        return Err(VerificationError::FederationRootMismatch {
+            expected_hex: hex_encode(&expected_root),
+        });
+    }
+
+    let expected_fingerprint = options.expected_public_inputs_fingerprint.ok_or(
+        VerificationError::MissingExpectedWireBinding {
+            field: "public_inputs_fingerprint",
+        },
+    )?;
+    if presentation.public_inputs_fingerprint() != expected_fingerprint {
+        return Err(VerificationError::PublicInputsFingerprintMismatch);
+    }
+
+    let expected_app = options
+        .expected_app_id
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "app_id" })?;
+    let expected_action = options
+        .expected_action
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "action" })?;
+    let expected_audience = options
+        .expected_audience
+        .as_deref()
+        .ok_or(VerificationError::MissingExpectedWireBinding { field: "audience" })?;
+    let public_request = presentation
+        .proof
+        .circuit_proof
+        .public_inputs
+        .request_predicate;
+    if public_request != dregg_circuit::compute_action_binding(expected_action, expected_app) {
+        let field = if expected_app == expected_audience {
+            "action"
+        } else {
+            "app_id"
+        };
+        return Err(VerificationError::RequestBindingMismatch { field });
+    }
+    if expected_audience != expected_app {
+        return Err(VerificationError::RequestBindingMismatch { field: "audience" });
+    }
+
+    let verification_time =
+        options
+            .verification_time
+            .ok_or(VerificationError::MissingExpectedWireBinding {
+                field: "verification_time",
+            })?;
+    let max_age =
+        options
+            .max_proof_age_secs
+            .ok_or(VerificationError::MissingExpectedWireBinding {
+                field: "max_proof_age_secs",
+            })?;
+    let proof_time = i64::from(
+        presentation
+            .proof
+            .circuit_proof
+            .public_inputs
+            .timestamp
+            .as_u32(),
+    );
+    if proof_time > verification_time {
+        return Err(VerificationError::ProofFromFuture);
+    }
+    if verification_time.saturating_sub(proof_time) as u64 > max_age {
+        return Err(VerificationError::ProofExpired);
+    }
+
+    let observed_tier = if presentation.proof.real_stark_proof.is_some()
+        || presentation.proof.ivc_proof.is_some()
+        || presentation.proof.validated_ivc_proof.is_some()
+    {
+        WireEvidenceTier::CryptographicProof
+    } else {
+        WireEvidenceTier::LocalConstraintCheck
+    };
+    if options.expected_evidence_tier != Some(observed_tier) {
+        return Err(VerificationError::EvidenceTierMismatch);
+    }
+    if presentation.proof.verification != PresentationVerification::LocalOnly {
+        return Err(VerificationError::UntrustedWireVerificationState);
+    }
+    if options.expected_wire_state != Some(WireVerificationState::LocalConstraintChecked) {
+        return Err(VerificationError::VerificationStateMismatch);
+    }
+
+    verify_wire_inner(
+        &presentation.disclosed,
+        &presentation.predicate_proofs,
+        presentation.anonymous,
+        &presentation.proof,
+        options,
+    )
+}
+
+/// Deserialize a closed wire envelope and verify it via [`verify_wire`].
+pub fn verify_wire_json(
+    presentation_json: &str,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    let presentation = serde_json::from_str(presentation_json)
+        .map_err(|error| VerificationError::MalformedWire(error.to_string()))?;
+    verify_wire(&presentation, options)
 }
 
 fn verify_inner(
@@ -267,6 +456,87 @@ fn verify_inner(
     Ok(VerifiedPresentation {
         disclosed: disclosed.to_vec(),
         federation_root: proof.federation_root,
+        anonymous,
+    })
+}
+
+fn verify_wire_inner(
+    disclosed: &[(String, AttrValue)],
+    predicate_proofs: &[crate::presentation::NamedPredicateProof],
+    anonymous: bool,
+    proof: &dregg_bridge::present::WirePresentationProof,
+    options: &VerificationOptions,
+) -> Result<VerifiedPresentation, VerificationError> {
+    if options.require_anonymous && !anonymous {
+        return Err(VerificationError::AnonymityMismatch);
+    }
+
+    match &proof.verification {
+        PresentationVerification::Valid => {}
+        PresentationVerification::LocalOnly if !options.require_anonymous => {}
+        PresentationVerification::LocalOnly => return Err(VerificationError::LocalOnlyRejected),
+        other => return Err(VerificationError::Bridge(other.clone())),
+    }
+    if options.require_anonymous
+        && proof.real_stark_proof.is_none()
+        && proof.ivc_proof.is_none()
+        && proof.validated_ivc_proof.is_none()
+    {
+        return Err(VerificationError::LocalOnlyRejected);
+    }
+
+    if let Some(schema) = &options.expected_schema {
+        for (name, _) in disclosed {
+            if !schema.has_attribute(name) {
+                return Err(VerificationError::SchemaMismatch {
+                    expected: schema.name.clone(),
+                });
+            }
+        }
+    }
+    for expected in &options.expected_disclosure {
+        if !disclosed.iter().any(|(name, _)| name == expected) {
+            return Err(VerificationError::MissingDisclosure(expected.clone()));
+        }
+    }
+    for expected in &options.expected_predicates {
+        let candidate = predicate_proofs
+            .iter()
+            .find(|candidate| candidate.attribute == expected.attribute)
+            .ok_or_else(|| VerificationError::MissingPredicate(expected.attribute.clone()))?;
+        if candidate.proof.predicate != expected.predicate {
+            return Err(VerificationError::PredicateMismatch {
+                attribute: expected.attribute.clone(),
+            });
+        }
+        if !dregg_bridge::present::verify_predicate_proof(
+            &candidate.proof,
+            candidate.proof.fact_commitment,
+        ) {
+            return Err(VerificationError::PredicateProofInvalid {
+                attribute: expected.attribute.clone(),
+            });
+        }
+    }
+    if let Some(revocation) = &options.revocation {
+        let expected_root = options.expected_revocation_root.unwrap_or(revocation.root);
+        match revocation.verify_non_revocation(&expected_root) {
+            Ok(()) => {}
+            Err(NonRevocationError::Revoked) => return Err(VerificationError::Revoked),
+            Err(NonRevocationError::RootMismatch) => {
+                return Err(VerificationError::RevocationRootMismatch);
+            }
+            Err(NonRevocationError::UnexpectedRoot) => {
+                return Err(VerificationError::RevocationUnexpectedRoot);
+            }
+        }
+    }
+
+    Ok(VerifiedPresentation {
+        disclosed: disclosed.to_vec(),
+        federation_root: options
+            .expected_federation_root
+            .expect("verify_wire checked the trusted root"),
         anonymous,
     })
 }

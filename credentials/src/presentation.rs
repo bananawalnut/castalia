@@ -144,11 +144,26 @@ impl Presentation {
 
 /// Wire-safe presentation (no `AuthorizationTrace`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WirePresentation {
     pub proof: dregg_bridge::present::WirePresentationProof,
     pub disclosed: Vec<(String, AttrValue)>,
     pub predicate_proofs: Vec<NamedPredicateProof>,
     pub anonymous: bool,
+}
+
+impl WirePresentation {
+    /// Fingerprint the complete circuit public-input tuple for verifier-owned
+    /// request/session pinning. This identifies public inputs; it does not verify
+    /// the proof carrying them.
+    pub fn public_inputs_fingerprint(&self) -> [u8; 32] {
+        let encoded = serde_json::to_vec(&self.proof.circuit_proof.public_inputs)
+            .expect("serializable presentation public inputs");
+        *blake3::Hasher::new_derive_key("castalia-wire-public-inputs-v1")
+            .update(&encoded)
+            .finalize()
+            .as_bytes()
+    }
 }
 
 /// Produce a credential presentation.

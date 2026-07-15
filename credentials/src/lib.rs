@@ -65,12 +65,14 @@ mod verification;
 
 pub use issuance::{Credential, IssuanceError, IssuerKeys, issue};
 pub use presentation::{
-    Presentation, PresentationError, PresentationOptions, present, present_anonymous,
+    Presentation, PresentationError, PresentationOptions, WirePresentation, present,
+    present_anonymous,
 };
 pub use revocation::{RevocationProof, RevocationRegistry, revoke};
 pub use schema::{AttrValue, AttributeAttenuation, CredentialAttributes, CredentialSchema};
 pub use verification::{
-    VerificationError, VerificationOptions, VerifiedPresentation, verify, verify_anonymous,
+    VerificationError, VerificationOptions, VerifiedPresentation, WireEvidenceTier,
+    WireVerificationState, verify, verify_anonymous, verify_wire, verify_wire_json,
 };
 
 // Re-export underlying types so callers don't need to depend on
