@@ -25,6 +25,7 @@
 //! - Token domain membership and delegation hierarchy
 
 pub mod allowance;
+pub mod authority_lifecycle;
 pub mod blueprint;
 pub mod capability;
 pub mod cell;
