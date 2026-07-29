@@ -347,6 +347,9 @@ pub struct Call {
     pub tool: String,
     /// Advisory `(name, value)` arguments, carried into the receipt.
     pub args: Vec<(String, String)>,
+    /// The exact canonical resource for strict live-authority verification.
+    /// `None` keeps the legacy tool-only call shape unchanged.
+    pub resource: Option<String>,
     /// The gateway clock (deployment clock). `None` ⇒ expiry caveats refuse.
     pub now: Option<u64>,
 }
@@ -363,6 +366,12 @@ impl Call {
     /// Pin the gateway clock for a deterministic decision.
     pub fn at(mut self, now: u64) -> Self {
         self.now = Some(now);
+        self
+    }
+
+    /// Bind one exact resource for strict live-authority verification.
+    pub fn resource(mut self, resource: &str) -> Self {
+        self.resource = Some(resource.to_owned());
         self
     }
 
@@ -450,15 +459,141 @@ impl Verifier {
         let decision = cred.verify(&pk, &ctx);
         Verdict::from_decision(call, subject, decision)
     }
+
+    /// Verify an opt-in strict, exact-resource live-authority presentation.
+    ///
+    /// Unlike [`Verifier::admit`], this path accepts only the canonical positive
+    /// profile, requires an exact resource and explicit clock, verifies the
+    /// credential under this verifier's issuer key against one fully bound
+    /// context, and returns only a sealed exact result. Every refusal is the
+    /// same fixed non-sensitive error; this path never builds a [`Receipt`] or
+    /// renders credential predicates.
+    pub fn admit_resource_bound(
+        &self,
+        token_encoded: &str,
+        call: &Call,
+    ) -> Result<VerifiedLiveAuthority, LiveAuthorityError> {
+        let resource = call.resource.as_deref().ok_or(LiveAuthorityError)?;
+        let verified_at = call.now.ok_or(LiveAuthorityError)?;
+        let credential = Credential::decode(token_encoded).map_err(|_| LiveAuthorityError)?;
+        let issuer_public_key =
+            PublicKey::from_hex(&self.public_key_hex).map_err(|_| LiveAuthorityError)?;
+
+        // Profile analysis handles only the representable positive language.
+        // Its output remains untrusted until the signed credential verifies
+        // below under the configured issuer and exact request context.
+        let profile = analyze_live_authority_profile(&credential, &call.tool, resource)
+            .map_err(|_| LiveAuthorityError)?;
+        let valid_until = profile.valid_until.ok_or(LiveAuthorityError)?;
+        if verified_at < profile.valid_from || verified_at > valid_until {
+            return Err(LiveAuthorityError);
+        }
+
+        let context = Context::new()
+            .attr(SUBJECT_KEY, &profile.subject)
+            .attr(LIVE_OPERATION_KEY, &profile.operation)
+            .attr(TOOL_KEY, &profile.operation)
+            .attr(LIVE_RESOURCE_KEY, &profile.resource)
+            .at(verified_at);
+        credential
+            .verify_first_party_redacted(&issuer_public_key, &context)
+            .map_err(|_| LiveAuthorityError)?;
+
+        Ok(VerifiedLiveAuthority {
+            subject: profile.subject,
+            operation: profile.operation,
+            resource: profile.resource,
+            valid_from: profile.valid_from,
+            valid_until,
+            issuer_public_key: issuer_public_key.0,
+            issuer_key_digest: *blake3::hash(&issuer_public_key.0).as_bytes(),
+            credential_tail: credential.tail(),
+            verified_at,
+            reason_code: VERIFIED_LIVE_AUTHORITY_REASON,
+        })
+    }
 }
 
 const LIVE_OPERATION_KEY: &str = "operation";
 const LIVE_RESOURCE_KEY: &str = "resource";
+const VERIFIED_LIVE_AUTHORITY_REASON: &str = "verified_live_authority";
 
-// C02 deliberately builds the private analyzer before C03 wires it to the
-// sealed public result. The non-test target cannot call it until that wiring
-// exists, while this commit's unit tests exercise the complete C02 contract.
-#[cfg_attr(not(test), allow(dead_code))]
+/// A cryptographically verified, exact strict live-authority decision.
+///
+/// Construction is intentionally private to [`Verifier::admit_resource_bound`].
+/// The type exposes only credential-derived, exact, fixed-size verification
+/// facts and cannot be deserialized, defaulted, or converted from a request or
+/// receipt.
+pub struct VerifiedLiveAuthority {
+    subject: String,
+    operation: String,
+    resource: String,
+    valid_from: u64,
+    valid_until: u64,
+    issuer_public_key: [u8; 32],
+    issuer_key_digest: [u8; 32],
+    credential_tail: [u8; 32],
+    verified_at: u64,
+    reason_code: &'static str,
+}
+
+impl VerifiedLiveAuthority {
+    /// The unique nonempty subject derived from issuer block zero.
+    pub fn subject(&self) -> &str {
+        &self.subject
+    }
+
+    /// The exact canonical operation verified for this request.
+    pub fn operation(&self) -> &str {
+        &self.operation
+    }
+
+    /// The exact canonical resource verified for this request.
+    pub fn resource(&self) -> &str {
+        &self.resource
+    }
+
+    /// Inclusive lower bound of the tight verified validity interval.
+    pub fn valid_from(&self) -> u64 {
+        self.valid_from
+    }
+
+    /// Inclusive finite upper bound of the tight verified validity interval.
+    pub fn valid_until(&self) -> u64 {
+        self.valid_until
+    }
+
+    /// Exact Ed25519 issuer public key used to verify the credential.
+    pub fn issuer_public_key(&self) -> &[u8; 32] {
+        &self.issuer_public_key
+    }
+
+    /// BLAKE3 digest used to derive the canonical issuer key identifier.
+    pub fn issuer_key_digest(&self) -> &[u8; 32] {
+        &self.issuer_key_digest
+    }
+
+    /// Tail digest of the exact verified credential chain.
+    pub fn credential_tail(&self) -> &[u8; 32] {
+        &self.credential_tail
+    }
+
+    /// Explicit request clock at which verification succeeded.
+    pub fn verified_at(&self) -> u64 {
+        self.verified_at
+    }
+
+    /// Fixed non-sensitive success code.
+    pub fn reason_code(&self) -> &'static str {
+        self.reason_code
+    }
+}
+
+/// Fixed non-sensitive refusal from strict live-authority verification.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("live_authority_refused")]
+pub struct LiveAuthorityError;
+
 #[derive(Debug, PartialEq, Eq)]
 struct LiveAuthorityProfile {
     subject: String,
@@ -468,7 +603,6 @@ struct LiveAuthorityProfile {
     valid_until: Option<u64>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn analyze_live_authority_profile(
     credential: &Credential,
     request_operation: &str,
@@ -498,7 +632,6 @@ fn analyze_live_authority_profile(
     analysis.finish()
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 struct LiveProfileAnalysis<'a> {
     request_operation: &'a str,
     request_resource: &'a str,
@@ -509,7 +642,6 @@ struct LiveProfileAnalysis<'a> {
     valid_until: Option<u64>,
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 impl<'a> LiveProfileAnalysis<'a> {
     fn new(request_operation: &'a str, request_resource: &'a str) -> Self {
         Self {
@@ -593,7 +725,11 @@ impl<'a> LiveProfileAnalysis<'a> {
     fn finish(self) -> Result<LiveAuthorityProfile, ()> {
         let subject = self.root_subject.ok_or(())?;
         let valid_until = self.valid_until.ok_or(())?;
-        if self.operation_atoms == 0 || self.resource_atoms == 0 || self.valid_from > valid_until {
+        if self.operation_atoms == 0
+            || self.resource_atoms == 0
+            || self.valid_from > valid_until
+            || valid_until == u64::MAX
+        {
             return Err(());
         }
         Ok(LiveAuthorityProfile {
@@ -608,7 +744,6 @@ impl<'a> LiveProfileAnalysis<'a> {
     }
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn is_canonical_live_operation(operation: &str) -> bool {
     !operation.is_empty()
         && operation.len() <= 128
@@ -622,7 +757,6 @@ fn is_canonical_live_operation(operation: &str) -> bool {
         })
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn is_canonical_live_resource(resource: &str) -> bool {
     if resource.is_empty() || resource.len() > 4_096 || resource.ends_with('/') {
         return false;
@@ -640,7 +774,6 @@ fn is_canonical_live_resource(resource: &str) -> bool {
     segment_count >= 3
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn is_canonical_live_resource_prefix(prefix: &str) -> bool {
     prefix.len() <= 4_096
         && prefix
@@ -648,7 +781,6 @@ fn is_canonical_live_resource_prefix(prefix: &str) -> bool {
             .is_some_and(|exact| !exact.ends_with('/') && is_canonical_live_resource(exact))
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn is_canonical_live_resource_segment(segment: &str) -> bool {
     let bytes = segment.as_bytes();
     (1..=128).contains(&bytes.len())
