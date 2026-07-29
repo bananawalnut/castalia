@@ -452,6 +452,212 @@ impl Verifier {
     }
 }
 
+const LIVE_OPERATION_KEY: &str = "operation";
+const LIVE_RESOURCE_KEY: &str = "resource";
+
+// C02 deliberately builds the private analyzer before C03 wires it to the
+// sealed public result. The non-test target cannot call it until that wiring
+// exists, while this commit's unit tests exercise the complete C02 contract.
+#[cfg_attr(not(test), allow(dead_code))]
+#[derive(Debug, PartialEq, Eq)]
+struct LiveAuthorityProfile {
+    subject: String,
+    operation: String,
+    resource: String,
+    valid_from: u64,
+    valid_until: Option<u64>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn analyze_live_authority_profile(
+    credential: &Credential,
+    request_operation: &str,
+    request_resource: &str,
+) -> Result<LiveAuthorityProfile, ()> {
+    if !is_canonical_live_operation(request_operation)
+        || !is_canonical_live_resource(request_resource)
+    {
+        return Err(());
+    }
+
+    let mut analysis = LiveProfileAnalysis::new(request_operation, request_resource);
+    for (block, caveat) in credential.caveats() {
+        let Caveat::FirstParty(pred) = caveat else {
+            return Err(());
+        };
+
+        if block == 0
+            && let Pred::AttrEq { key, value } = pred
+            && key == SUBJECT_KEY
+        {
+            analysis.record_root_subject(value)?;
+        } else {
+            analysis.visit_positive_conjunct(block, pred)?;
+        }
+    }
+    analysis.finish()
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+struct LiveProfileAnalysis<'a> {
+    request_operation: &'a str,
+    request_resource: &'a str,
+    root_subject: Option<String>,
+    operation_atoms: usize,
+    resource_atoms: usize,
+    valid_from: u64,
+    valid_until: Option<u64>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl<'a> LiveProfileAnalysis<'a> {
+    fn new(request_operation: &'a str, request_resource: &'a str) -> Self {
+        Self {
+            request_operation,
+            request_resource,
+            root_subject: None,
+            operation_atoms: 0,
+            resource_atoms: 0,
+            valid_from: 0,
+            valid_until: None,
+        }
+    }
+
+    fn record_root_subject(&mut self, subject: &str) -> Result<(), ()> {
+        if subject.is_empty() || self.root_subject.is_some() {
+            return Err(());
+        }
+        self.root_subject = Some(subject.to_owned());
+        Ok(())
+    }
+
+    fn visit_positive_conjunct(&mut self, block: usize, pred: &Pred) -> Result<(), ()> {
+        match pred {
+            Pred::AttrEq { key, value } if key == SUBJECT_KEY => {
+                if block == 0 || self.root_subject.as_deref() != Some(value.as_str()) {
+                    return Err(());
+                }
+            }
+            Pred::AttrEq { key, value } if key == LIVE_OPERATION_KEY || key == TOOL_KEY => {
+                if !is_canonical_live_operation(value) || value != self.request_operation {
+                    return Err(());
+                }
+                self.operation_atoms += 1;
+            }
+            Pred::AttrEq { key, value } if key == LIVE_RESOURCE_KEY => {
+                if !is_canonical_live_resource(value) || value != self.request_resource {
+                    return Err(());
+                }
+                self.resource_atoms += 1;
+            }
+            Pred::AttrPrefix { key, prefix } if key == LIVE_RESOURCE_KEY => {
+                if !is_canonical_live_resource_prefix(prefix)
+                    || !self.request_resource.starts_with(prefix)
+                {
+                    return Err(());
+                }
+                self.resource_atoms += 1;
+            }
+            Pred::NotBefore { at } => self.valid_from = self.valid_from.max(*at),
+            Pred::NotAfter { at } => self.meet_upper(*at),
+            Pred::Within {
+                not_before,
+                not_after,
+            } => {
+                if not_before > not_after {
+                    return Err(());
+                }
+                self.valid_from = self.valid_from.max(*not_before);
+                self.meet_upper(*not_after);
+            }
+            Pred::AllOf(predicates) if !predicates.is_empty() => {
+                for predicate in predicates {
+                    self.visit_positive_conjunct(block, predicate)?;
+                }
+            }
+            Pred::True
+            | Pred::False
+            | Pred::AttrEq { .. }
+            | Pred::AttrPrefix { .. }
+            | Pred::AllOf(_)
+            | Pred::AnyOf(_)
+            | Pred::Not(_) => return Err(()),
+        }
+        Ok(())
+    }
+
+    fn meet_upper(&mut self, upper: u64) {
+        self.valid_until = Some(self.valid_until.map_or(upper, |current| current.min(upper)));
+    }
+
+    fn finish(self) -> Result<LiveAuthorityProfile, ()> {
+        let subject = self.root_subject.ok_or(())?;
+        let valid_until = self.valid_until.ok_or(())?;
+        if self.operation_atoms == 0 || self.resource_atoms == 0 || self.valid_from > valid_until {
+            return Err(());
+        }
+        Ok(LiveAuthorityProfile {
+            subject,
+            operation: self.request_operation.to_owned(),
+            // Prefix authority is projected only onto this already-canonical,
+            // exact request. No prefix is retained in the analysis result.
+            resource: self.request_resource.to_owned(),
+            valid_from: self.valid_from,
+            valid_until: Some(valid_until),
+        })
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn is_canonical_live_operation(operation: &str) -> bool {
+    !operation.is_empty()
+        && operation.len() <= 128
+        && operation.split('.').all(|segment| {
+            let bytes = segment.as_bytes();
+            (1..=32).contains(&bytes.len())
+                && bytes[0].is_ascii_lowercase()
+                && bytes[1..]
+                    .iter()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'_')
+        })
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn is_canonical_live_resource(resource: &str) -> bool {
+    if resource.is_empty() || resource.len() > 4_096 || resource.ends_with('/') {
+        return false;
+    }
+    let Some(path) = resource.strip_prefix("dregg://") else {
+        return false;
+    };
+    let mut segment_count = 0usize;
+    for segment in path.split('/') {
+        if !is_canonical_live_resource_segment(segment) {
+            return false;
+        }
+        segment_count += 1;
+    }
+    segment_count >= 3
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn is_canonical_live_resource_prefix(prefix: &str) -> bool {
+    prefix.len() <= 4_096
+        && prefix
+            .strip_suffix('/')
+            .is_some_and(|exact| !exact.ends_with('/') && is_canonical_live_resource(exact))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn is_canonical_live_resource_segment(segment: &str) -> bool {
+    let bytes = segment.as_bytes();
+    (1..=128).contains(&bytes.len())
+        && (bytes[0].is_ascii_lowercase() || bytes[0].is_ascii_digit())
+        && bytes[1..].iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+}
+
 /// Recover the subject from a credential: the value of the first
 /// `subject == …` first-party caveat on the chain (what [`Grant::to_caveats`]
 /// pins on the root block). `None` if the credential carries no subject gate
@@ -600,4 +806,167 @@ pub enum PolicyError {
     /// An attenuation narrowed nothing (no tools, no tighter expiry).
     #[error("attenuation must narrow at least one dimension (tools and/or expiry)")]
     EmptyNarrowing,
+}
+
+#[cfg(test)]
+mod live_profile_tests {
+    use super::*;
+    use crate::credential::GatewayKey;
+
+    const OPERATION: &str = "gallery.card.read";
+    const RESOURCE: &str = "dregg://gallery/cards/alice/profile";
+    const RESOURCE_PREFIX: &str = "dregg://gallery/cards/alice/";
+
+    fn local(pred: Pred) -> Caveat {
+        Caveat::FirstParty(pred)
+    }
+
+    fn attr(key: &str, value: &str) -> Pred {
+        Pred::AttrEq {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+
+    #[test]
+    fn canonical_live_operation_and_resource_grammar_is_exact() {
+        for operation in ["a", "gallery.card_read", "a0.b_1"] {
+            assert!(is_canonical_live_operation(operation), "{operation}");
+        }
+        for operation in [
+            "",
+            ".read",
+            "read.",
+            "gallery..read",
+            "Gallery.read",
+            "gallery-card.read",
+            "0gallery.read",
+            "a2345678901234567890123456789012x",
+            &"a".repeat(129),
+        ] {
+            assert!(!is_canonical_live_operation(operation), "{operation}");
+        }
+
+        assert!(is_canonical_live_resource(RESOURCE));
+        assert!(is_canonical_live_resource_prefix(RESOURCE_PREFIX));
+        for resource in [
+            "dregg://gallery/cards",
+            "dregg://gallery/cards/",
+            "dregg://gallery//alice/profile",
+            "dregg://Gallery/cards/alice/profile",
+            "dregg://gallery/cards/alice/../profile",
+            "dregg://gallery/cards/alice%2fprofile",
+            "dregg://gallery/cards/alice/profile?view=full",
+            "dregg://gallery/cards/alice/profile#fragment",
+            "dregg://gallery/cards/alice/profile ",
+        ] {
+            assert!(!is_canonical_live_resource(resource), "{resource}");
+        }
+        assert!(!is_canonical_live_resource_prefix(RESOURCE));
+        assert!(!is_canonical_live_resource_prefix(
+            "dregg://gallery/cards/alice//"
+        ));
+    }
+
+    #[test]
+    fn positive_conjunctive_profile_meets_every_attenuation_atom() {
+        let root = RootKey::from_seed([71; 32]);
+        let credential = root
+            .mint([
+                local(attr(SUBJECT_KEY, "alice")),
+                local(Pred::AllOf(vec![
+                    attr("operation", OPERATION),
+                    Pred::AttrPrefix {
+                        key: "resource".into(),
+                        prefix: RESOURCE_PREFIX.into(),
+                    },
+                    Pred::NotBefore { at: 900 },
+                ])),
+            ])
+            .attenuate([local(Pred::AllOf(vec![
+                attr(TOOL_KEY, OPERATION),
+                attr("resource", RESOURCE),
+                attr(SUBJECT_KEY, "alice"),
+                Pred::Within {
+                    not_before: 950,
+                    not_after: 1_100,
+                },
+                Pred::NotAfter { at: 1_050 },
+            ]))]);
+
+        let profile = analyze_live_authority_profile(&credential, OPERATION, RESOURCE)
+            .expect("the strict positive profile is representable");
+        assert_eq!(profile.subject, "alice");
+        assert_eq!(profile.operation, OPERATION);
+        assert_eq!(profile.resource, RESOURCE);
+        assert_eq!(profile.valid_from, 950);
+        assert_eq!(profile.valid_until, Some(1_050));
+
+        assert!(
+            analyze_live_authority_profile(
+                &credential,
+                OPERATION,
+                "dregg://gallery/cards/alice/settings"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn strict_profile_rejects_ambiguous_or_non_positive_shapes() {
+        let root = RootKey::from_seed([72; 32]);
+        let gateway = GatewayKey::from_seed([73; 32]);
+        let base = || {
+            vec![
+                local(attr(SUBJECT_KEY, "alice")),
+                local(attr("operation", OPERATION)),
+                local(attr("resource", RESOURCE)),
+                local(Pred::NotAfter { at: 1_100 }),
+            ]
+        };
+
+        let mut profiles = Vec::new();
+        let mut duplicate_subject = base();
+        duplicate_subject.insert(1, local(attr(SUBJECT_KEY, "alice")));
+        profiles.push(root.mint(duplicate_subject));
+
+        for forbidden in [
+            Pred::AnyOf(vec![attr("operation", OPERATION)]),
+            Pred::Not(Box::new(attr("operation", "gallery.card.delete"))),
+            Pred::False,
+            Pred::True,
+            attr("tenant", "internal"),
+            attr("operation", "gallery.card.delete"),
+            Pred::AttrPrefix {
+                key: "resource".into(),
+                prefix: "dregg://gallery/cards/bob/".into(),
+            },
+        ] {
+            let mut caveats = base();
+            caveats.push(local(forbidden));
+            profiles.push(root.mint(caveats));
+        }
+
+        let mut third_party = base();
+        third_party.push(Caveat::ThirdParty {
+            gateway: gateway.public().0,
+            caveat_id: b"approval".to_vec(),
+            hint: String::new(),
+        });
+        profiles.push(root.mint(third_party));
+
+        profiles.push(root.mint([
+            local(attr(SUBJECT_KEY, "alice")),
+            local(attr("operation", OPERATION)),
+            local(attr("resource", RESOURCE)),
+            local(Pred::NotBefore { at: 900 }),
+        ]));
+
+        for credential in profiles {
+            assert!(
+                analyze_live_authority_profile(&credential, OPERATION, RESOURCE).is_err(),
+                "strict analysis must reject ambiguous, conflicting, or non-positive authority"
+            );
+        }
+    }
 }
