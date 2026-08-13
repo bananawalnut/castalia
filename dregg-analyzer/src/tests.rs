@@ -530,6 +530,7 @@ fn commit_rec(ordinal: u64, height: u64, hwm: u64) -> CommitRecord {
         receipt_hash: [ordinal as u8; 32],
         ledger_root: [ordinal as u8; 32],
         touched_cells: Vec::new(),
+        deleted_cell_ids: Vec::new(),
     }
 }
 
@@ -658,6 +659,7 @@ fn commit_rec_cells(
         receipt_hash: [ordinal as u8; 32],
         ledger_root,
         touched_cells: cells,
+        deleted_cell_ids: Vec::new(),
     }
 }
 

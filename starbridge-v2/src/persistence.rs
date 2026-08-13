@@ -268,12 +268,15 @@ impl WorldPersist {
         turn: &Turn,
     ) -> Result<(), StoreError> {
         // The exact change-set, already in hand: post-state of every touched cell
-        // that still exists post-commit (a cell DESTROYED this turn is gone from
-        // the ledger, so `filter_map` drops it — matching the node; its removal is
-        // carried by the next checkpoint, not the overlay, which only adds).
+        // that still exists plus tombstones for touched ids absent post-commit.
         let touched_cells: Vec<Cell> = touched
             .iter()
             .filter_map(|id| ledger.get(id).cloned())
+            .collect();
+        let deleted_cell_ids = touched
+            .iter()
+            .filter(|id| ledger.get(id).is_none())
+            .copied()
             .collect();
         let record = CommitRecord {
             ordinal: 0, // assigned by the store at the cursor
@@ -285,6 +288,7 @@ impl WorldPersist {
             receipt_hash: receipt.receipt_hash(),
             ledger_root: canonical_ledger_root(ledger),
             touched_cells,
+            deleted_cell_ids,
         };
         // Persist the input turn FIRST (under the ordinal this commit will take),
         // so that if the commit txn lands, the turn is already durable; if the
@@ -349,8 +353,11 @@ impl WorldPersist {
         //    order, LAST-WRITER-WINS (remove-then-insert) — exactly
         //    node::upsert_cell. This is the `recover = checkpoint ⊕ overlay` half.
         let overlay = self.store.cell_overlay_since(checkpoint_height)?;
-        for cell in overlay {
+        for cell in overlay.upserts {
             upsert_cell(&mut ledger, cell);
+        }
+        for cell_id in overlay.deletions {
+            let _ = ledger.remove(&cell_id);
         }
 
         // 3. Convergence FAIL-CLOSED: the reconstructed canonical root MUST equal
@@ -443,7 +450,7 @@ fn upsert_cell(ledger: &mut Ledger, cell: Cell) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::world::{bare_turn, set_program, transfer, World};
+    use crate::world::{World, bare_turn, set_program, transfer};
     use dregg_cell::CellId;
     use dregg_turn::ComputronCosts;
     use std::path::PathBuf;
@@ -520,6 +527,7 @@ mod tests {
                 receipt_hash: [0x7f; 32],
                 ledger_root: [0xde; 32], // WRONG root — the tear.
                 touched_cells: vec![],
+                deleted_cell_ids: Vec::new(),
             };
             bad.touched_cells = vec![]; // no cells → reconstruction unchanged, root mismatches
             store.commit_finalized_turn(cursor, &bad).unwrap();

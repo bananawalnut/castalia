@@ -6,7 +6,8 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use dregg_cell::{AuthRequired, CapabilityRef, CellId, FACET_STATE_WRITER};
+use dregg_cell::{AuthRequired, CapabilityRef, CellId, FACET_STATE_WRITER, Ledger};
+use dregg_persist::PersistentStore;
 use dregg_sdk::{AgentCipherclerk, SignedTurn};
 use dregg_turn::Effect;
 use starbridge_castalia_membership::{
@@ -282,6 +283,33 @@ fn now_plus_hour() -> i64 {
         .unwrap()
         .as_secs() as i64
         + 3600
+}
+
+fn durable_cell_diagnostics(data_dir: &std::path::Path) -> Vec<([u8; 32], usize, [u8; 32])> {
+    let store = PersistentStore::open(&data_dir.join("dregg.redb")).expect("open durable store");
+    let (checkpoint_height, mut ledger) = store
+        .load_latest_ledger_checkpoint()
+        .expect("load checkpoint")
+        .unwrap_or_else(|| (0, Ledger::new()));
+    let overlay = store
+        .cell_overlay_since(checkpoint_height)
+        .expect("load durable overlay");
+    for cell in overlay.upserts {
+        let _ = ledger.remove(&cell.id());
+        ledger.insert_cell(cell).expect("apply durable upsert");
+    }
+    for cell_id in overlay.deletions {
+        let _ = ledger.remove(&cell_id);
+    }
+    let mut cells = ledger
+        .iter()
+        .map(|(cell_id, cell)| {
+            let bytes = postcard::to_stdvec(cell).expect("canonical cell serialization");
+            (cell_id.0, bytes.len(), *blake3::hash(&bytes).as_bytes())
+        })
+        .collect::<Vec<_>>();
+    cells.sort_unstable_by_key(|(cell_id, _, _)| *cell_id);
+    cells
 }
 
 fn lifecycle_turn(
@@ -566,13 +594,13 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
 
     let first_boot_log = first.log_text();
     first.stop();
+    let cells_before_restart = durable_cell_diagnostics(&node_dir);
     let second = launch(&node_dir, http, gossip, "second-boot.log");
     assert!(
         wait_ready(http),
         "restart failed: first_boot_log={first_boot_log}; second_boot_log={}",
         second.log_text()
     );
-    let bearer = unlock(http);
     let reconstructed = wait_cell(http, member, 1, MembershipStatus::Active);
     assert_eq!(reconstructed["fields"], fields_before_restart);
     assert_eq!(reconstructed["nonce"], nonce_before_restart);
@@ -583,6 +611,21 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
         authority_nonce_before_restart,
         "authority replay nonce must survive the physical restart"
     );
+
+    second.stop();
+    let cells_after_restart = durable_cell_diagnostics(&node_dir);
+    assert_eq!(
+        cells_after_restart, cells_before_restart,
+        "exact durable cells drifted across process restart; diagnostics are sorted \
+         (cell_id, postcard_byte_length, blake3(postcard(Cell)))"
+    );
+    let third = launch(&node_dir, http, gossip, "third-boot.log");
+    assert!(
+        wait_ready(http),
+        "lifecycle-continuation boot failed: {}",
+        third.log_text()
+    );
+    let bearer = unlock(http);
 
     let steps = [
         (
@@ -636,5 +679,5 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
     );
     assert_eq!(detail["balance"], balance_before_restart);
 
-    second.stop();
+    third.stop();
 }

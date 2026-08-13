@@ -93,6 +93,10 @@ pub struct Snapshot {
     /// these on the checkpoint ledger reconstructs the finalized ledger up to
     /// the head, last-writer-wins (applied via [`upsert_cell`], keyed by id).
     pub overlay: Vec<Cell>,
+    /// Post-checkpoint deletion tombstones. Applied after the checkpoint and
+    /// alongside `overlay`.
+    #[serde(default)]
+    pub deleted_cell_ids: Vec<dregg_cell::CellId>,
     /// The head pointer (commit cursor + block cursor) at snapshot time.
     pub head: SnapshotHead,
     /// The root commitment: the canonical ledger root of the reconstructed
@@ -107,7 +111,7 @@ impl Snapshot {
     /// already holds the checkpoint (or is already current) applies it as a
     /// no-op on the cell map.
     pub fn is_empty_delta(&self) -> bool {
-        self.overlay.is_empty()
+        self.overlay.is_empty() && self.deleted_cell_ids.is_empty()
     }
 }
 
@@ -199,8 +203,11 @@ impl PersistentStore {
             Some(cp) => crate::ledger_store::checkpoint_to_ledger_snapshot(cp),
             None => Ledger::new(),
         };
-        for cell in &overlay {
+        for cell in &overlay.upserts {
             upsert_cell(&mut ledger, cell.clone());
+        }
+        for cell_id in &overlay.deletions {
+            let _ = ledger.remove(cell_id);
         }
         let claimed_root = snapshot_ledger_root(&mut ledger);
 
@@ -226,7 +233,8 @@ impl PersistentStore {
         Ok(Snapshot {
             checkpoint,
             overlay_base_height: base_height,
-            overlay,
+            overlay: overlay.upserts,
+            deleted_cell_ids: overlay.deletions,
             head,
             claimed_root,
         })
@@ -259,6 +267,9 @@ impl PersistentStore {
         // `CrashRecovery.upd` point update, NOT insert_cell's strict insert).
         for cell in &snapshot.overlay {
             upsert_cell(&mut ledger, cell.clone());
+        }
+        for cell_id in &snapshot.deleted_cell_ids {
+            let _ = ledger.remove(cell_id);
         }
 
         // The anti-substitution tooth: the reconstructed ledger MUST commit to
@@ -326,7 +337,7 @@ impl PersistentStore {
         }
 
         // 3. Install the cell-by-id overlay so post-checkpoint cells resolve.
-        self.install_overlay_into_cell_index(&snapshot.overlay)?;
+        self.install_overlay_into_cell_index(&snapshot.overlay, &snapshot.deleted_cell_ids)?;
 
         Ok(ledger)
     }
@@ -376,6 +387,7 @@ mod tests {
                 receipt_hash,
                 ledger_root,
                 touched_cells: vec![c],
+                deleted_cell_ids: Vec::new(),
             };
             store.commit_finalized_turn(n, &rec).unwrap();
         }
@@ -411,8 +423,11 @@ mod tests {
             None => Ledger::new(),
         };
         let overlay = store.cell_overlay_since(cp_height).unwrap();
-        for c in overlay {
+        for c in overlay.upserts {
             upsert_cell(&mut ledger, c);
+        }
+        for id in overlay.deletions {
+            let _ = ledger.remove(&id);
         }
         ledger.root()
     }
@@ -459,6 +474,58 @@ mod tests {
         assert_eq!(snap.claimed_root, full_replay_root(&store));
         // Spot-check a few reconstructed cell balances (last-writer-wins).
         assert_eq!(rebuilt.iter().count(), 3); // seeds 1,2,3
+    }
+
+    #[test]
+    fn shipped_deletion_removes_checkpoint_cell_and_joiner_index_entry() {
+        let shipper = PersistentStore::open_in_memory().unwrap();
+        let doomed = cell(0x31, 700);
+        let doomed_id = doomed.id();
+
+        let mut checkpoint_ledger = Ledger::new();
+        checkpoint_ledger
+            .insert_cell(doomed.clone())
+            .expect("checkpoint cell");
+        shipper
+            .checkpoint_ledger(&checkpoint_ledger, 1)
+            .expect("checkpoint ledger");
+
+        let mut empty = Ledger::new();
+        let deletion = CommitRecord {
+            ordinal: 0,
+            height: 2,
+            block_id: [0x41; 32],
+            block_executed_up_to: 2,
+            turn_hash: [0x42; 32],
+            creator: [0x43; 32],
+            receipt_hash: [0x44; 32],
+            ledger_root: empty.root(),
+            touched_cells: Vec::new(),
+            deleted_cell_ids: vec![doomed_id],
+        };
+        shipper
+            .commit_finalized_turn(0, &deletion)
+            .expect("commit deletion");
+
+        let snapshot = shipper.ship_snapshot(0).expect("ship snapshot");
+        assert!(snapshot.overlay.is_empty());
+        assert_eq!(snapshot.deleted_cell_ids, vec![doomed_id]);
+        let mut rebuilt = shipper.apply_snapshot(&snapshot).expect("apply snapshot");
+        assert!(rebuilt.get(&doomed_id).is_none());
+        assert_eq!(rebuilt.root(), snapshot.claimed_root);
+
+        // Model a reused joiner with a stale pre-install cell-index entry. Snapshot
+        // installation must remove it durably in the same index transaction.
+        let joiner = PersistentStore::open_in_memory().unwrap();
+        joiner
+            .install_overlay_into_cell_index(std::slice::from_ref(&doomed), &[])
+            .expect("seed stale joiner index");
+        assert!(joiner.lookup_cell(&doomed_id).unwrap().is_some());
+        let installed = joiner
+            .install_snapshot(&snapshot, &snapshot.claimed_root)
+            .expect("install snapshot");
+        assert!(installed.get(&doomed_id).is_none());
+        assert!(joiner.lookup_cell(&doomed_id).unwrap().is_none());
     }
 
     #[test]

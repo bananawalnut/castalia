@@ -377,6 +377,7 @@ pub fn build_image(manifest: &ImageManifest) -> Result<ImageArtifact, BuildError
         checkpoint: None,
         overlay_base_height: 0,
         overlay,
+        deleted_cell_ids: Vec::new(),
         head: SnapshotHead {
             commit_cursor: 0,
             block_executed_up_to: 0,

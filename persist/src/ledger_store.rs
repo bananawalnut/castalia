@@ -220,7 +220,11 @@ impl PersistentStore {
     /// by the overlay's own ordering — the overlay is already a last-writer-wins
     /// projection). Used by [`PersistentStore::install_snapshot`] so a joiner's
     /// `lookup_cell` / `cell_overlay_since` resolve the post-checkpoint deltas.
-    pub fn install_overlay_into_cell_index(&self, overlay: &[Cell]) -> Result<()> {
+    pub fn install_overlay_into_cell_index(
+        &self,
+        overlay: &[Cell],
+        deleted_cell_ids: &[CellId],
+    ) -> Result<()> {
         let write_txn = self.db.begin_write()?;
         {
             let mut idx_cell = write_txn.open_table(tables::IDX_CELL_BY_ID)?;
@@ -228,6 +232,9 @@ impl PersistentStore {
                 let bytes = postcard::to_stdvec(cell)
                     .map_err(|e| StoreError::Serialization(e.to_string()))?;
                 idx_cell.insert(&cell.id().0, bytes.as_slice())?;
+            }
+            for cell_id in deleted_cell_ids {
+                idx_cell.remove(&cell_id.0)?;
             }
         }
         write_txn.commit()?;

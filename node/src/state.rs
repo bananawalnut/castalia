@@ -836,11 +836,15 @@ impl NodeState {
             }
         };
         match store.cell_overlay_since(checkpoint_height) {
-            Ok(overlay) if !overlay.is_empty() => {
-                let overlay_len = overlay.len();
+            Ok(overlay) if !overlay.upserts.is_empty() || !overlay.deletions.is_empty() => {
+                let upserted = overlay.upserts.len();
+                let deleted = overlay.deletions.len();
 
-                for cell in overlay {
+                for cell in overlay.upserts {
                     upsert_cell(&mut ledger, cell);
+                }
+                for cell_id in overlay.deletions {
+                    let _ = ledger.remove(&cell_id);
                 }
                 // The recovery-convergence verdict is DEFERRED to
                 // `verify_recovery_convergence`, which `run_node` calls AFTER it
@@ -862,7 +866,8 @@ impl NodeState {
                 // still fail-CLOSED on genuine divergence — just once the
                 // baseline is in place and the root is meaningful.
                 tracing::info!(
-                    overlaid_cells = overlay_len,
+                    overlaid_cells = upserted,
+                    deleted_cells = deleted,
                     commit_cursor = store.commit_cursor().unwrap_or(0),
                     "applied durable commit-log overlay — recovery convergence is verified \
                      after the genesis baseline is reseeded (see verify_recovery_convergence)"
@@ -1021,13 +1026,16 @@ impl NodeState {
             _ => (Ledger::new(), 0),
         };
         if let Ok(overlay) = store.cell_overlay_since(checkpoint_height)
-            && !overlay.is_empty()
+            && (!overlay.upserts.is_empty() || !overlay.deletions.is_empty())
         {
-            for cell in overlay {
+            for cell in overlay.upserts {
                 // Last-writer-wins point update (`CrashRecovery.upd`); a strict
                 // `insert_cell` would silently drop a post-checkpoint write to an
                 // already-checkpointed cell. See `new_with_key_file` / `upsert_cell`.
                 upsert_cell(&mut ledger, cell);
+            }
+            for cell_id in overlay.deletions {
+                let _ = ledger.remove(&cell_id);
             }
             // Convergence assertion, mirroring `new_with_key_file`: the
             // reconstructed root MUST equal the root the committing node durably
@@ -2692,6 +2700,7 @@ mod crash_recovery_overlay_tests {
             receipt_hash: [0xc2; 32],
             ledger_root: record_root,
             touched_cells: vec![cell(seed, overlay_balance)],
+            deleted_cell_ids: vec![],
         };
         store
             .commit_finalized_turn(0, &rec)
@@ -2730,6 +2739,106 @@ mod crash_recovery_overlay_tests {
             999,
             "post-checkpoint overlay write must WIN (last-writer-wins); a dropped \
              overlay would leave the stale checkpoint value 100"
+        );
+    }
+
+    #[tokio::test]
+    async fn post_checkpoint_deletion_tombstone_removes_checkpoint_cell() {
+        let seed = 0x5b;
+        let deleted = cell(seed, 100);
+        let deleted_id = deleted.id();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let store = PersistentStore::open(&tmp.path().join("dregg.redb")).expect("open store");
+        let mut checkpoint = Ledger::new();
+        checkpoint.insert_cell(deleted).expect("checkpoint cell");
+        store.checkpoint_ledger(&checkpoint, 1).expect("checkpoint");
+        let empty_root = crate::blocklace_sync::canonical_ledger_root(&Ledger::new());
+        store
+            .commit_finalized_turn(
+                0,
+                &dregg_persist::CommitRecord {
+                    ordinal: 0,
+                    height: 2,
+                    block_id: [0u8; 32],
+                    block_executed_up_to: 0,
+                    turn_hash: [0xd1; 32],
+                    creator: [0u8; 32],
+                    receipt_hash: [0xd2; 32],
+                    ledger_root: empty_root,
+                    touched_cells: vec![],
+                    deleted_cell_ids: vec![deleted_id],
+                },
+            )
+            .expect("commit deletion tombstone");
+        drop(store);
+
+        let state = NodeState::new_with_key_file(tmp.path(), vec![], "node.key")
+            .expect("tombstone recovery constructs");
+        state
+            .verify_recovery_convergence()
+            .await
+            .expect("tombstone recovery converges to the finalized empty root");
+        assert!(
+            state.read().await.ledger.get(&deleted_id).is_none(),
+            "a durable post-checkpoint deletion must not resurrect the checkpoint cell"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_checkpoint_overlay_deletion_wins_over_prior_upsert() {
+        let seed = 0x5c;
+        let doomed = cell(seed, 321);
+        let doomed_id = doomed.id();
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let store = PersistentStore::open(&tmp.path().join("dregg.redb")).expect("open store");
+
+        let mut one_cell = Ledger::new();
+        one_cell.insert_cell(doomed.clone()).expect("live cell");
+        store
+            .commit_finalized_turn(
+                0,
+                &dregg_persist::CommitRecord {
+                    ordinal: 0,
+                    height: 1,
+                    block_id: [0xe0; 32],
+                    block_executed_up_to: 1,
+                    turn_hash: [0xe1; 32],
+                    creator: [0u8; 32],
+                    receipt_hash: [0xe2; 32],
+                    ledger_root: crate::blocklace_sync::canonical_ledger_root(&one_cell),
+                    touched_cells: vec![doomed],
+                    deleted_cell_ids: Vec::new(),
+                },
+            )
+            .expect("commit upsert");
+        store
+            .commit_finalized_turn(
+                1,
+                &dregg_persist::CommitRecord {
+                    ordinal: 1,
+                    height: 2,
+                    block_id: [0xf0; 32],
+                    block_executed_up_to: 2,
+                    turn_hash: [0xf1; 32],
+                    creator: [0u8; 32],
+                    receipt_hash: [0xf2; 32],
+                    ledger_root: crate::blocklace_sync::canonical_ledger_root(&Ledger::new()),
+                    touched_cells: Vec::new(),
+                    deleted_cell_ids: vec![doomed_id],
+                },
+            )
+            .expect("commit deletion");
+        drop(store);
+
+        let state = NodeState::new_with_key_file(tmp.path(), vec![], "node.key")
+            .expect("no-checkpoint tombstone recovery constructs");
+        state
+            .verify_recovery_convergence()
+            .await
+            .expect("no-checkpoint tombstone recovery converges");
+        assert!(
+            state.read().await.ledger.get(&doomed_id).is_none(),
+            "the later tombstone must win over the prior upsert without a checkpoint"
         );
     }
 
@@ -2943,6 +3052,7 @@ mod crash_recovery_overlay_tests {
             receipt_hash: [0xa2; 32],
             ledger_root: record_root,
             touched_cells: vec![touched.clone()],
+            deleted_cell_ids: Vec::new(),
         };
         store
             .commit_finalized_turn(0, &rec)

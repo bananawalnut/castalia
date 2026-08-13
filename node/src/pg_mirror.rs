@@ -658,6 +658,7 @@ mod tests {
             receipt_hash,
             ledger_root,
             touched_cells: cells,
+            deleted_cell_ids: Vec::new(),
         }
     }
 

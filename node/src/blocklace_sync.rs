@@ -5260,13 +5260,13 @@ async fn execute_finalized_turn(
             {
                 let mut touched_cells: Vec<dregg_cell::Cell> =
                     Vec::with_capacity(touched_ids.len());
+                let mut deleted_cell_ids = Vec::new();
                 for id in &touched_ids {
                     if let Some(cell) = s.ledger.get(id) {
                         touched_cells.push(cell.clone());
+                    } else {
+                        deleted_cell_ids.push(*id);
                     }
-                    // A touched id absent post-commit means the cell was
-                    // destroyed this turn; its removal is reflected by the
-                    // checkpoint, and the overlay carries no stale entry.
                 }
                 let commit_record = dregg_persist::CommitRecord {
                     ordinal: 0, // assigned by the store at the durable cursor
@@ -5278,6 +5278,7 @@ async fn execute_finalized_turn(
                     ledger_root: merkle_root,
                     block_executed_up_to,
                     touched_cells,
+                    deleted_cell_ids,
                 };
                 let expected_ordinal = s.store.commit_cursor().unwrap_or(0);
                 match s

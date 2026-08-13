@@ -109,6 +109,50 @@ pub struct CommitRecord {
     /// Post-state snapshots of every cell this turn touched (created/mutated).
     /// These feed the cell-by-id index. Serialized `dregg_cell::Cell`s.
     pub touched_cells: Vec<Cell>,
+    /// Cells removed by this finalized turn. Sorted and unique; disjoint from
+    /// `touched_cells`. These tombstones prevent a post-checkpoint deletion from
+    /// being resurrected during crash recovery.
+    pub deleted_cell_ids: Vec<CellId>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct LegacyCommitRecord {
+    ordinal: u64,
+    height: u64,
+    block_id: [u8; 32],
+    block_executed_up_to: u64,
+    turn_hash: [u8; 32],
+    creator: [u8; 32],
+    receipt_hash: [u8; 32],
+    ledger_root: [u8; 32],
+    touched_cells: Vec<Cell>,
+}
+
+fn decode_commit_record(bytes: &[u8]) -> Result<CommitRecord> {
+    match postcard::from_bytes(bytes) {
+        Ok(record) => Ok(record),
+        Err(_) => {
+            let old: LegacyCommitRecord = postcard::from_bytes(bytes)?;
+            Ok(CommitRecord {
+                ordinal: old.ordinal,
+                height: old.height,
+                block_id: old.block_id,
+                block_executed_up_to: old.block_executed_up_to,
+                turn_hash: old.turn_hash,
+                creator: old.creator,
+                receipt_hash: old.receipt_hash,
+                ledger_root: old.ledger_root,
+                touched_cells: old.touched_cells,
+                deleted_cell_ids: Vec::new(),
+            })
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CellOverlay {
+    pub upserts: Vec<Cell>,
+    pub deletions: Vec<CellId>,
 }
 
 impl CommitRecord {
@@ -279,7 +323,7 @@ impl PersistentStore {
                     let log = write_txn.open_table(tables::COMMIT_LOG)?;
                     match log.get(expected_ordinal)? {
                         Some(guard) => {
-                            let existing: CommitRecord = postcard::from_bytes(guard.value())?;
+                            let existing = decode_commit_record(guard.value())?;
                             if existing.turn_hash == record.turn_hash {
                                 // Already durably committed; nothing to do.
                                 return Ok(expected_ordinal);
@@ -304,10 +348,23 @@ impl PersistentStore {
             }
 
             assigned = cursor;
-            let stored_record = CommitRecord {
+            let mut stored_record = CommitRecord {
                 ordinal: assigned,
                 ..record.clone()
             };
+            stored_record
+                .deleted_cell_ids
+                .sort_unstable_by_key(|id| id.0);
+            stored_record.deleted_cell_ids.dedup();
+            if stored_record
+                .touched_cells
+                .iter()
+                .any(|cell| stored_record.deleted_cell_ids.contains(&cell.id()))
+            {
+                return Err(StoreError::Integrity(
+                    "commit record cannot both upsert and delete one cell".into(),
+                ));
+            }
             let encoded = postcard::to_stdvec(&stored_record)
                 .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
@@ -339,6 +396,9 @@ impl PersistentStore {
                         .map_err(|e| StoreError::Serialization(e.to_string()))?;
                     idx_cell.insert(&cell.id().0, cell_bytes.as_slice())?;
                 }
+                for cell_id in &stored_record.deleted_cell_ids {
+                    idx_cell.remove(&cell_id.0)?;
+                }
             }
 
             // 3. Burn the turn's forever digests in the SAME transaction (the
@@ -368,7 +428,7 @@ impl PersistentStore {
         let read_txn = self.db.begin_read()?;
         let table = read_txn.open_table(tables::COMMIT_LOG)?;
         match table.get(ordinal)? {
-            Some(guard) => Ok(Some(postcard::from_bytes(guard.value())?)),
+            Some(guard) => Ok(Some(decode_commit_record(guard.value())?)),
             None => Ok(None),
         }
     }
@@ -397,7 +457,7 @@ impl PersistentStore {
         for entry in table.range(0u64..)? {
             let entry =
                 entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
-            let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+            let record = decode_commit_record(entry.1.value())?;
             out.push(record.block_id);
         }
         // Then the ids of turns whose records were compacted away — still
@@ -423,7 +483,7 @@ impl PersistentStore {
         for entry in table.range(start..)? {
             let entry =
                 entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
-            out.push(postcard::from_bytes(entry.1.value())?);
+            out.push(decode_commit_record(entry.1.value())?);
         }
         Ok(out)
     }
@@ -488,24 +548,36 @@ impl PersistentStore {
     /// re-executing — the cell-by-id index is exactly this overlay maintained
     /// incrementally, but this method re-derives it from the log so recovery
     /// never trusts the (rebuildable) index for correctness.
-    pub fn cell_overlay_since(&self, checkpoint_height: u64) -> Result<Vec<Cell>> {
+    pub fn cell_overlay_since(&self, checkpoint_height: u64) -> Result<CellOverlay> {
         use std::collections::HashMap;
         let read_txn = self.db.begin_read()?;
         let log = read_txn.open_table(tables::COMMIT_LOG)?;
-        // ordinal-ascending iteration → later writers overwrite earlier ones.
-        let mut latest: HashMap<[u8; 32], Cell> = HashMap::new();
+        // ordinal-ascending iteration → later writers/deleters overwrite earlier ones.
+        let mut latest: HashMap<[u8; 32], Option<Cell>> = HashMap::new();
         for entry in log.iter()? {
             let entry =
                 entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
-            let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+            let record = decode_commit_record(entry.1.value())?;
             if record.height <= checkpoint_height {
                 continue;
             }
             for cell in record.touched_cells {
-                latest.insert(cell.id().0, cell);
+                latest.insert(cell.id().0, Some(cell));
+            }
+            for cell_id in record.deleted_cell_ids {
+                latest.insert(cell_id.0, None);
             }
         }
-        Ok(latest.into_values().collect())
+        let mut overlay = CellOverlay::default();
+        for (cell_id, cell) in latest {
+            match cell {
+                Some(cell) => overlay.upserts.push(cell),
+                None => overlay.deletions.push(CellId(cell_id)),
+            }
+        }
+        overlay.upserts.sort_unstable_by_key(|cell| cell.id().0);
+        overlay.deletions.sort_unstable_by_key(|id| id.0);
+        Ok(overlay)
     }
 
     // =========================================================================
@@ -535,7 +607,7 @@ impl PersistentStore {
         };
         let log = read_txn.open_table(tables::COMMIT_LOG)?;
         match log.get(ordinal)? {
-            Some(guard) => Ok(Some(postcard::from_bytes(guard.value())?)),
+            Some(guard) => Ok(Some(decode_commit_record(guard.value())?)),
             None => Err(StoreError::Integrity(format!(
                 "index points at ordinal {ordinal} but commit log has no record there"
             ))),
@@ -579,7 +651,7 @@ impl PersistentStore {
             if key.len() == 48 && &key[8..40] == creator.as_slice() {
                 let ordinal = entry.1.value();
                 if let Some(guard) = log.get(ordinal)? {
-                    out.push(postcard::from_bytes(guard.value())?);
+                    out.push(decode_commit_record(guard.value())?);
                 }
             }
         }
@@ -606,7 +678,7 @@ impl PersistentStore {
                 entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
             let ordinal = entry.1.value();
             if let Some(guard) = log.get(ordinal)? {
-                out.push(postcard::from_bytes(guard.value())?);
+                out.push(decode_commit_record(guard.value())?);
             }
         }
         Ok(out)
@@ -649,7 +721,7 @@ impl PersistentStore {
             let entry =
                 entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
             let ordinal = entry.0.value();
-            let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+            let record = decode_commit_record(entry.1.value())?;
             report.records += 1;
 
             check_hash_index(
@@ -689,6 +761,9 @@ impl PersistentStore {
                         }
                     })
                     .or_insert((ordinal, cell.clone()));
+            }
+            for cell_id in &record.deleted_cell_ids {
+                latest_cell_writer.remove(&cell_id.0);
             }
         }
 
@@ -769,7 +844,7 @@ impl PersistentStore {
                 for entry in log.iter()? {
                     let entry = entry
                         .map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
-                    v.push(postcard::from_bytes::<CommitRecord>(entry.1.value())?);
+                    v.push(decode_commit_record(entry.1.value())?);
                 }
                 v
             };
@@ -815,6 +890,9 @@ impl PersistentStore {
                     let cell_bytes = postcard::to_stdvec(cell)
                         .map_err(|e| StoreError::Serialization(e.to_string()))?;
                     idx_cell.insert(&cell.id().0, cell_bytes.as_slice())?;
+                }
+                for cell_id in &record.deleted_cell_ids {
+                    idx_cell.remove(&cell_id.0)?;
                 }
                 replayed += 1;
             }
@@ -925,7 +1003,7 @@ impl PersistentStore {
                     let entry = entry
                         .map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
                     let ordinal = entry.0.value();
-                    let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+                    let record = decode_commit_record(entry.1.value())?;
                     if prefix_open && record.height < height {
                         let hc_key = CommitRecord::height_creator_key(
                             record.height,
@@ -995,6 +1073,9 @@ impl PersistentStore {
                         let cell_bytes = postcard::to_stdvec(cell)
                             .map_err(|e| StoreError::Serialization(e.to_string()))?;
                         idx_cell.insert(&cell.id().0, cell_bytes.as_slice())?;
+                    }
+                    for cell_id in &record.deleted_cell_ids {
+                        idx_cell.remove(&cell_id.0)?;
                     }
                 }
             }
@@ -1143,7 +1224,7 @@ impl PersistentStore {
                 let entry =
                     entry.map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
                 let ordinal = entry.0.value();
-                let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+                let record = decode_commit_record(entry.1.value())?;
                 // Apply this record's touched cells last-writer-wins. A record above
                 // the checkpoint contributes the overlay; one at/below it merely
                 // re-asserts cells the checkpoint already folded in (idempotent —
@@ -1153,6 +1234,9 @@ impl PersistentStore {
                 for cell in &record.touched_cells {
                     let _ = ledger.remove(&cell.id());
                     let _ = ledger.insert_cell(cell.clone());
+                }
+                for cell_id in &record.deleted_cell_ids {
+                    let _ = ledger.remove(cell_id);
                 }
                 if crate::canonical_ledger_root(&ledger) == record.ledger_root {
                     last_good = Some(ordinal);
@@ -1195,7 +1279,7 @@ impl PersistentStore {
                     let entry = entry
                         .map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
                     let ordinal = entry.0.value();
-                    let record: CommitRecord = postcard::from_bytes(entry.1.value())?;
+                    let record = decode_commit_record(entry.1.value())?;
                     let hc_key =
                         CommitRecord::height_creator_key(record.height, &record.creator, ordinal);
                     doomed.push(Doomed {
@@ -1232,7 +1316,7 @@ impl PersistentStore {
                     for entry in log.range(floor..)? {
                         let entry = entry
                             .map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))?;
-                        v.push(postcard::from_bytes::<CommitRecord>(entry.1.value())?);
+                        v.push(decode_commit_record(entry.1.value())?);
                     }
                     v
                 };
@@ -1249,6 +1333,9 @@ impl PersistentStore {
                         let cell_bytes = postcard::to_stdvec(cell)
                             .map_err(|e| StoreError::Serialization(e.to_string()))?;
                         idx_cell.insert(&cell.id().0, cell_bytes.as_slice())?;
+                    }
+                    for cell_id in &record.deleted_cell_ids {
+                        idx_cell.remove(&cell_id.0)?;
                     }
                 }
             }
@@ -1398,6 +1485,7 @@ mod tests {
             ledger_root: [n as u8; 32],
             block_executed_up_to,
             touched_cells: cells,
+            deleted_cell_ids: Vec::new(),
         }
     }
 
@@ -1406,6 +1494,27 @@ mod tests {
     // converts at the boundary.
     fn cell(seed: u8, balance: u64) -> Cell {
         Cell::with_balance([seed; 32], [seed.wrapping_add(7); 32], balance as i64)
+    }
+
+    #[test]
+    fn legacy_commit_record_decodes_with_no_deletion_tombstones() {
+        let c = cell(0x22, 55);
+        let legacy = LegacyCommitRecord {
+            ordinal: 7,
+            height: 8,
+            block_id: [1; 32],
+            block_executed_up_to: 9,
+            turn_hash: [2; 32],
+            creator: [3; 32],
+            receipt_hash: [4; 32],
+            ledger_root: [5; 32],
+            touched_cells: vec![c.clone()],
+        };
+        let bytes = postcard::to_stdvec(&legacy).unwrap();
+        let decoded = decode_commit_record(&bytes).unwrap();
+        assert_eq!(decoded.ordinal, 7);
+        assert_eq!(decoded.touched_cells, vec![c]);
+        assert!(decoded.deleted_cell_ids.is_empty());
     }
 
     #[test]
@@ -1748,12 +1857,38 @@ mod tests {
         let bal = |seed: u8, b: u64| {
             let target = cell(seed, b).id();
             overlay
+                .upserts
                 .iter()
                 .find(|c| c.id() == target)
                 .map(|c| c.state.balance())
         };
         assert_eq!(bal(1, 105), Some(105));
         assert_eq!(bal(0, 104), Some(104));
+    }
+
+    #[test]
+    fn deletion_tombstone_removes_overlay_and_cell_index_even_after_rebuild() {
+        let store = PersistentStore::open_in_memory().unwrap();
+        let live = cell(0x44, 100);
+        let id = live.id();
+        store
+            .commit_finalized_turn(0, &record(0, 0, vec![live]))
+            .unwrap();
+        assert!(store.lookup_cell(&id).unwrap().is_some());
+
+        let mut deletion = record(1, 1, vec![]);
+        deletion.deleted_cell_ids = vec![id];
+        store.commit_finalized_turn(1, &deletion).unwrap();
+
+        let overlay = store.cell_overlay_since(0).unwrap();
+        assert!(overlay.upserts.is_empty());
+        assert_eq!(overlay.deletions, vec![id]);
+        assert!(store.lookup_cell(&id).unwrap().is_none());
+        assert!(store.verify_index_agrees_with_log().unwrap().ok());
+
+        store.rebuild_index_from_log().unwrap();
+        assert!(store.lookup_cell(&id).unwrap().is_none());
+        assert!(store.verify_index_agrees_with_log().unwrap().ok());
     }
 
     // =========================================================================
@@ -1772,10 +1907,14 @@ mod tests {
             Some(l) => l,
             None => Ledger::new(),
         };
-        for c in store.cell_overlay_since(cp_height).unwrap() {
+        let overlay = store.cell_overlay_since(cp_height).unwrap();
+        for c in overlay.upserts {
             // last-writer-wins overwrite (the overlay is already LWW-projected).
             let _ = ledger.remove(&c.id());
             let _ = ledger.insert_cell(c);
+        }
+        for id in overlay.deletions {
+            let _ = ledger.remove(&id);
         }
         ledger.root()
     }
@@ -2208,9 +2347,13 @@ mod tests {
         // THE CONVERGENCE CHECK NOW PASSES at the recovered point: the head's
         // recorded root equals the reconstruction (this is what `recover` asserts).
         let mut ledger = Ledger::new();
-        for c in store.cell_overlay_since(0).unwrap() {
+        let overlay = store.cell_overlay_since(0).unwrap();
+        for c in overlay.upserts {
             let _ = ledger.remove(&c.id());
             let _ = ledger.insert_cell(c);
+        }
+        for id in overlay.deletions {
+            let _ = ledger.remove(&id);
         }
         assert_eq!(
             crate::canonical_ledger_root(&ledger),
@@ -2390,9 +2533,13 @@ mod tests {
         // genesis ⊕ overlay (the SOUND `reseed_genesis_then_overlay` order)
         // equals the head's recorded root, so the node opens instead of stranding.
         let mut ledger = genesis.clone();
-        for c in store.cell_overlay_since(0).unwrap() {
+        let overlay = store.cell_overlay_since(0).unwrap();
+        for c in overlay.upserts {
             let _ = ledger.remove(&c.id());
             let _ = ledger.insert_cell(c);
+        }
+        for id in overlay.deletions {
+            let _ = ledger.remove(&id);
         }
         assert_eq!(
             crate::canonical_ledger_root(&ledger),
