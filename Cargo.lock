@@ -6506,6 +6506,7 @@ dependencies = [
  "collective-choice",
  "dregg-blocklace",
  "dregg-bridge",
+ "dregg-intent",
  "dregg-lean-ffi",
  "ed25519-dalek",
  "k256",
@@ -21555,6 +21556,16 @@ dependencies = [
  "dregg-cell",
  "dregg-turn",
  "starbridge-v2",
+]
+
+[[package]]
+name = "starbridge-castalia-membership"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dregg-cell",
+ "dregg-circuit",
+ "dregg-types",
 ]
 
 [[package]]
