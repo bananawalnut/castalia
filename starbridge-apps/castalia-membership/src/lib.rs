@@ -153,6 +153,36 @@ impl CastaliaMemberApplicationV1 {
     }
 }
 
+/// Derive the canonical token for one durable Castalia membership-cell birth.
+///
+/// The durable `birth_nonce` is reserved by Control. It is distinct from the
+/// application nonce and is encoded as little-endian bytes under the D0 domain.
+pub fn membership_birth_token_id(
+    factory_id: [u8; 32],
+    application_commitment: [u8; 32],
+    birth_nonce: u64,
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"castalia/membership-birth-token/v1\0");
+    hasher.update(&factory_id);
+    hasher.update(&application_commitment);
+    hasher.update(&birth_nonce.to_le_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+/// Derive the authority-owned membership cell created by the canonical factory effect.
+pub fn membership_cell_id(
+    authority: [u8; 32],
+    factory_id: [u8; 32],
+    application_commitment: [u8; 32],
+    birth_nonce: u64,
+) -> CellId {
+    CellId::derive_raw(
+        &authority,
+        &membership_birth_token_id(factory_id, application_commitment, birth_nonce),
+    )
+}
+
 /// Produce all sixteen indexed initial membership fields.
 pub fn membership_initial_fields(app: &CastaliaMemberApplicationV1) -> [(u32, u64); 16] {
     let commitment = app.commitment();
