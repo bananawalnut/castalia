@@ -1,6 +1,7 @@
 use starbridge_castalia_membership::{
     CASTALIA_MEMBERSHIP_SCHEMA_VERSION, MAGIC_CASTMEM1, MembershipStatus,
     castalia_membership_child_program_vk, castalia_membership_factory_vk,
+    membership_birth_token_id, membership_cell_id,
 };
 
 const VECTOR: &str = include_str!("../vectors/castalia-membership-application-v1.json");
@@ -159,6 +160,32 @@ fn application_factory_vector_is_independently_verifiable() {
         (15, 1_700_000_000),
     ];
     assert_eq!(initial_fields(VECTOR), expected_fields);
+
+    let birth_nonce = u64_value(VECTOR, "birthNonce");
+    let mut birth_bytes = Vec::new();
+    birth_bytes.extend_from_slice(b"castalia/membership-birth-token/v1\0");
+    birth_bytes.extend_from_slice(&factory_id);
+    birth_bytes.extend_from_slice(&commitment);
+    birth_bytes.extend_from_slice(&birth_nonce.to_le_bytes());
+    let birth_token = *blake3::hash(&birth_bytes).as_bytes();
+    assert_eq!(
+        bytes32(&string_value(VECTOR, "membershipBirthTokenId")),
+        birth_token
+    );
+    assert_eq!(
+        membership_birth_token_id(factory_id, commitment, birth_nonce),
+        birth_token
+    );
+
+    let mut cell_material = Vec::with_capacity(64);
+    cell_material.extend_from_slice(&AUTHORITY);
+    cell_material.extend_from_slice(&birth_token);
+    let cell_id = blake3::derive_key("dregg-cell-id-v1", &cell_material);
+    assert_eq!(bytes32(&string_value(VECTOR, "membershipCellId")), cell_id);
+    assert_eq!(
+        membership_cell_id(AUTHORITY, factory_id, commitment, birth_nonce).as_bytes(),
+        &cell_id
+    );
 
     let tampered = canonical_bytes(factory_id, child_program_vk, 100);
     assert_ne!(blake3::hash(&tampered), blake3::hash(&canonical));
