@@ -12,6 +12,7 @@
 
 pub mod api;
 pub mod blocklace_sync;
+pub mod castalia_membership;
 pub mod catchup;
 pub mod channels_service;
 pub mod committee_replay;
@@ -1084,7 +1085,16 @@ async fn run_node(
             Ok(json_str) => {
                 match serde_json::from_str::<serde_json::Value>(&json_str) {
                     Ok(genesis) => {
+                        let castalia_membership_authority =
+                            match castalia_membership::authority_from_genesis(&genesis) {
+                                Ok(authority) => authority,
+                                Err(e) => {
+                                    error!(error = %e, "invalid Castalia membership genesis authority; refusing startup");
+                                    std::process::exit(1);
+                                }
+                            };
                         let mut s = node_state.write().await;
+                        s.castalia_membership_authority = castalia_membership_authority;
                         // Set committee_epoch BEFORE loading keys so the
                         // first federation_id derivation uses the correct
                         // epoch.
@@ -1166,6 +1176,7 @@ async fn run_node(
                         // re-credited every move RECIPIENT already in the overlay
                         // — a double-credit that diverged the reconstructed root.
                         let cell_load = reseed_genesis_then_overlay(&genesis, &mut s.ledger);
+
                         if cell_load.total() > 0 {
                             info!(
                                 inserted = cell_load.inserted,

@@ -489,6 +489,24 @@ impl EmbeddedExecutor {
         rt.deploy_factory(descriptor)
     }
 
+    /// Deploy a factory with an exact full child program after validating its
+    /// layered v2 VK recipe. The checked binding is what factory birth installs.
+    pub fn deploy_factory_with_full_child_program_v2(
+        &self,
+        descriptor: dregg_cell::FactoryDescriptor,
+        program: dregg_cell::CellProgram,
+        recipe: (
+            [u8; 32],
+            dregg_cell::VerifierFingerprint,
+            dregg_cell::ProvingSystemId,
+        ),
+    ) -> Result<[u8; 32], dregg_cell::FactoryError> {
+        let mut rt = self.runtime.lock().unwrap_or_else(|e| e.into_inner());
+        rt.deploy_factory_with_full_child_program_v2(
+            descriptor, program, recipe.0, recipe.1, recipe.2,
+        )
+    }
+
     /// Run a closure with mutable access to the embedded ledger.
     ///
     /// Used by integration tests that need to set up a governance cell's

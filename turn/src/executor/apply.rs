@@ -628,7 +628,28 @@ impl TurnExecutor {
         // granting access to its own cell is authorized by the signed
         // action (the cell's owner consents). For cross-cell grants the
         // granter must hold an explicit c-list entry pointing at the
-        // target.
+        // target, except for the tightly-bound bootstrap below.
+        //
+        // A factory birth may atomically install reach from the owner's actor
+        // cell to its newly-created child. This avoids an impossible bootstrap
+        // cycle while granting no third-party authority: the journal proves the
+        // target was created earlier in THIS turn, the signed actor is the
+        // action target and grantor, and both cells carry the same nonzero owner
+        // public key.
+        let same_turn_same_owner_bootstrap = cap.target != *from
+            && from == actor
+            && from == action_target
+            && journal.entries().iter().any(
+                |entry| matches!(entry, JournalEntry::CreateCell { cell } if *cell == cap.target),
+            )
+            && ledger
+                .get(from)
+                .zip(ledger.get(&cap.target))
+                .is_some_and(|(grantor, newborn)| {
+                    grantor.public_key() != &[0u8; 32]
+                        && grantor.public_key() == newborn.public_key()
+                });
+
         if cap.target == *from {
             // Self-grant: skip c-list lookup; the signature on the
             // action proves the cell owner consents to share access
@@ -637,6 +658,10 @@ impl TurnExecutor {
             // strongest possible ON EVERY AXIS: permissions ⊤, mask
             // EFFECT_ALL, expiry unbounded) — any requested mask/expiry
             // is an attenuation of it.
+        } else if same_turn_same_owner_bootstrap {
+            // The owner-signed atomic birth is the parent authority. The
+            // requested cap may still be attenuated (Castalia uses only the
+            // state-writer facet); installation below preserves it faithfully.
         } else {
             let held_cap = from_cell
                 .capabilities
@@ -2668,14 +2693,14 @@ impl TurnExecutor {
             dregg_cell::CellMode::Sovereign => Cell::new(*owner_pubkey, *token_id),
         };
 
-        // Set initial fields.
+        // Set initial numeric fields using the same canonical 32-byte encoding
+        // used by state transitions and program predicates: unsigned big-endian
+        // in the final eight bytes. The constructor parameter hash remains its
+        // own little-endian wire commitment; it does not define field layout.
         for (idx, val) in &params.initial_fields {
             let idx = *idx as usize;
             if idx < dregg_cell::state::STATE_SLOTS {
-                // Zero-pad to 32 bytes.
-                let mut field = [0u8; 32];
-                field[..8].copy_from_slice(&val.to_le_bytes());
-                new_cell.state.fields[idx] = field;
+                new_cell.state.fields[idx] = dregg_cell::field_from_u64(*val);
             }
         }
 
@@ -2687,7 +2712,8 @@ impl TurnExecutor {
             ));
         }
 
-        // Install the factory descriptor's perpetual slot caveats
+        // Install a checked full child program when the factory registered one;
+        // otherwise preserve the legacy descriptor-caveat predicate behavior.
         // (`state_constraints`) as the born cell's `CellProgram`. Without this
         // the descriptor's Lane-G caveats (WriteOnce / Monotonic / …) never
         // bite: `apply_create_cell_from_factory` previously installed only the
@@ -2698,14 +2724,17 @@ impl TurnExecutor {
         // factory-born cell's gating actually enforce on every subsequent turn
         // that touches it (reject-on-violation / accept-on-conform).
         {
-            let state_constraints = self
-                .factory_registry
-                .borrow()
-                .get(factory_vk)
-                .map(|d| d.state_constraints.clone())
-                .unwrap_or_default();
-            if !state_constraints.is_empty() {
-                new_cell.program = dregg_cell::CellProgram::Predicate(state_constraints);
+            let registry = self.factory_registry.borrow();
+            if let Some(program) = registry.full_child_program(factory_vk) {
+                new_cell.program = program.clone();
+            } else {
+                let state_constraints = registry
+                    .get(factory_vk)
+                    .map(|d| d.state_constraints.clone())
+                    .unwrap_or_default();
+                if !state_constraints.is_empty() {
+                    new_cell.program = dregg_cell::CellProgram::Predicate(state_constraints);
+                }
             }
         }
 

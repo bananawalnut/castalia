@@ -78,6 +78,7 @@ starbridge-compartment-workflow-mandate = { path = "../starbridge-apps/compartme
 starbridge-storage-gateway-mandate = { path = "../starbridge-apps/storage-gateway-mandate" }
 starbridge-privacy-voting = { path = "../starbridge-apps/privacy-voting" }
 starbridge-bounty-board = { path = "../starbridge-apps/bounty-board" }
+starbridge-castalia-membership = { path = "../starbridge-apps/castalia-membership" }
 # The execution-lease app: the devnet demo-lease seed (DREGG_SEED_DEMO_LEASE=1
 # with --enable-faucet) opens a program-bearing, funded lease cell at boot so an
 # external provider (the operated DreggNet plane) can decode + fulfill a REAL

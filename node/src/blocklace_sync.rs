@@ -4631,11 +4631,7 @@ async fn execute_finalized_turn(
     }
 
     match exec_result {
-        dregg_turn::TurnResult::Committed {
-            receipt,
-            ref ledger_delta,
-            ..
-        } => {
+        dregg_turn::TurnResult::Committed { receipt, .. } => {
             let receipt_hash_hex: String = receipt
                 .turn_hash
                 .iter()
@@ -5256,16 +5252,12 @@ async fn execute_finalized_turn(
             // double-apply: the cursor is advanced only here, atomically with the
             // record it counts. See `dregg_persist::commit_log`.
             //
-            // The touched-cell post-states are read from the just-committed
-            // ledger for exactly the cell ids the executor reported in
-            // `ledger_delta` (created ∪ updated ∪ computron_transfer endpoints) —
-            // the authoritative, complete, bounded set of cells this turn
-            // mutated. The cell-by-id index is therefore the durable
-            // last-writer-wins overlay on top of the periodic full ledger
-            // checkpoint, and recovery reconstructs the finalized ledger from
-            // (checkpoint ⊕ overlay) without re-executing.
+            // Snapshot the COMPLETE whole-cell pre→post diff computed above.
+            // `LedgerDelta` is intentionally narrower and omits program, VK,
+            // capability, provenance, lifecycle, and heap dimensions; using it
+            // here made factory-born cells unreconstructable even though the
+            // recorded ledger root committed those dimensions.
             {
-                let touched_ids = touched_cell_ids(ledger_delta);
                 let mut touched_cells: Vec<dregg_cell::Cell> =
                     Vec::with_capacity(touched_ids.len());
                 for id in &touched_ids {
@@ -8128,32 +8120,6 @@ fn build_federation_receipt(
 /// Folds each cell's id + state-hash into a domain-separated BLAKE3 hash,
 /// sorted lexicographically by cell id for determinism. This is the
 /// `merkle_root` field carried in [`dregg_types::AttestedRoot`].
-/// The complete, bounded set of cell ids a committed turn mutated, taken
-/// directly from the executor's authoritative [`dregg_cell::LedgerDelta`]:
-/// every created cell, every updated cell, and both endpoints of every
-/// computron transfer. This is the set whose post-states the durable commit log
-/// snapshots into the cell-by-id index, so recovery reconstructs the finalized
-/// ledger from (checkpoint ⊕ overlay) without re-execution. Deduplicated and
-/// order-stable.
-fn touched_cell_ids(delta: &dregg_cell::LedgerDelta) -> Vec<dregg_cell::CellId> {
-    let mut ids: Vec<dregg_cell::CellId> = Vec::new();
-    fn push(ids: &mut Vec<dregg_cell::CellId>, id: dregg_cell::CellId) {
-        if !ids.contains(&id) {
-            ids.push(id);
-        }
-    }
-    for cell in &delta.created {
-        push(&mut ids, cell.id());
-    }
-    for (id, _) in &delta.updated {
-        push(&mut ids, *id);
-    }
-    for (from, to, _) in &delta.computron_transfers {
-        push(&mut ids, *from);
-        push(&mut ids, *to);
-    }
-    ids
-}
 
 /// The COMPLETE set of cell ids whose CONTENT differs between two ledgers — the
 /// A1 off-lock execution path's authoritative touched set.
@@ -8275,13 +8241,84 @@ pub(crate) fn provision_transfer_destinations(
     ledger: &mut dregg_cell::Ledger,
     call_forest: &dregg_turn::CallForest,
 ) {
+    // A transfer may fund a cell born by another effect in the same atomic
+    // forest. Pre-provisioning that deterministic id as a remote stub would
+    // make the real creation collide and reject the whole turn.
+    let created_ids: std::collections::HashSet<dregg_cell::CellId> = call_forest
+        .total_effects()
+        .into_iter()
+        .filter_map(|effect| match effect {
+            dregg_turn::Effect::CreateCell {
+                public_key,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(public_key, token_id)),
+            dregg_turn::Effect::CreateCellFromFactory {
+                owner_pubkey,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(owner_pubkey, token_id)),
+            _ => None,
+        })
+        .collect();
+
     for effect in call_forest.total_effects() {
         if let dregg_turn::Effect::Transfer { to, .. } = effect
+            && !created_ids.contains(to)
             && ledger.get(to).is_none()
         {
             let stub = dregg_cell::Cell::remote_stub_with_id_and_balance(*to, 0);
             let _ = ledger.insert_cell(stub);
         }
+    }
+}
+
+#[cfg(test)]
+mod transfer_destination_provisioning_tests {
+    use super::provision_transfer_destinations;
+    use dregg_cell::{CellId, CellMode, FactoryCreationParams, Ledger};
+    use dregg_sdk::AgentCipherclerk;
+    use dregg_turn::Effect;
+    use zeroize::Zeroizing;
+
+    #[test]
+    fn factory_created_transfer_destination_is_not_preprovisioned_as_stub() {
+        let clerk = AgentCipherclerk::from_key_bytes(Zeroizing::new([0x19; 32]));
+        let issuer = clerk.cell_id("default");
+        let owner_pubkey = [0x51; 32];
+        let token_id = [0x72; 32];
+        let child = CellId::derive_raw(&owner_pubkey, &token_id);
+        let params = FactoryCreationParams {
+            mode: CellMode::Hosted,
+            program_vk: Some([0x41; 32]),
+            initial_fields: Vec::new(),
+            initial_caps: Vec::new(),
+            owner_pubkey,
+        };
+        let mut turn = clerk.create_from_factory(
+            issuer,
+            [0x31; 32],
+            owner_pubkey,
+            token_id,
+            params,
+            &[0x91; 32],
+        );
+        turn.call_forest.roots[0]
+            .action
+            .effects
+            .push(Effect::Transfer {
+                from: issuer,
+                to: child,
+                amount: 1,
+            });
+        let mut ledger = Ledger::new();
+
+        provision_transfer_destinations(&mut ledger, &turn.call_forest);
+
+        assert!(
+            ledger.get(&child).is_none(),
+            "factory birth must own creation of its deterministic child id"
+        );
     }
 }
 

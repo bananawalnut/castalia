@@ -50,6 +50,12 @@ fn default_proving_system() -> ProvingSystemId {
 pub const MAGIC_CASTMEM1: u64 = u64::from_le_bytes(*b"CASTMEM1");
 /// Version of the Castalia membership field schema.
 pub const CASTALIA_MEMBERSHIP_SCHEMA_VERSION: u64 = 1;
+/// D0 application kind for Castalia membership.
+pub const CASTALIA_MEMBERSHIP_APPLICATION_KIND: u64 = 7;
+/// D0 application format version.
+pub const CASTALIA_MEMBERSHIP_APPLICATION_VERSION: u64 = 1;
+/// V1 defines no application flag bits; any set bit is unknown.
+pub const CASTALIA_MEMBERSHIP_APPLICATION_FLAGS_MASK: u64 = 0;
 
 /// Schema magic slot.
 pub const MAGIC_SLOT: u8 = 0;
@@ -371,6 +377,16 @@ pub enum MembershipBirthError {
     MissingOfficialDreggCell,
     /// The application does not identify an owner key.
     MissingOwner,
+    /// The application kind is not the D0 Castalia membership kind.
+    UnsupportedApplicationKind,
+    /// The application format is not D0 v1.
+    UnsupportedApplicationVersion,
+    /// D0 requires a non-zero application nonce.
+    MissingApplicationNonce,
+    /// The requested membership class is not individual or institutional.
+    UnsupportedMembershipClass,
+    /// The application sets a flag bit not defined by v1.
+    UnknownApplicationFlags,
     /// The constructor owner differs from the bound Castalia authority.
     OwnerMismatch,
     /// Constructor fields are not the exact canonical 16-field application state.
@@ -388,6 +404,15 @@ impl std::fmt::Display for MembershipBirthError {
             Self::ApplicationProgramMismatch => f.write_str("application program mismatch"),
             Self::MissingOfficialDreggCell => f.write_str("official Dregg cell is missing"),
             Self::MissingOwner => f.write_str("membership owner is missing"),
+            Self::UnsupportedApplicationKind => {
+                f.write_str("unsupported Castalia membership application kind")
+            }
+            Self::UnsupportedApplicationVersion => {
+                f.write_str("unsupported Castalia membership application version")
+            }
+            Self::MissingApplicationNonce => f.write_str("application nonce is missing"),
+            Self::UnsupportedMembershipClass => f.write_str("unsupported membership class"),
+            Self::UnknownApplicationFlags => f.write_str("application contains unknown flag bits"),
             Self::OwnerMismatch => {
                 f.write_str("constructor owner does not match Castalia authority")
             }
@@ -430,6 +455,20 @@ pub fn castalia_membership_factory(
 }
 
 impl CastaliaMembershipFactory {
+    /// Return the immutable constructor descriptor used for checked node/runtime deployment.
+    pub fn descriptor(&self) -> &FactoryDescriptor {
+        &self.descriptor
+    }
+
+    /// Return the typed layered-v2 VK recipe for the canonical child program.
+    pub fn program_vk_recipe(&self) -> ([u8; 32], VerifierFingerprint, ProvingSystemId) {
+        (
+            effect_vm_air_fingerprint(),
+            effect_vm_verifier_fingerprint(),
+            default_proving_system(),
+        )
+    }
+
     /// Return this authority-bound factory identity.
     pub fn factory_vk(&self) -> [u8; 32] {
         self.descriptor.factory_vk
@@ -442,11 +481,6 @@ impl CastaliaMembershipFactory {
             .expect("bound membership factories always install a child program")
     }
 
-    /// Deploy the private descriptor without exposing a bypassable raw constructor contract.
-    pub fn deploy(&self, registry: &mut FactoryRegistry) -> [u8; 32] {
-        registry.deploy(self.descriptor.clone())
-    }
-
     /// Idempotently deploy this factory while refusing a conflicting durable descriptor.
     pub fn deploy_checked(
         &self,
@@ -457,7 +491,22 @@ impl CastaliaMembershipFactory {
         {
             return Err(MembershipBirthError::FactoryDeploymentMismatch);
         }
-        Ok(registry.deploy(self.descriptor.clone()))
+        let program = castalia_membership_program(self.authority);
+        self.descriptor.validate_child_vk_canonical_v2(
+            &program,
+            effect_vm_air_fingerprint(),
+            effect_vm_verifier_fingerprint(),
+            default_proving_system(),
+        )?;
+        registry
+            .deploy_with_full_child_program_v2(
+                self.descriptor.clone(),
+                program,
+                effect_vm_air_fingerprint(),
+                effect_vm_verifier_fingerprint(),
+                default_proving_system(),
+            )
+            .map_err(MembershipBirthError::Factory)
     }
 
     fn validate_application(
@@ -475,6 +524,21 @@ impl CastaliaMembershipFactory {
         }
         if app.owner_pubkey == [0; 32] {
             return Err(MembershipBirthError::MissingOwner);
+        }
+        if app.application_kind != CASTALIA_MEMBERSHIP_APPLICATION_KIND {
+            return Err(MembershipBirthError::UnsupportedApplicationKind);
+        }
+        if app.application_version != CASTALIA_MEMBERSHIP_APPLICATION_VERSION {
+            return Err(MembershipBirthError::UnsupportedApplicationVersion);
+        }
+        if app.application_nonce == 0 {
+            return Err(MembershipBirthError::MissingApplicationNonce);
+        }
+        if !matches!(app.membership_class, 1 | 2) {
+            return Err(MembershipBirthError::UnsupportedMembershipClass);
+        }
+        if app.application_flags & !CASTALIA_MEMBERSHIP_APPLICATION_FLAGS_MASK != 0 {
+            return Err(MembershipBirthError::UnknownApplicationFlags);
         }
         Ok(())
     }

@@ -6764,6 +6764,7 @@ dependencies = [
  "serde",
  "serde_json",
  "starbridge-bounty-board",
+ "starbridge-castalia-membership",
  "starbridge-compartment-workflow-mandate",
  "starbridge-execution-lease",
  "starbridge-governed-namespace",
@@ -21563,6 +21564,7 @@ name = "starbridge-castalia-membership"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "dregg-app-framework",
  "dregg-cell",
  "dregg-circuit",
  "dregg-types",

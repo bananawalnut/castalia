@@ -3431,12 +3431,15 @@ async fn post_submit_signed_turn(
     let action_count = signed.turn.call_forest.action_count();
     let signed_for_gossip = signed.clone();
 
+    // Consensus finalization is the sole durable writer whenever a blocklace
+    // handle is active, including a committee of one. Admission still executes
+    // against the live pre-state to fail closed, but its mutations are a dry run.
+    let consensus_active = state.blocklace().await.is_some();
     let mut s = state.write().await;
     if !s.unlocked {
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let is_solo = s.solo_consensus.as_ref().is_some_and(|sc| sc.is_solo);
     // Is the acting cell the node OPERATOR's own default cell? Only then does the
     // node operator's cipherclerk chain (`s.cclerk`) authoritatively own the turn's
     // receipt chain. A FOREIGN client's turn is decoupled: its receipt chain is its
@@ -3506,21 +3509,14 @@ async fn post_submit_signed_turn(
     };
     seed_executor_receipt_head(&executor, signed.turn.agent, seed_prev);
     let lean_producer_enabled = s.lean_producer_enabled;
-    // MULTI-PARTY: consensus FINALIZATION is the SOLE authoritative application of a
-    // client turn — `execute_finalized_turn` runs identically on every node and
-    // provisions the actor (`provision_signer_actor_cell`) + destinations
-    // deterministically from the finalized turn's own data. Committing the local
-    // authoritative ledger HERE would advance the actor nonce / create cells
-    // LOCAL-ONLY, so peers reject the finalized re-execution as nonce-replay /
-    // destination-not-found — wedging cross-node commit (the exact faucet full-mode
-    // hazard). Both regimes execute IN PLACE under this exclusive write lock, with
-    // the IDENTICAL provisioning the finalized path applies; the difference is the
-    // FATE of the mutation (resolved just below):
-    //  * MULTI-PARTY rolls the journal back so the authoritative ledger ends
-    //    UNTOUCHED (the in-place run only built the HTTP receipt) — the O(touched)
-    //    stand-in for the old full SCRATCH CLONE, byte-identical outcome.
-    //  * SOLO (n=1) has no finalization pass, so it keeps the in-place commit
-    //    authoritatively (rolled back only if the receipt-chain append fails).
+    // ACTIVE CONSENSUS: finalization is the SOLE authoritative application of a
+    // client turn — including n=1, whose blocklace orders every actionable block
+    // immediately. Committing the local authoritative ledger HERE would advance
+    // the actor nonce / create cells before finalized re-execution, so that same
+    // turn would be rejected as replay and never reach the durable commit log.
+    // Admission executes in place under the lock only as a fail-closed dry run:
+    //  * active consensus rolls the journal back before blocklace submission;
+    //  * a deliberately blocklace-less runtime retains immediate local execution.
     crate::blocklace_sync::provision_signer_actor_cell(&mut s.ledger, &signed.signer.0);
     crate::blocklace_sync::provision_transfer_destinations(&mut s.ledger, &signed.turn.call_forest);
     let exec_result = crate::executor_setup::execute_via_producer(
@@ -3533,10 +3529,10 @@ async fn post_submit_signed_turn(
     // Capture the pre-turn actor/effect cells from the journal BEFORE resolving
     // it (the O(touched) stand-in for the old full `pre_ledger` clone).
     let pre_ledger = s.ledger.pre_turn_touched_ledger();
-    // MULTI-PARTY: restore the authoritative ledger to its pre-turn state NOW, so
-    // every subsequent path sees it untouched. SOLO keeps the journal armed and
-    // resolves it below on the receipt-append outcome.
-    if !is_solo {
+    // With active consensus, restore authoritative state NOW. The admission run
+    // proved the turn valid against the current pre-state; finalization owns the
+    // only real mutation, receipt append, and durable CommitRecord.
+    if consensus_active {
         s.ledger.rollback_restore_point();
     }
 
@@ -3546,7 +3542,11 @@ async fn post_submit_signed_turn(
             crate::metrics::record_turn_execution_duration(start.elapsed().as_secs_f64());
             crate::metrics::set_ledger_cell_count(s.ledger.len() as f64);
 
-            if let Some(ref mut solo) = s.solo_consensus
+            // Only blocklace-less immediate mode advances the legacy solo
+            // sequencing helper here. With active blocklace, ordering/finality
+            // owns height and nullifier persistence.
+            if !consensus_active
+                && let Some(ref mut solo) = s.solo_consensus
                 && solo.is_solo
             {
                 receipt.finality = dregg_turn::Finality::Tentative;
@@ -3561,17 +3561,13 @@ async fn post_submit_signed_turn(
             // committed this turn (the soundness boundary); no inline proving / no
             // inline re-check. The composed proof (rotated effect-vm leg) is built +
             // self-verified asynchronously off the lock by the prove pool below.
-            // Receipt-chain append: ONLY the operator's own agent (or solo, which is
-            // authoritative at submission) advances the node cipherclerk chain. A
-            // FOREIGN client's turn is decoupled — its authoritative receipt is the
-            // finalized pass on every node, mirroring the faucet's full-mode
-            // scratch-clone posture. Skipping the append avoids serializing clients
-            // through the node chain (and the node-head prev mismatch that would
-            // otherwise reject a client whose own chain differs from the node head).
-            if is_operator_agent || is_solo {
+            // Receipt-chain append belongs here only for deliberately blocklace-less
+            // immediate execution. Under active consensus—including n=1—the
+            // finalized executor appends the authoritative receipt and writes the
+            // atomic durable CommitRecord. Appending during admission would advance
+            // the chain before finalized re-execution and make the same turn stale.
+            if !consensus_active {
                 if let Err(err) = s.cclerk.append_receipt(receipt.clone()) {
-                    // SOLO: undo the in-place commit. MULTI-PARTY: already rolled
-                    // back above (no-op). Either way the ledger ends pre-turn.
                     s.ledger.rollback_restore_point();
                     crate::metrics::inc_turns_executed("rejected");
                     drop(s);
@@ -6808,8 +6804,7 @@ fn faucet_public_key() -> [u8; 32] {
 pub struct FaucetRequest {
     /// Hex-encoded 32-byte recipient cell ID.
     pub recipient: String,
-    /// Amount of computrons to transfer (max 10000 per request). Use 0 to
-    /// materialize a hosted devnet cell without claiming faucet funds.
+    /// Amount of computrons to transfer (1..=10000 per request).
     pub amount: u64,
     /// Optional hex-encoded Ed25519 public key for the recipient. When set,
     /// the node verifies `recipient == CellId::derive_raw(public_key, default_token_id)`
@@ -6878,11 +6873,8 @@ impl FaucetRateLimiter {
 ///
 /// Only enabled when `--enable-faucet` is set. Rate limited TWICE:
 /// * per recipient cell (1/min) — the original anti-drain bucket; and
-/// * per client IP (proxy-aware, F-1) — covering BOTH the funded and the
-///   `amount == 0` materialization paths. Without the per-IP gate, an attacker
-///   minting a fresh recipient id per request gets a fresh per-cell bucket every
-///   time (unbounded faucet drain), and the zero-amount path inserted unbounded
-///   stub cells into the ledger with NO limit at all.
+/// * per client IP (proxy-aware, F-1), preventing an attacker from minting a
+///   fresh recipient id per request to obtain a fresh per-cell bucket.
 ///
 /// Maximum 10000 computrons per request.
 async fn post_faucet(
@@ -6899,15 +6891,16 @@ async fn post_faucet(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Validate amount. A zero amount is allowed as a devnet materialization
-    // path for hosted cells; it does not consume the per-cell faucet limit.
-    if req.amount > 10_000 {
+    // A zero-amount "materialization" used to mutate the authoritative ledger
+    // without a finalized turn. Active blocklace is the sole writer, including
+    // committee size one, so reject that non-consensus shortcut fail-closed.
+    if req.amount == 0 || req.amount > 10_000 {
         return Ok(Json(FaucetResponse {
             success: false,
             tx_hash: None,
             turn_hash: None,
             amount: 0,
-            error: Some("amount must be between 0 and 10000".to_string()),
+            error: Some("amount must be between 1 and 10000".to_string()),
         }));
     }
 
@@ -6926,7 +6919,7 @@ async fn post_faucet(
     };
     let recipient_cell_id = dregg_cell::CellId(recipient_bytes);
 
-    let recipient_public_key = match &req.public_key {
+    match &req.public_key {
         Some(pk_hex) => {
             let pk: [u8; 32] = match hex_decode(pk_hex) {
                 Ok(pk) => pk,
@@ -6951,10 +6944,10 @@ async fn post_faucet(
                     error: Some("public_key does not derive the recipient cell".to_string()),
                 }));
             }
-            Some(pk)
+            ()
         }
-        None => None,
-    };
+        None => (),
+    }
 
     // Rate limit check.
     if req.amount > 0 && !limiter.check(&req.recipient).await {
@@ -6969,8 +6962,7 @@ async fn post_faucet(
 
     let mut s = state.write().await;
 
-    // MULTI-PARTY vs SOLO provisioning split. In a committee (n>1), consensus
-    // FINALIZATION is the single authoritative application of a turn — the SAME
+    // Consensus FINALIZATION is the single authoritative application of a turn — the SAME
     // `execute_finalized_turn` runs on every node and provisions any missing
     // cells DETERMINISTICALLY from the finalized turn's own data (see
     // `provision_transfer_destinations`). The faucet endpoint must therefore NOT
@@ -6979,11 +6971,11 @@ async fn post_faucet(
     // (the submitter would mint a canonical `with_balance(pk, …)` cell while peers
     // materialize a zero-pk stub at the same id — divergent ledger content the
     // attested root does not catch, because it commits only `cell.state`). So in
-    // multi-party mode all provisioning + execution below runs against a SCRATCH
+    // every mode all provisioning + execution below runs against a SCRATCH
     // CLONE purely to build the receipt/proof for the HTTP response; the
-    // authoritative ledger is untouched until finalization. Solo (n=1) has no
-    // finalization pass, so it provisions + commits authoritatively here.
-    let is_solo = s.solo_consensus.as_ref().is_some_and(|sc| sc.is_solo);
+    // authoritative ledger is untouched until finalization. Active blocklace
+    // finalizes n=1 as well; the historical direct-solo branch was a second writer
+    // and produced roots that its commit overlay could not reconstruct.
 
     // Ensure the faucet cell exists (create on first use). Uses the genesis-
     // derived faucet key so this is the SAME cell genesis mints the supply into;
@@ -6993,77 +6985,7 @@ async fn post_faucet(
     let faucet_pubkey = faucet_public_key();
     let faucet_cell_id = dregg_cell::CellId::derive_raw(&faucet_pubkey, &FAUCET_TOKEN_ID);
 
-    // Recipient provisioning. CROSS-NODE UNIFORMITY: in multi-party mode the
-    // recipient is provisioned by the finalized executor on every node from the
-    // turn data alone (the recipient's public key is NOT carried over consensus,
-    // so every node — including this submitter — must agree on the SAME provisioned
-    // cell). We therefore reuse the identical `remote_stub_with_id_and_balance`
-    // provisioning here (on the scratch clone) that `execute_finalized_turn` uses,
-    // so the receipt this node returns matches the authoritative finalized outcome.
-    // Solo mode mints the canonical hosted cell (with the known pk) directly, since
-    // it is the sole authority.
-    let recipient_created_authoritatively = is_solo && s.ledger.get(&recipient_cell_id).is_none();
-    let provision_recipient = |ledger: &mut dregg_cell::Ledger| {
-        if ledger.get(&recipient_cell_id).is_some() {
-            return;
-        }
-        let recipient_cell = match (is_solo, recipient_public_key) {
-            (true, Some(pk)) => {
-                let default_token_id = *blake3::hash(b"default").as_bytes();
-                dregg_cell::Cell::with_balance(pk, default_token_id, 0)
-            }
-            // Multi-party (or no known pk): the uniform stub provisioning every
-            // node applies in `execute_finalized_turn`.
-            _ => dregg_cell::Cell::remote_stub_with_id_and_balance(recipient_cell_id, 0),
-        };
-        let _ = ledger.insert_cell(recipient_cell);
-    };
-
-    if is_solo {
-        // Solo: provision authoritatively (no finalization pass).
-        if s.ledger.get(&faucet_cell_id).is_none() {
-            let faucet_cell =
-                dregg_cell::Cell::with_balance(faucet_pubkey, FAUCET_TOKEN_ID, 1_000_000);
-            let _ = s.ledger.insert_cell(faucet_cell);
-        }
-        provision_recipient(&mut s.ledger);
-    }
-
     let tx_hash = compute_faucet_activity_hash(&recipient_cell_id, req.amount);
-
-    if req.amount == 0 {
-        // Zero-amount is a devnet hosted-cell MATERIALIZATION convenience. There
-        // is no Transfer and no consensus turn, so in multi-party mode there is no
-        // finalized pass to provision the cell — materialize it authoritatively
-        // here regardless of mode (insert-if-absent; idempotent across nodes for a
-        // pk-derived id). This is the one provisioning the faucet still applies
-        // directly under multi-party, and it carries no value.
-        let recipient_created = if is_solo {
-            recipient_created_authoritatively
-        } else {
-            let created = s.ledger.get(&recipient_cell_id).is_none();
-            if created {
-                provision_recipient(&mut s.ledger);
-            }
-            created
-        };
-        if recipient_created {
-            push_committed_event(
-                &mut s,
-                tx_hash.clone(),
-                req.recipient.clone(),
-                vec!["faucet_materialized_cell".to_string()],
-                ActivityProofStatus::NotRequired,
-            );
-        }
-        return Ok(Json(FaucetResponse {
-            success: true,
-            tx_hash: Some(tx_hash),
-            turn_hash: None,
-            amount: 0,
-            error: None,
-        }));
-    }
 
     // Build a REAL faucet-signed Transfer turn and run it through the
     // executor, then gossip + submit to the blocklace — the same consensus
@@ -7130,11 +7052,7 @@ async fn post_faucet(
     // second faucet turn provisioned its destination but the transfer never funded it
     // (`found:true, balance:0`), silently breaking sustained faucet finality. `None`
     // matches the finalized expectation uniformly on all nodes.
-    let faucet_prev_receipt = if is_solo {
-        s.cclerk.receipt_chain().last().map(|r| r.receipt_hash())
-    } else {
-        None
-    };
+    let faucet_prev_receipt = None;
     let mut faucet_turn = Turn {
         agent: faucet_cell_id,
         nonce: faucet_nonce,
@@ -7173,31 +7091,21 @@ async fn post_faucet(
     s.ledger.begin_restore_point();
     let lean_producer_enabled = s.lean_producer_enabled;
 
-    // MULTI-PARTY: consensus FINALIZATION is the authoritative application of the
+    // Consensus FINALIZATION is the authoritative application of the
     // faucet turn (the SAME `execute_finalized_turn` runs on every node and emits
     // the attested root). Committing here would mutate ONLY this node's ledger —
     // advancing the faucet cell's nonce so the finalized re-execution is rejected
     // as a "nonce replay", and creating the recipient cell only locally so PEERS
     // reject the finalized Transfer as "destination not found" — both of which
-    // block cross-node commit (`latest_height` stuck at 0). So in full mode the
+    // block cross-node commit (`latest_height` stuck at 0). Admission therefore
     // in-place run is purely to build the receipt/proof for the HTTP response, and
-    // the journal rolls it back below, leaving the authoritative ledger untouched;
+    // runs only to validate/build the response and the journal rolls it back below,
+    // leaving the authoritative ledger untouched;
     // the finalized executor then applies the turn uniformly on all nodes (it
     // auto-materializes the Transfer destination identically on every node, see
-    // `provision_transfer_destinations` / `execute_finalized_turn`). Solo (n=1)
-    // keeps the direct authoritative commit — it has no separate finalization pass
-    // and already provisioned the faucet + recipient cells above.
-    let exec_result = if is_solo {
-        // ONE executor gate (#171): solo faucet turns commit through the same
-        // producer-aware path as every other ingress, authoritatively.
-        crate::executor_setup::execute_via_producer(
-            &executor,
-            &faucet_turn,
-            &mut s.ledger,
-            lean_producer_enabled,
-        )
-    } else {
-        // Full mode: receipt-only IN-PLACE execution, rolled back below so the
+    // `provision_transfer_destinations` / `execute_finalized_turn`).
+    let exec_result = {
+        // Admission-only IN-PLACE execution, rolled back below so the
         // authoritative ledger ends untouched (finalization is authoritative,
         // cross-node). Provision the Transfer destination — the IDENTICAL function
         // the finalized path uses on the SAME call forest — so the receipt-building
@@ -7225,112 +7133,18 @@ async fn post_faucet(
         )
     };
 
-    // Capture the pre-turn cells from the journal BEFORE resolving it (the
-    // O(touched) stand-in for the old full `pre_ledger` clone), then resolve:
-    // SOLO keeps the authoritative in-place commit; MULTI-PARTY restores the
-    // untouched ledger for finalization. Both drop the journal.
-    let pre_ledger = s.ledger.pre_turn_touched_ledger();
-    if is_solo {
-        s.ledger.commit_restore_point();
-    } else {
-        s.ledger.rollback_restore_point();
-    }
+    // Every committee size restores the untouched ledger for finalization.
+    s.ledger.rollback_restore_point();
 
     match exec_result {
-        dregg_turn::TurnResult::Committed { mut receipt, .. } => {
-            crate::metrics::set_ledger_cell_count(s.ledger.len() as f64);
-
-            // Solo mode: tentative finality + height advance, exactly like the
-            // /turn/submit commit path.
-            if let Some(ref mut solo) = s.solo_consensus
-                && solo.is_solo
-            {
-                receipt.finality = dregg_turn::Finality::Tentative;
-                let height = solo.height;
-                let _ = solo
-                    .nullifier_log
-                    .insert(turn_hash_bytes, turn_hash_bytes, height);
-                solo.advance_height();
-            }
-
-            // The faucet turn is a REAL committed turn: append its receipt to
-            // the chain and hand it to the async prove pool, the same pipeline as
-            // /turn/submit. Previously the receipt was dropped here, so a faucet
-            // turn never appeared in /api/receipts and could never reach
-            // has_proof:true — the exact silent gap the devnet quickstart hit.
-            // PATH-PRESERVE Phase 5b: the executor already validated + committed
-            // the turn (the soundness boundary); the composed proof (rotated leg)
-            // is built + self-verified off the lock. The attestation is best-effort
-            // for the faucet (the commit stands either way; an unattested faucet
-            // grant is a devnet-liveness issue, not a soundness one).
-            let appended = match s.cclerk.append_receipt(receipt.clone()) {
-                Ok(()) => true,
-                Err(err) => {
-                    tracing::warn!(
-                        turn_hash = %turn_hash_hex,
-                        error = %err,
-                        "faucet receipt could not be appended to the receipt chain"
-                    );
-                    false
-                }
-            };
-            let receipt_hash = receipt.receipt_hash();
-            // Build the rotated attestation material from the actor's before/after
-            // cells. In full mode the authoritative `s.ledger` was not mutated (the
-            // receipt was built against a scratch clone), so before==after for the
-            // single-cell faucet actor — correct for the rotated single-cell leg,
-            // whose per-row welds carry the transfer delta from the v1 sub-trace
-            // (the turn-invariant limbs are identical), exactly as the finalized
-            // cap-less note-spend leg does.
-            let pending_proof =
-                match prepare_rotatable_turn(&faucet_turn, &pre_ledger, &s.ledger, receipt_hash) {
-                    Ok(HttpWitnessOutcome::Rotatable(rotatable)) => Some(rotatable),
-                    Ok(HttpWitnessOutcome::NotRequired) => None,
-                    Err(err) => {
-                        tracing::warn!(
-                            turn_hash = %turn_hash_hex,
-                            error = %err,
-                            "faucet turn attestation prep failed; receipt stays \
-                             committed-but-unattested (has_proof will not flip)"
-                        );
-                        None
-                    }
-                };
-            let proof_status = if pending_proof.is_some() {
-                ActivityProofStatus::ProofPending
-            } else {
-                ActivityProofStatus::NotRequired
-            };
-
-            push_committed_event(
-                &mut s,
-                tx_hash.clone(),
-                req.recipient.clone(),
-                vec![format!("faucet_transfer:{}", req.amount)],
-                proof_status,
-            );
-
-            // Replicate through gossip + blocklace consensus.
+        dregg_turn::TurnResult::Committed { .. } => {
+            // Admission succeeded, but it is not a commit. Active blocklace
+            // finalization is the sole receipt/activity/durable-state writer for
+            // every committee size, including one. Submit the exact signed bytes
+            // and return an accepted handle; observers wait for the finalized
+            // receipt/ledger transition.
             let turn_data = postcard::to_stdvec(&signed).expect("SignedTurn serialization");
             drop(s);
-
-            // Async STARK attestation, off the lock — flips the receipt's
-            // has_proof once the pool lands the proof.
-            if appended {
-                if let Some(rotatable) = pending_proof {
-                    enqueue_async_proof(
-                        &state,
-                        rotatable,
-                        receipt.clone(),
-                        receipt_hash,
-                        turn_hash_hex.clone(),
-                    )
-                    .await;
-                }
-                state.emit(crate::state::NodeEvent::Receipt {
-                    hash: turn_hash_hex.clone(),
-                });
-            }
 
             let turn_data_for_gossip = turn_data.clone();
             if let Some(gossip) = state.gossip().await {

@@ -2,7 +2,7 @@ use dregg_cell::{ChildVkStrategy, FactoryRegistry};
 use dregg_types::CellId;
 use starbridge_castalia_membership::{
     CastaliaMemberApplicationV1, MembershipBirthError, castalia_membership_child_program_vk,
-    castalia_membership_factory,
+    castalia_membership_factory, castalia_membership_program,
 };
 
 const AUTHORITY: [u8; 32] = [0x41; 32];
@@ -16,11 +16,11 @@ fn application(authority: [u8; 32], factory_id: [u8; 32]) -> CastaliaMemberAppli
         official_dregg_cell_id: CellId::from_bytes([0x22; 32]),
         owner_pubkey: OWNER,
         application_kind: 7,
-        application_version: 3,
+        application_version: 1,
         application_nonce: 99,
         membership_class: 2,
         jurisdiction_code: 840,
-        application_flags: 5,
+        application_flags: 0,
         created_at: 1_700_000_000,
     }
 }
@@ -81,10 +81,53 @@ fn invalid_application_cannot_produce_issuable_params() {
 }
 
 #[test]
-fn sealed_deployment_installs_only_the_authority_bound_child_program_vk() {
+fn d0_application_values_fail_closed_before_birth() {
+    let factory = castalia_membership_factory(AUTHORITY).unwrap();
+    let valid = application(AUTHORITY, factory.factory_vk());
+
+    let mut wrong_kind = valid;
+    wrong_kind.application_kind = 8;
+    assert_eq!(
+        factory.creation_params(&wrong_kind),
+        Err(MembershipBirthError::UnsupportedApplicationKind)
+    );
+
+    let mut wrong_version = valid;
+    wrong_version.application_version = 3;
+    assert_eq!(
+        factory.creation_params(&wrong_version),
+        Err(MembershipBirthError::UnsupportedApplicationVersion)
+    );
+
+    let mut zero_nonce = valid;
+    zero_nonce.application_nonce = 0;
+    assert_eq!(
+        factory.creation_params(&zero_nonce),
+        Err(MembershipBirthError::MissingApplicationNonce)
+    );
+
+    for membership_class in [0, 3, u64::MAX] {
+        let mut invalid = valid;
+        invalid.membership_class = membership_class;
+        assert_eq!(
+            factory.creation_params(&invalid),
+            Err(MembershipBirthError::UnsupportedMembershipClass)
+        );
+    }
+
+    let mut unknown_flags = valid;
+    unknown_flags.application_flags = 1;
+    assert_eq!(
+        factory.creation_params(&unknown_flags),
+        Err(MembershipBirthError::UnknownApplicationFlags)
+    );
+}
+
+#[test]
+fn sealed_deployment_installs_only_the_authority_bound_full_child_program() {
     let factory = castalia_membership_factory(AUTHORITY).unwrap();
     let mut registry = FactoryRegistry::new();
-    let factory_vk = factory.deploy(&mut registry);
+    let factory_vk = factory.deploy_checked(&mut registry).unwrap();
     let descriptor = registry.get(&factory_vk).unwrap();
 
     assert_eq!(
@@ -96,6 +139,10 @@ fn sealed_deployment_installs_only_the_authority_bound_child_program_vk() {
     assert_eq!(
         descriptor.child_program_vk,
         Some(castalia_membership_child_program_vk(AUTHORITY))
+    );
+    assert_eq!(
+        registry.full_child_program(&factory_vk),
+        Some(&castalia_membership_program(AUTHORITY))
     );
 }
 
@@ -110,6 +157,11 @@ fn checked_deployment_is_idempotent_but_refuses_descriptor_conflicts() {
     assert_eq!(
         factory.deploy_checked(&mut registry),
         Ok(factory.factory_vk())
+    );
+    assert_eq!(
+        registry.full_child_program(&factory.factory_vk()),
+        Some(&castalia_membership_program(AUTHORITY)),
+        "checked deployment must bind the exact method-dispatched child program"
     );
 
     let mut conflicting = registry.get(&factory.factory_vk()).unwrap().clone();

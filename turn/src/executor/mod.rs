@@ -2058,6 +2058,27 @@ impl TurnExecutor {
     pub fn deploy_factory(&mut self, descriptor: dregg_cell::FactoryDescriptor) -> [u8; 32] {
         self.factory_registry.borrow_mut().deploy(descriptor)
     }
+
+    /// Deploy a factory together with its exact full child program after
+    /// validating the layered v2 child VK recipe.
+    pub fn deploy_factory_with_full_child_program_v2(
+        &mut self,
+        descriptor: dregg_cell::FactoryDescriptor,
+        program: dregg_cell::CellProgram,
+        air_fingerprint: [u8; 32],
+        verifier_fingerprint: dregg_cell::VerifierFingerprint,
+        proving_system_id: dregg_cell::ProvingSystemId,
+    ) -> Result<[u8; 32], dregg_cell::FactoryError> {
+        self.factory_registry
+            .borrow_mut()
+            .deploy_with_full_child_program_v2(
+                descriptor,
+                program,
+                air_fingerprint,
+                verifier_fingerprint,
+                proving_system_id,
+            )
+    }
 }
 
 // ─── Decomposed Implementation Modules ──────────────────────────────────────
