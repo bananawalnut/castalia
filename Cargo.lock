@@ -22777,6 +22777,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "starbridge-castalia-membership"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "dregg-cell",
+ "dregg-circuit",
+ "dregg-types",
+]
+
+[[package]]
 name = "starbridge-compartment-workflow-mandate"
 version = "0.1.0"
 dependencies = [

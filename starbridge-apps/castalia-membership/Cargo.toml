@@ -1,0 +1,15 @@
+[package]
+name = "starbridge-castalia-membership"
+version = "0.1.0"
+edition = "2024"
+description = "Castalia-owned per-member institutional membership cells"
+license = "AGPL-3.0-or-later"
+
+[lib]
+name = "starbridge_castalia_membership"
+
+[dependencies]
+dregg-cell = { path = "../../cell", default-features = false }
+dregg-circuit = { path = "../../circuit" }
+dregg-types = { path = "../../types" }
+blake3 = "1"
