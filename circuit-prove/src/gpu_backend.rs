@@ -4031,10 +4031,10 @@ pub fn production_gpu_recursion_enabled() -> bool {
 pub struct GpuRecursionLayerProof {
     pub proof: BatchStarkProof<GpuDreggRecursionConfig>,
     pub prover_data: Rc<CircuitProverData<GpuDreggRecursionConfig>>,
-    /// The lookup contexts produced by the exact CPU-config AIR construction
-    /// for this circuit. They are not serialized in `BatchStarkProof`, but a
-    /// parent recursion/shrink circuit consumes their precise expression order.
-    pub cpu_lookups: Vec<Lookups<BabyBear>>,
+    /// Genuine CPU-config prover data rebuilt from this exact verifier circuit,
+    /// packing, and constraint profile. `RecursionOutput` requires this data for
+    /// continuation; it cannot be re-tagged from the GPU-config prover data.
+    pub cpu_prover_data: Rc<CircuitProverData<DreggRecursionConfig>>,
     /// Wall-clock seconds of the config-independent prepare phase (verifier
     /// circuit build + table-AIR extraction + witness generation — identical
     /// CPU code in the CPU and GPU fold paths).
@@ -4044,16 +4044,17 @@ pub struct GpuRecursionLayerProof {
     pub prove_seconds: f64,
 }
 
-/// Rebuild only the cheap, non-serialized lookup portion of the CPU common
-/// data from the exact circuit AIRs. Constructing a full CPU `ProverData` here
-/// would also redo the CPU LDE/Merkle preprocessed commitment and erase much of
-/// the GPU win; the commitment and its metadata are already present, bit-exact,
-/// in the serialized GPU proof.
-fn cpu_recursion_lookups_for_circuit(
+/// Build the genuine CPU-config prover data required by `RecursionOutput` from
+/// the exact verifier circuit, table packing, and constraint profile used for
+/// the GPU proof. This intentionally performs the CPU preprocessed commitment:
+/// GPU-config prover data has a different Rust type and cannot be truthfully
+/// re-tagged, omitted, or replaced with a placeholder.
+fn cpu_recursion_prover_data_for_circuit(
     circuit: &Circuit<EF>,
     packing: &TablePacking,
     constraint_profile: ConstraintProfile,
-) -> Result<Vec<Lookups<BabyBear>>, String> {
+    cpu_config: &DreggRecursionConfig,
+) -> Result<CircuitProverData<DreggRecursionConfig>, String> {
     let preprocessors: Vec<Box<dyn NpoPreprocessor<BabyBear>>> = vec![
         poseidon2_preprocessor::<BabyBear>(),
         recompose_preprocessor::<BabyBear>(false),
@@ -4065,18 +4066,26 @@ fn cpu_recursion_lookups_for_circuit(
         builders.extend(expose_claim_air_builders::<DreggRecursionConfig, D>());
         builders
     };
-    let (airs_degrees, _, _) = get_airs_and_degrees_with_prep::<DreggRecursionConfig, EF, D>(
-        circuit,
-        packing,
-        &preprocessors,
-        &air_builders,
-        constraint_profile,
-    )
-    .map_err(|e| format!("cpu lookup-context AIR extraction failed: {e:?}"))?;
-    Ok(airs_degrees
+    let (airs_degrees, primitive_columns, non_primitive_columns) =
+        get_airs_and_degrees_with_prep::<DreggRecursionConfig, EF, D>(
+            circuit,
+            packing,
+            &preprocessors,
+            &air_builders,
+            constraint_profile,
+        )
+        .map_err(|e| format!("cpu prover-data AIR extraction failed: {e:?}"))?;
+    let (airs, degrees): (Vec<_>, Vec<_>) = airs_degrees.into_iter().unzip();
+    let ext_degrees: Vec<usize> = degrees
         .iter()
-        .map(|(air, _)| Lookups::<BabyBear>::from_air::<EF, _>(air))
-        .collect())
+        .map(|&degree| degree + cpu_config.is_zk())
+        .collect();
+    let prover_data = ProverData::from_airs_and_degrees(cpu_config, &airs, &ext_degrees);
+    Ok(CircuitProverData::new(
+        prover_data,
+        primitive_columns,
+        non_primitive_columns,
+    ))
 }
 
 /// Prove ONE recursion layer (the fold's per-step leaf-wrap / aggregation
@@ -4161,7 +4170,13 @@ where
         .map_err(|e| format!("gpu-fold-config table-AIR extraction failed: {e:?}"))?;
     let (airs, degrees): (Vec<_>, Vec<_>) = airs_degrees.into_iter().unzip();
     let ext_degrees: Vec<usize> = degrees.iter().map(|&d| d + gpu_config.is_zk()).collect();
-    let cpu_lookups = cpu_recursion_lookups_for_circuit(&circuit, &packing, constraint_profile)?;
+    let cpu_output_config = ir2_leaf_wrap_config();
+    let cpu_prover_data = cpu_recursion_prover_data_for_circuit(
+        &circuit,
+        &packing,
+        constraint_profile,
+        &cpu_output_config,
+    )?;
 
     // (3) Witness generation: the FRI private data (the child's BabyBear Merkle
     // siblings) is injected via the INNER config — it describes the proof being
@@ -4212,7 +4227,7 @@ where
     Ok(GpuRecursionLayerProof {
         proof,
         prover_data: Rc::new(circuit_prover_data),
-        cpu_lookups,
+        cpu_prover_data: Rc::new(cpu_prover_data),
         prepare_seconds,
         prove_seconds: t_prove.elapsed().as_secs_f64(),
     })
@@ -4305,7 +4320,13 @@ pub fn prove_recursion_aggregation_gpu_with_expose(
         .map_err(|e| format!("gpu aggregation table-AIR extraction failed: {e:?}"))?;
     let (airs, degrees): (Vec<_>, Vec<_>) = airs_degrees.into_iter().unzip();
     let ext_degrees: Vec<usize> = degrees.iter().map(|&d| d + gpu_config.is_zk()).collect();
-    let cpu_lookups = cpu_recursion_lookups_for_circuit(&circuit, &packing, constraint_profile)?;
+    let cpu_output_config = ir2_leaf_wrap_config();
+    let cpu_prover_data = cpu_recursion_prover_data_for_circuit(
+        &circuit,
+        &packing,
+        constraint_profile,
+        &cpu_output_config,
+    )?;
 
     let traces = {
         let mut public_inputs = left_result
@@ -4375,7 +4396,7 @@ pub fn prove_recursion_aggregation_gpu_with_expose(
     Ok(GpuRecursionLayerProof {
         proof,
         prover_data: Rc::new(circuit_prover_data),
-        cpu_lookups,
+        cpu_prover_data: Rc::new(cpu_prover_data),
         prepare_seconds,
         prove_seconds: t_prove.elapsed().as_secs_f64(),
     })
@@ -4432,9 +4453,9 @@ fn gpu_recursion_proof_to_cpu_with_lookups(
 /// into the unchanged `DreggRecursionConfig` type consumed by every parent and
 /// CPU verifier.
 ///
-/// The prover-only cache is intentionally omitted on the GPU boundary.  A
-/// `RecursionOutput` continuation reads its proof's own `stark_common`; the
-/// optional cache is neither serialized nor consulted by the fold/verify path.
+/// The returned `RecursionOutput` carries genuine CPU-config prover data rebuilt
+/// from the exact verifier circuit. GPU-config prover data cannot be re-tagged:
+/// the pinned recursion API requires the CPU-config continuation object.
 pub fn prove_recursion_layer_auto_with_expose<A>(
     input: &RecursionInput<'_, DreggRecursionConfig, A>,
     inner_config: &DreggRecursionConfig,
@@ -4464,7 +4485,10 @@ where
 
     let gpu_config = create_gpu_ir2_leaf_wrap_config();
     let gpu = prove_recursion_layer_gpu_with_expose(input, inner_config, &gpu_config, expose)?;
-    let cpu_proof = gpu_recursion_proof_to_cpu_with_lookups(&gpu.proof, &gpu.cpu_lookups)?;
+    let cpu_proof = gpu_recursion_proof_to_cpu_with_lookups(
+        &gpu.proof,
+        &gpu.cpu_prover_data.common_data().lookups,
+    )?;
     GPU_RECURSION_LEAF_PREP_NS.fetch_add(
         seconds_to_ns_saturating(gpu.prepare_seconds),
         Ordering::Relaxed,
@@ -4474,7 +4498,7 @@ where
         Ordering::Relaxed,
     );
     GPU_RECURSION_LAYERS.fetch_add(1, Ordering::Relaxed);
-    Ok(RecursionOutput(cpu_proof, None))
+    Ok(RecursionOutput(cpu_proof, gpu.cpu_prover_data))
 }
 
 /// [`prove_recursion_layer_auto_with_expose`] without an exposed-claim hook.
@@ -4531,7 +4555,10 @@ pub fn prove_recursion_aggregation_auto_with_expose(
         &gpu_config,
         expose,
     )?;
-    let cpu_proof = gpu_recursion_proof_to_cpu_with_lookups(&gpu.proof, &gpu.cpu_lookups)?;
+    let cpu_proof = gpu_recursion_proof_to_cpu_with_lookups(
+        &gpu.proof,
+        &gpu.cpu_prover_data.common_data().lookups,
+    )?;
     GPU_RECURSION_AGG_PREP_NS.fetch_add(
         seconds_to_ns_saturating(gpu.prepare_seconds),
         Ordering::Relaxed,
@@ -4541,7 +4568,7 @@ pub fn prove_recursion_aggregation_auto_with_expose(
         Ordering::Relaxed,
     );
     GPU_RECURSION_LAYERS.fetch_add(1, Ordering::Relaxed);
-    Ok(RecursionOutput(cpu_proof, None))
+    Ok(RecursionOutput(cpu_proof, gpu.cpu_prover_data))
 }
 
 /// The GPU twin of the recursion backend's non-primitive prover registration —
