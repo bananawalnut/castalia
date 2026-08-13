@@ -12,6 +12,7 @@
 
 pub mod api;
 pub mod blocklace_sync;
+pub mod castalia_membership;
 pub mod catchup;
 pub mod channels_service;
 pub mod committee_replay;
@@ -2310,7 +2311,16 @@ async fn run_node(
                                 "genesis.json does not carry a valid explicit consensus-time-v1 policy"
                             ),
                         }
+                        let castalia_membership_authority =
+                            match castalia_membership::authority_from_genesis(&genesis) {
+                                Ok(authority) => authority,
+                                Err(error) => {
+                                    error!(error = %error, "invalid Castalia membership genesis authority; refusing startup");
+                                    std::process::exit(1);
+                                }
+                            };
                         let mut s = node_state.write().await;
+                        s.castalia_membership_authority = castalia_membership_authority;
                         // Set committee_epoch BEFORE loading keys so the
                         // first federation_id derivation uses the correct
                         // epoch.

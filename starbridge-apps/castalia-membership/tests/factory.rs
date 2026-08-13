@@ -17,11 +17,11 @@ fn application() -> CastaliaMemberApplicationV1 {
         official_dregg_cell_id: CellId::from_bytes([0x22; 32]),
         owner_pubkey: OWNER,
         application_kind: 7,
-        application_version: 3,
+        application_version: 1,
         application_nonce: 99,
         membership_class: 2,
         jurisdiction_code: 840,
-        application_flags: 5,
+        application_flags: 0,
         created_at: 1_700_000_000,
     }
 }

@@ -535,6 +535,10 @@ pub struct NodeStateInner {
     /// Maps verification key hashes to deployed CellPrograms. Used by the executor
     /// to verify proof-carrying turns against custom programs.
     pub program_registry: ProgramRegistry,
+    /// Optional Castalia institutional authority pinned by genesis. Every
+    /// production executor reconstructs its exact membership factory; boot never
+    /// creates a member cell.
+    pub castalia_membership_authority: Option<[u8; 32]>,
 
     // ─── Stingray Budget Coordination ─────────────────────────────────────────
     /// Per-agent budget coordinators for bounded-counter resource metering.
@@ -1316,6 +1320,7 @@ impl NodeState {
             }
             Ok(None) => {
                 tracing::info!("no ledger checkpoint found, starting with empty ledger");
+
                 (Ledger::new(), 0)
             }
             Err(e) => {
@@ -1459,6 +1464,7 @@ impl NodeState {
                 pir_index_cache: None,
                 discharge_gateway: None,
                 program_registry,
+                castalia_membership_authority: None,
                 budget_coordinators: HashMap::new(),
                 fast_unlock_manager: None,
                 silo_id,
@@ -1657,6 +1663,7 @@ impl NodeState {
                 pir_index_cache: None,
                 discharge_gateway: None,
                 program_registry,
+                castalia_membership_authority: None,
                 budget_coordinators: HashMap::new(),
                 fast_unlock_manager: None,
                 silo_id,
@@ -1816,6 +1823,7 @@ impl NodeState {
             }
         };
         let recovered_root = crate::blocklace_sync::canonical_ledger_root(&s.ledger);
+
         if recovered_root == expected {
             tracing::info!(
                 cells = s.ledger.len(),

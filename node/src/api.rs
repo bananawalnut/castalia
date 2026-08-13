@@ -5607,6 +5607,10 @@ async fn submit_signed_turn(
     let action_count = signed.turn.call_forest.action_count();
     let signed_for_gossip = signed.clone();
 
+    // Consensus finalization is the sole durable writer whenever a blocklace
+    // handle is active, including a committee of one. Admission still executes
+    // against the live pre-state to fail closed, but its mutations are a dry run.
+    let consensus_active = state.blocklace().await.is_some();
     let mut s = state.write().await;
     if !s.unlocked {
         return Err(StatusCode::FORBIDDEN);
@@ -5662,6 +5666,7 @@ async fn submit_signed_turn(
             crate::metrics::inc_turns_executed("committed");
             crate::metrics::record_turn_execution_duration(start.elapsed().as_secs_f64());
             crate::metrics::set_ledger_cell_count(s.ledger.len() as f64);
+
 
             // F-DOS-1 / PATH-PRESERVE Phase 5b: the executor already validated +
             // committed this turn (the soundness boundary); no inline proving / no
@@ -9146,8 +9151,7 @@ pub(crate) fn faucet_public_key() -> [u8; 32] {
 pub struct FaucetRequest {
     /// Hex-encoded 32-byte recipient cell ID.
     pub recipient: String,
-    /// Amount of computrons to transfer (max 10000 per request). Use 0 to
-    /// materialize a hosted devnet cell without claiming faucet funds.
+    /// Amount of computrons to transfer (1..=10000 per request).
     pub amount: u64,
     /// Optional hex-encoded Ed25519 public key for the recipient. When set,
     /// the node verifies `recipient == CellId::derive_raw(public_key, default_token_id)`
@@ -9216,11 +9220,8 @@ impl FaucetRateLimiter {
 ///
 /// Only enabled when `--enable-faucet` is set. Rate limited TWICE:
 /// * per recipient cell (1/min) — the original anti-drain bucket; and
-/// * per client IP (proxy-aware, F-1) — covering BOTH the funded and the
-///   `amount == 0` materialization paths. Without the per-IP gate, an attacker
-///   minting a fresh recipient id per request gets a fresh per-cell bucket every
-///   time (unbounded faucet drain), and the zero-amount path inserted unbounded
-///   stub cells into the ledger with NO limit at all.
+/// * per client IP (proxy-aware, F-1), preventing an attacker from minting a
+///   fresh recipient id per request to obtain a fresh per-cell bucket.
 ///
 /// Maximum 10000 computrons per request.
 async fn post_faucet(
@@ -9237,15 +9238,16 @@ async fn post_faucet(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Validate amount. A zero amount is allowed as a devnet materialization
-    // path for hosted cells; it does not consume the per-cell faucet limit.
-    if req.amount > 10_000 {
+    // A zero-amount "materialization" used to mutate the authoritative ledger
+    // without a finalized turn. Active blocklace is the sole writer, including
+    // committee size one, so reject that non-consensus shortcut fail-closed.
+    if req.amount == 0 || req.amount > 10_000 {
         return Ok(Json(FaucetResponse {
             success: false,
             tx_hash: None,
             turn_hash: None,
             amount: 0,
-            error: Some("amount must be between 0 and 10000".to_string()),
+            error: Some("amount must be between 1 and 10000".to_string()),
         }));
     }
 
@@ -9264,7 +9266,7 @@ async fn post_faucet(
     };
     let recipient_cell_id = dregg_cell::CellId(recipient_bytes);
 
-    let recipient_public_key = match &req.public_key {
+    match &req.public_key {
         Some(pk_hex) => {
             let pk: [u8; 32] = match hex_decode(pk_hex) {
                 Ok(pk) => pk,
@@ -9289,10 +9291,10 @@ async fn post_faucet(
                     error: Some("public_key does not derive the recipient cell".to_string()),
                 }));
             }
-            Some(pk)
+            ()
         }
-        None => None,
-    };
+        None => (),
+    }
 
     // Rate limit check.
     if req.amount > 0 && !limiter.check(&req.recipient).await {

@@ -20474,6 +20474,7 @@ fn build_federation_receipt(
 /// Folds each cell's id + state-hash into a domain-separated BLAKE3 hash,
 /// sorted lexicographically by cell id for determinism. This is the
 /// `merkle_root` field carried in [`dregg_types::AttestedRoot`].
+
 /// The COMPLETE set of cell ids whose CONTENT differs between two ledgers — the
 /// A1 off-lock execution path's authoritative touched set.
 ///
@@ -20596,8 +20597,30 @@ pub(crate) fn provision_transfer_destinations(
     ledger: &mut dregg_cell::Ledger,
     call_forest: &dregg_turn::CallForest,
 ) {
+    // A transfer may fund a cell born by another effect in the same atomic
+    // forest. Pre-provisioning that deterministic id as a remote stub would
+    // make the real creation collide and reject the whole turn.
+    let created_ids: std::collections::HashSet<dregg_cell::CellId> = call_forest
+        .total_effects()
+        .into_iter()
+        .filter_map(|effect| match effect {
+            dregg_turn::Effect::CreateCell {
+                public_key,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(public_key, token_id)),
+            dregg_turn::Effect::CreateCellFromFactory {
+                owner_pubkey,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(owner_pubkey, token_id)),
+            _ => None,
+        })
+        .collect();
+
     for effect in call_forest.total_effects() {
         if let dregg_turn::Effect::Transfer { from, to, .. } = effect
+            && !created_ids.contains(to)
             && ledger.get(to).is_none()
         {
             // THE STUB'S ASSET IS THE MOVED ASSET, AND IT COMES FROM THE LOCAL
@@ -20625,6 +20648,55 @@ pub(crate) fn provision_transfer_destinations(
                 dregg_cell::Cell::remote_stub_with_id_pk_token_balance(*to, [0u8; 32], token_id, 0);
             let _ = ledger.insert_cell(stub);
         }
+    }
+}
+
+#[cfg(test)]
+mod transfer_destination_provisioning_tests {
+    use super::provision_transfer_destinations;
+    use dregg_cell::{CellId, CellMode, FactoryCreationParams, Ledger};
+    use dregg_sdk::AgentCipherclerk;
+    use dregg_turn::Effect;
+    use zeroize::Zeroizing;
+
+    #[test]
+    fn factory_created_transfer_destination_is_not_preprovisioned_as_stub() {
+        let clerk = AgentCipherclerk::from_key_bytes(Zeroizing::new([0x19; 32]));
+        let issuer = clerk.cell_id("default");
+        let owner_pubkey = [0x51; 32];
+        let token_id = [0x72; 32];
+        let child = CellId::derive_raw(&owner_pubkey, &token_id);
+        let params = FactoryCreationParams {
+            mode: CellMode::Hosted,
+            program_vk: Some([0x41; 32]),
+            initial_fields: Vec::new(),
+            initial_caps: Vec::new(),
+            owner_pubkey,
+        };
+        let mut turn = clerk.create_from_factory(
+            issuer,
+            [0x31; 32],
+            owner_pubkey,
+            token_id,
+            params,
+            &[0x91; 32],
+        );
+        turn.call_forest.roots[0]
+            .action
+            .effects
+            .push(Effect::Transfer {
+                from: issuer,
+                to: child,
+                amount: 1,
+            });
+        let mut ledger = Ledger::new();
+
+        provision_transfer_destinations(&mut ledger, &turn.call_forest);
+
+        assert!(
+            ledger.get(&child).is_none(),
+            "factory birth must own creation of its deterministic child id"
+        );
     }
 }
 

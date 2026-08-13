@@ -74,7 +74,7 @@ fn canonical_bytes(factory_id: [u8; 32], child_program_vk: [u8; 32], nonce: u64)
     bytes.extend_from_slice(&child_program_vk);
     bytes.extend_from_slice(&OFFICIAL_CELL);
     bytes.extend_from_slice(&OWNER);
-    for value in [7, 3, nonce, 2, 840, 5, 1_700_000_000] {
+    for value in [7, 1, nonce, 2, 840, 0, 1_700_000_000] {
         bytes.extend_from_slice(&value.to_le_bytes());
     }
     bytes
@@ -111,11 +111,11 @@ fn application_factory_vector_is_independently_verifiable() {
         OFFICIAL_CELL
     );
     assert_eq!(u64_value(VECTOR, "applicationKind"), 7);
-    assert_eq!(u64_value(VECTOR, "applicationVersion"), 3);
+    assert_eq!(u64_value(VECTOR, "applicationVersion"), 1);
     assert_eq!(u64_value(VECTOR, "applicationNonce"), 99);
     assert_eq!(u64_value(VECTOR, "membershipClass"), 2);
     assert_eq!(u64_value(VECTOR, "jurisdictionCode"), 840);
-    assert_eq!(u64_value(VECTOR, "applicationFlags"), 5);
+    assert_eq!(u64_value(VECTOR, "applicationFlags"), 0);
     assert_eq!(u64_value(VECTOR, "createdAt"), 1_700_000_000);
 
     let factory_id = bytes32(&string_value(VECTOR, "factoryId"));
@@ -145,11 +145,11 @@ fn application_factory_vector_is_independently_verifiable() {
         (0, MAGIC_CASTMEM1),
         (1, CASTALIA_MEMBERSHIP_SCHEMA_VERSION),
         (2, 7),
-        (3, 3),
+        (3, 1),
         (4, 99),
         (5, 2),
         (6, 840),
-        (7, 5),
+        (7, 0),
         (8, limbs[0]),
         (9, limbs[1]),
         (10, limbs[2]),

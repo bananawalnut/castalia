@@ -792,7 +792,28 @@ impl TurnExecutor {
         // granting access to its own cell is authorized by the signed
         // action (the cell's owner consents). For cross-cell grants the
         // granter must hold an explicit c-list entry pointing at the
-        // target.
+        // target, except for the tightly-bound bootstrap below.
+        //
+        // A factory birth may atomically install reach from the owner's actor
+        // cell to its newly-created child. This avoids an impossible bootstrap
+        // cycle while granting no third-party authority: the journal proves the
+        // target was created earlier in THIS turn, the signed actor is the
+        // action target and grantor, and both cells carry the same nonzero owner
+        // public key.
+        let same_turn_same_owner_bootstrap = cap.target != *from
+            && from == actor
+            && from == action_target
+            && journal.entries().iter().any(
+                |entry| matches!(entry, JournalEntry::CreateCell { cell } if *cell == cap.target),
+            )
+            && ledger
+                .get(from)
+                .zip(ledger.get(&cap.target))
+                .is_some_and(|(grantor, newborn)| {
+                    grantor.public_key() != &[0u8; 32]
+                        && grantor.public_key() == newborn.public_key()
+                });
+
         if cap.target == *from {
             // Self-grant: skip c-list lookup; the signature on the
             // action proves the cell owner consents to share access
@@ -801,6 +822,10 @@ impl TurnExecutor {
             // strongest possible ON EVERY AXIS: permissions ⊤, mask
             // EFFECT_ALL, expiry unbounded) — any requested mask/expiry
             // is an attenuation of it.
+        } else if same_turn_same_owner_bootstrap {
+            // The owner-signed atomic birth is the parent authority. The
+            // requested cap may still be attenuated (Castalia uses only the
+            // state-writer facet); installation below preserves it faithfully.
         } else {
             let held_cap = from_cell
                 .capabilities
@@ -3620,7 +3645,10 @@ impl TurnExecutor {
         }
         .in_asset(asset);
 
-        // Set initial fields.
+        // Set initial numeric fields using the same canonical 32-byte encoding
+        // used by state transitions and program predicates: unsigned big-endian
+        // in the final eight bytes. The constructor parameter hash remains its
+        // own little-endian wire commitment; it does not define field layout.
         for (idx, val) in &params.initial_fields {
             let idx = *idx as usize;
             if idx < dregg_cell::state::STATE_SLOTS {

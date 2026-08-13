@@ -849,6 +849,18 @@ pub enum FactoryError {
     },
     /// Creation params supplied more than one initial value for the same field.
     DuplicateInitialField { field_index: u32 },
+    /// A factory VK is already bound to different descriptor content.
+    DescriptorConflict {
+        factory_vk: [u8; 32],
+        existing_hash: [u8; 32],
+        proposed_hash: [u8; 32],
+    },
+    /// A factory VK is already bound to different full child-program bytes.
+    FullChildProgramConflict {
+        factory_vk: [u8; 32],
+        existing_program_hash: [u8; 32],
+        proposed_program_hash: [u8; 32],
+    },
 }
 
 impl std::fmt::Display for FactoryError {
@@ -915,6 +927,16 @@ impl std::fmt::Display for FactoryError {
                     field_index
                 )
             }
+            FactoryError::DescriptorConflict { factory_vk, .. } => write!(
+                f,
+                "factory descriptor conflict for VK {:02x}{:02x}...",
+                factory_vk[0], factory_vk[1]
+            ),
+            FactoryError::FullChildProgramConflict { factory_vk, .. } => write!(
+                f,
+                "full child-program conflict for factory VK {:02x}{:02x}...",
+                factory_vk[0], factory_vk[1]
+            ),
         }
     }
 }
@@ -926,6 +948,10 @@ impl std::error::Error for FactoryError {}
 pub struct FactoryRegistry {
     /// Deployed factory descriptors, keyed by factory VK hash.
     pub descriptors: std::collections::HashMap<[u8; 32], FactoryDescriptor>,
+    /// Exact full child programs whose layered VK was checked against the
+    /// deployed descriptor. Factories without an entry retain the legacy
+    /// `state_constraints` → `CellProgram::Predicate` birth behavior.
+    pub full_child_programs: std::collections::HashMap<[u8; 32], CellProgram>,
     /// Creation counts per epoch: (factory_vk, epoch) -> count.
     pub creation_counts: std::collections::HashMap<([u8; 32], u64), u64>,
     /// Current epoch number.
@@ -1422,6 +1448,55 @@ impl FactoryRegistry {
     /// Get a factory descriptor by VK hash.
     pub fn get(&self, factory_vk: &[u8; 32]) -> Option<&FactoryDescriptor> {
         self.descriptors.get(factory_vk)
+    }
+
+    /// Return the exact full child program bound to this factory, if one was
+    /// deployed through [`Self::deploy_with_full_child_program_v2`].
+    pub fn full_child_program(&self, factory_vk: &[u8; 32]) -> Option<&CellProgram> {
+        self.full_child_programs.get(factory_vk)
+    }
+
+    /// Atomically deploy a descriptor and its exact full child program after
+    /// recomputing the layered v2 VK recipe. Existing descriptor/program
+    /// conflicts fail closed; no caller-supplied unchecked VK is trusted.
+    pub fn deploy_with_full_child_program_v2(
+        &mut self,
+        descriptor: FactoryDescriptor,
+        program: CellProgram,
+        air_fingerprint: [u8; 32],
+        verifier_fingerprint: VerifierFingerprint,
+        proving_system_id: ProvingSystemId,
+    ) -> Result<[u8; 32], FactoryError> {
+        descriptor.validate_child_vk_canonical_v2(
+            &program,
+            air_fingerprint,
+            verifier_fingerprint,
+            proving_system_id,
+        )?;
+        let factory_vk = descriptor.factory_vk;
+        if let Some(existing) = self.descriptors.get(&factory_vk)
+            && existing != &descriptor
+        {
+            return Err(FactoryError::DescriptorConflict {
+                factory_vk,
+                existing_hash: existing.hash(),
+                proposed_hash: descriptor.hash(),
+            });
+        }
+        if let Some(existing) = self.full_child_programs.get(&factory_vk)
+            && existing != &program
+        {
+            return Err(FactoryError::FullChildProgramConflict {
+                factory_vk,
+                existing_program_hash: canonical_program_vk(existing),
+                proposed_program_hash: canonical_program_vk(&program),
+            });
+        }
+        self.descriptors.entry(factory_vk).or_insert(descriptor);
+        self.full_child_programs
+            .entry(factory_vk)
+            .or_insert(program);
+        Ok(factory_vk)
     }
 
     /// Record a creation and check budget.
