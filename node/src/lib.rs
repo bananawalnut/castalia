@@ -55,6 +55,7 @@ pub mod identity_export;
 #[cfg(test)]
 mod mailbox_crank_e2e;
 pub mod mcp;
+pub mod membership_inspection;
 pub mod metrics;
 #[cfg(test)]
 mod node_integrator_e2e;

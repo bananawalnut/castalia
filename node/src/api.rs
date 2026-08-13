@@ -4264,6 +4264,9 @@ pub struct CellProofQuery {
 pub struct CellProofResponse {
     /// The cell view — byte-identical to `GET /api/cell/{id}`.
     pub cell: CellDetailResponse,
+    /// Exact lowercase-hex canonical `postcard(Cell)` bytes. Unlike the JSON view,
+    /// these bytes hash directly to the target leaf and can therefore be authenticated.
+    pub cell_bytes: String,
     /// `canonical_ledger_root` of the SERVED (current) ledger. `leaves` reconstruct
     /// exactly this; the verifier recomputes the flat root from `leaves` and checks
     /// equality.
@@ -4289,6 +4292,39 @@ pub struct CellProofResponse {
     /// root AND that root carries a `>= threshold` quorum. A consumer may gate on this
     /// or recompute it from the fields above.
     pub is_attested: bool,
+    /// Exact lowercase-hex `postcard(StoredAttestedRoot)` carrying the committee's
+    /// hybrid finalization quorum. Present only when it binds the served root and has
+    /// a nonempty quorum artifact. A verifier must still re-check it under pinned rosters.
+    pub attested_root_bytes: Option<String>,
+}
+
+fn authenticated_cell_artifacts(
+    cell: &dregg_cell::Cell,
+    attested_root: Option<&dregg_persist::federation::StoredAttestedRoot>,
+    served_root: [u8; 32],
+) -> Result<(String, Option<String>), StatusCode> {
+    let cell_bytes = postcard::to_stdvec(cell).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let attested_root_bytes = attested_root
+        .filter(|root| root.merkle_root == served_root)
+        .filter(|root| root.threshold > 0)
+        .filter(|root| root.has_finalization_quorum())
+        .map(postcard::to_stdvec)
+        .transpose()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map(|bytes| hex_encode_var(&bytes));
+    Ok((hex_encode_var(&cell_bytes), attested_root_bytes))
+}
+
+fn bounded_inspection_leaves(
+    leaves: Vec<([u8; 32], [u8; 32])>,
+) -> Result<Vec<(String, String)>, StatusCode> {
+    if leaves.len() > crate::membership_inspection::MAX_INSPECTION_LEAVES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    Ok(leaves
+        .into_iter()
+        .map(|(cell_id, leaf_hash)| (hex_encode(&cell_id), hex_encode(&leaf_hash)))
+        .collect())
 }
 
 /// GET /api/cell/{id}/proof — a cell-inclusion proof against the flat ledger root.
@@ -4311,20 +4347,17 @@ async fn get_cell_proof(
     let cell_id_bytes: [u8; 32] = hex_decode(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let cell_id = dregg_cell::CellId(cell_id_bytes);
 
-    let cell = cell_detail_response(id, s.ledger.get(&cell_id));
+    let canonical_cell = s.ledger.get(&cell_id).ok_or(StatusCode::NOT_FOUND)?;
+    let cell = cell_detail_response(id, Some(canonical_cell));
 
     // Full sorted leaf set + flat root of the CURRENT ledger. Construction is
     // byte-identical to the attested root (both fold through
     // `canonical_ledger_root_from_leaves`), so a served root that equals an attested
     // root is a genuine match, not a coincidence of encoding.
     let leaf_entries = dregg_persist::canonical_ledger_leaves(&s.ledger);
-    let merkle_root = hex_encode(&dregg_persist::canonical_ledger_root_from_leaves(
-        &leaf_entries,
-    ));
-    let leaves: Vec<(String, String)> = leaf_entries
-        .iter()
-        .map(|(cid, h)| (hex_encode(cid), hex_encode(h)))
-        .collect();
+    let merkle_root_bytes = dregg_persist::canonical_ledger_root_from_leaves(&leaf_entries);
+    let merkle_root = hex_encode(&merkle_root_bytes);
+    let leaves = bounded_inspection_leaves(leaf_entries)?;
 
     // Latest quorum-attested root (may lag the served ledger).
     let latest = s.store.latest_attested_root().ok().flatten();
@@ -4347,12 +4380,17 @@ async fn get_cell_proof(
         }
     }
 
-    let is_attested = !attested_merkle_root.is_empty()
-        && attested_merkle_root == merkle_root
-        && quorum >= threshold;
+    let is_attested = latest.as_ref().is_some_and(|root| {
+        root.merkle_root == merkle_root_bytes
+            && root.threshold > 0
+            && root.has_finalization_quorum()
+    });
+    let (cell_bytes, attested_root_bytes) =
+        authenticated_cell_artifacts(canonical_cell, latest.as_ref(), merkle_root_bytes)?;
 
     Ok(Json(CellProofResponse {
         cell,
+        cell_bytes,
         merkle_root,
         leaves,
         height: attested_height,
@@ -4361,6 +4399,7 @@ async fn get_cell_proof(
         quorum,
         threshold,
         is_attested,
+        attested_root_bytes,
     }))
 }
 
@@ -10414,6 +10453,77 @@ mod tests {
         );
         assert_eq!(balance_of(&s, &payer_id), 1_000, "ledger must be untouched");
         assert_eq!(balance_of(&s, &recipient_id), 0, "ledger must be untouched");
+    }
+
+    #[test]
+    fn authenticated_cell_artifacts_emit_exact_cell_bytes_and_only_bound_quorums() {
+        use dregg_persist::{QuorumSignature, StoredAttestedRoot};
+        use dregg_types::{FederationId, PublicKey, Signature};
+
+        let cell = dregg_cell::Cell::new_hosted([0x11; 32], [0x22; 32]);
+        let exact_cell = postcard::to_stdvec(&cell).unwrap();
+        let root = [0x33; 32];
+        let mut attested = StoredAttestedRoot {
+            merkle_root: root,
+            note_tree_root: None,
+            nullifier_set_root: None,
+            height: 7,
+            timestamp: 1_700_000_000,
+            blocklace_block_id: Some([0x44; 32]),
+            finality_round: Some(1),
+            quorum_signatures: vec![],
+            threshold_qc: None,
+            threshold: 1,
+            federation_id: FederationId([0x55; 32]),
+            receipt_stream_root: None,
+            finalization_quorum: vec![],
+        };
+
+        let (cell_hex, certificate) =
+            authenticated_cell_artifacts(&cell, Some(&attested), root).unwrap();
+        assert_eq!(hex_decode_var(&cell_hex).unwrap(), exact_cell);
+        assert!(
+            certificate.is_none(),
+            "a trailing/count-only root is not a certificate"
+        );
+
+        attested.finalization_quorum.push(QuorumSignature {
+            voter: PublicKey([0x66; 32]),
+            signature: Signature([0x77; 64]),
+            ml_dsa_pubkey: vec![0x88; 1952],
+            pq_signature: vec![0x99; 3309],
+        });
+        let expected = postcard::to_stdvec(&attested).unwrap();
+        let (_, certificate) = authenticated_cell_artifacts(&cell, Some(&attested), root).unwrap();
+        assert_eq!(hex_decode_var(&certificate.unwrap()).unwrap(), expected);
+
+        attested.threshold = 0;
+        let (_, certificate) = authenticated_cell_artifacts(&cell, Some(&attested), root).unwrap();
+        assert!(
+            certificate.is_none(),
+            "zero-threshold evidence is never a certificate"
+        );
+        attested.threshold = 1;
+
+        let (_, certificate) =
+            authenticated_cell_artifacts(&cell, Some(&attested), [0xAA; 32]).unwrap();
+        assert!(
+            certificate.is_none(),
+            "a certificate for another root must be omitted"
+        );
+
+        let at_limit =
+            vec![([0x01; 32], [0x02; 32]); crate::membership_inspection::MAX_INSPECTION_LEAVES];
+        assert_eq!(
+            bounded_inspection_leaves(at_limit).unwrap().len(),
+            crate::membership_inspection::MAX_INSPECTION_LEAVES
+        );
+        let over_limit =
+            vec![([0x01; 32], [0x02; 32]); crate::membership_inspection::MAX_INSPECTION_LEAVES + 1];
+        assert_eq!(
+            bounded_inspection_leaves(over_limit).unwrap_err(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
     }
 
     /// Fail-closed: a self-fulfillment the verified executor REFUSES (here: an
