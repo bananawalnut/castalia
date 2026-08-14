@@ -4288,9 +4288,10 @@ pub struct CellProofResponse {
     pub quorum: usize,
     /// Signatures required for that root's quorum.
     pub threshold: usize,
-    /// Server-computed convenience: the served ledger's root IS the latest attested
-    /// root AND that root carries a `>= threshold` quorum. A consumer may gate on this
-    /// or recompute it from the fields above.
+    /// Server-computed display convenience: the served ledger's root IS the latest
+    /// attested root AND its raw vote count is `>= threshold`. This does NOT verify
+    /// signatures, roster membership, uniqueness, or hybrid pairing and MUST NOT gate
+    /// cryptographic acceptance; verify `attested_root_bytes` under pinned rosters.
     pub is_attested: bool,
     /// Exact lowercase-hex `postcard(StoredAttestedRoot)` carrying the committee's
     /// hybrid finalization quorum. Present only when it binds the served root and has
@@ -4326,6 +4327,17 @@ fn authenticated_cell_artifacts(
     Ok((cell_hex, attested_root_bytes))
 }
 
+fn advisory_is_attested(
+    attested_root: Option<&dregg_persist::federation::StoredAttestedRoot>,
+    served_root: [u8; 32],
+) -> bool {
+    attested_root.is_some_and(|root| {
+        root.merkle_root == served_root
+            && root.threshold > 0
+            && root.finalization_quorum.len() >= root.threshold
+    })
+}
+
 fn bounded_inspection_artifact_hex(bytes: Vec<u8>, limit: usize) -> Result<String, StatusCode> {
     if bytes.len() > limit {
         return Err(StatusCode::PAYLOAD_TOO_LARGE);
@@ -4350,8 +4362,9 @@ fn bounded_inspection_leaves(
 /// First cut (option (a)): serves the CURRENT ledger's full leaf set + flat root,
 /// plus the latest quorum-attested root. The verifier recomputes
 /// `canonical_ledger_root` from `leaves`, checks it == `merkle_root`, and checks the
-/// target `(id, leaf_hash)` is a leaf. The read is consensus-backed only when
-/// `merkle_root == attested_merkle_root` and `quorum >= threshold` (`is_attested`).
+/// target `(id, leaf_hash)` is a leaf. `is_attested` is advisory metadata only;
+/// cryptographic consumers must verify the exact attestation artifact under pinned
+/// rosters and must not trust the server's Boolean or counts.
 /// The node does not retain ledger state at arbitrary attested heights (snapshots
 /// exist only at checkpoint boundaries), so it does not time-travel; `?height=H` is a
 /// no-rollback assertion checked against the latest attested height.
@@ -4398,11 +4411,7 @@ async fn get_cell_proof(
         }
     }
 
-    let is_attested = latest.as_ref().is_some_and(|root| {
-        root.merkle_root == merkle_root_bytes
-            && root.threshold > 0
-            && root.has_finalization_quorum()
-    });
+    let is_attested = advisory_is_attested(latest.as_ref(), merkle_root_bytes);
     let (cell_bytes, attested_root_bytes) = match canonical_cell {
         Some(cell) => authenticated_cell_artifacts(cell, latest.as_ref(), merkle_root_bytes)?,
         None => (String::new(), None),
@@ -10539,6 +10548,14 @@ mod tests {
             ml_dsa_pubkey: vec![0x88; 1952],
             pq_signature: vec![0x99; 3309],
         });
+        attested.threshold = 3;
+        assert!(
+            !advisory_is_attested(Some(&attested), root),
+            "one advisory vote cannot satisfy threshold three"
+        );
+        attested.threshold = 1;
+        assert!(advisory_is_attested(Some(&attested), root));
+
         let expected = postcard::to_stdvec(&attested).unwrap();
         let (_, certificate) = authenticated_cell_artifacts(&cell, Some(&attested), root).unwrap();
         assert_eq!(hex_decode_var(&certificate.unwrap()).unwrap(), expected);
