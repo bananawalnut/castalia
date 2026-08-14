@@ -3,7 +3,7 @@
 //! This module verifies finalized state evidence only. It does not prove current key possession,
 //! admit a member, or establish a holder-bound session.
 
-use dregg_cell::Cell;
+use dregg_cell::{Cell, CellLifecycle, CellMode, Permissions};
 use dregg_federation::frost::MlDsaPublicKey;
 use dregg_persist::federation::StoredAttestedRoot;
 use dregg_types::{FederationId, PublicKey};
@@ -71,6 +71,7 @@ pub enum MembershipInspectionError {
     FutureRoot,
     InvalidFinalizationQuorum,
     MembershipAuthorityMismatch,
+    MembershipBirthProfileMismatch,
     MembershipProgramMismatch,
     MembershipFieldMismatch,
     MembershipStatusMismatch,
@@ -98,6 +99,9 @@ impl std::fmt::Display for MembershipInspectionError {
             Self::InvalidFinalizationQuorum => "attested root lacks a valid pinned hybrid quorum",
             Self::MembershipAuthorityMismatch => {
                 "membership cell authority does not match the pinned authority"
+            }
+            Self::MembershipBirthProfileMismatch => {
+                "membership cell does not match the canonical factory birth profile"
             }
             Self::MembershipProgramMismatch => {
                 "membership cell does not carry the canonical authority-bound program"
@@ -257,6 +261,30 @@ pub fn inspect_castalia_membership(
     if cell.public_key() != &expectation.authority_public_key {
         return Err(MembershipInspectionError::MembershipAuthorityMismatch);
     }
+
+    let creation =
+        membership_creation_params(&expectation.application, expectation.authority_public_key)
+            .map_err(|_| MembershipInspectionError::MembershipBirthProfileMismatch)?;
+    let expected_vk = creation
+        .program_vk
+        .ok_or(MembershipInspectionError::MembershipBirthProfileMismatch)?;
+    let actual_vk = cell
+        .verification_key
+        .as_ref()
+        .ok_or(MembershipInspectionError::MembershipBirthProfileMismatch)?;
+    if creation.mode != CellMode::Sovereign
+        || cell.mode != creation.mode
+        || cell.lifecycle != CellLifecycle::Live
+        || cell.permissions != Permissions::default()
+        || actual_vk.hash != expected_vk
+        || actual_vk.data.as_slice() != expected_vk
+        || !cell.capabilities.is_empty()
+        || cell.delegate.is_some()
+        || cell.delegation.is_some()
+    {
+        return Err(MembershipInspectionError::MembershipBirthProfileMismatch);
+    }
+
     let expected_cell_id = membership_cell_id(
         expectation.authority_public_key,
         expectation.application.factory_id,

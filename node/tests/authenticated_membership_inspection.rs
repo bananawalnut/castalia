@@ -1,4 +1,5 @@
-use dregg_cell::{Cell, CellConfig, Ledger};
+use dregg_cell::program::TransitionMeta;
+use dregg_cell::{AuthRequired, Cell, CellConfig, EvalContext, Ledger, VerificationKey};
 use dregg_federation::frost::{MlDsaPublicKey, MlDsaSigningKey};
 use dregg_node::membership_inspection::{
     AuthenticatedCellInspection, CastaliaMembershipExpectation, MembershipInspectionPolicy,
@@ -34,18 +35,32 @@ fn membership_application() -> CastaliaMemberApplicationV1 {
 fn membership_cell(status: MembershipStatus) -> Cell {
     let application = membership_application();
     let token = membership_birth_token_id(application.factory_id, application.commitment(), 7);
+    let child_vk = starbridge_castalia_membership::castalia_membership_child_program_vk(AUTHORITY);
     let mut cell = Cell::from_config(
         AUTHORITY,
         token,
-        CellConfig::hosted().with_program(castalia_membership_program(AUTHORITY)),
+        CellConfig::sovereign()
+            .with_program(castalia_membership_program(AUTHORITY))
+            .with_verification_key(VerificationKey::from_parts(child_vk, child_vk.to_vec())),
     );
     for (index, value) in membership_initial_fields(&application) {
         cell.state.set_field(index as usize, field_from_u64(value));
     }
+    let pending = cell.state.clone();
     cell.state.set_field(12, field_from_u64(status as u64));
     if status == MembershipStatus::Active {
         cell.state.set_field(13, field_from_u64(1));
         cell.state.set_field(15, field_from_u64(1_700_000_010));
+        let mut context = EvalContext::minimal(1, 1_700_000_010);
+        context.sender = Some(AUTHORITY);
+        cell.program
+            .evaluate_with_meta(
+                &cell.state,
+                Some(&pending),
+                Some(&context),
+                &TransitionMeta::new(starbridge_castalia_membership::symbol("activate"), 0),
+            )
+            .expect("canonical Pending-to-Active transition must satisfy CASTMEM1");
     }
     cell
 }
@@ -294,6 +309,49 @@ fn interprets_exact_active_castmem1_cell_against_member_key_application() {
     assert_eq!(membership.status, MembershipStatus::Active);
     assert_eq!(membership.generation, 1);
     assert_eq!(membership.changed_at, 1_700_000_010);
+}
+
+#[test]
+fn rejects_active_cells_without_the_canonical_factory_birth_profile() {
+    let expectation = CastaliaMembershipExpectation {
+        authority_public_key: AUTHORITY,
+        application: membership_application(),
+        birth_nonce: 7,
+    };
+
+    let mut hosted = membership_cell(MembershipStatus::Active);
+    hosted.mode = dregg_cell::CellMode::Hosted;
+    assert!(inspect_castalia_membership(&hosted, &expectation).is_err());
+
+    let mut missing_vk = membership_cell(MembershipStatus::Active);
+    missing_vk.verification_key = None;
+    assert!(inspect_castalia_membership(&missing_vk, &expectation).is_err());
+
+    let mut wrong_vk = membership_cell(MembershipStatus::Active);
+    wrong_vk.verification_key = Some(VerificationKey::from_parts([0x77; 32], vec![0x77; 32]));
+    assert!(inspect_castalia_membership(&wrong_vk, &expectation).is_err());
+
+    let mut wrong_vk_data = membership_cell(MembershipStatus::Active);
+    let expected_vk =
+        starbridge_castalia_membership::castalia_membership_child_program_vk(AUTHORITY);
+    wrong_vk_data.verification_key = Some(VerificationKey::from_parts(expected_vk, vec![0x66; 32]));
+    assert!(inspect_castalia_membership(&wrong_vk_data, &expectation).is_err());
+
+    let mut capped = membership_cell(MembershipStatus::Active);
+    let expected_vk =
+        starbridge_castalia_membership::castalia_membership_child_program_vk(AUTHORITY);
+    capped.verification_key = Some(VerificationKey::from_parts(
+        expected_vk,
+        expected_vk.to_vec(),
+    ));
+    capped
+        .capabilities
+        .grant(
+            dregg_types::CellId::from_bytes([0x99; 32]),
+            AuthRequired::Signature,
+        )
+        .unwrap();
+    assert!(inspect_castalia_membership(&capped, &expectation).is_err());
 }
 
 #[test]
