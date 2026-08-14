@@ -243,6 +243,43 @@ impl PersistentStore {
         Ok(())
     }
 
+    /// Atomically replace the complete cell-by-id index from a verified snapshot ledger.
+    ///
+    /// Snapshot installation is authoritative replacement, not an incremental merge: a reused
+    /// joiner may contain stale entries for cells deleted before the shipped checkpoint, which
+    /// therefore appear in neither the checkpoint nor the post-checkpoint tombstones.
+    pub fn replace_cell_index_from_ledger(&self, ledger: &Ledger) -> Result<()> {
+        let encoded = ledger
+            .iter()
+            .map(|(id, cell)| {
+                postcard::to_stdvec(cell)
+                    .map(|bytes| (id.0, bytes))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let write_txn = self.db.begin_write()?;
+        {
+            let mut idx_cell = write_txn.open_table(tables::IDX_CELL_BY_ID)?;
+            let stale_keys = idx_cell
+                .iter()?
+                .map(|entry| {
+                    entry
+                        .map(|entry| *entry.0.value())
+                        .map_err(|e: redb::StorageError| StoreError::Database(e.to_string()))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            for key in stale_keys {
+                idx_cell.remove(&key)?;
+            }
+            for (id, bytes) in &encoded {
+                idx_cell.insert(id, bytes.as_slice())?;
+            }
+        }
+        write_txn.commit()?;
+        Ok(())
+    }
+
     /// Load every cell currently in the cell-by-id index (the installed overlay
     /// after a snapshot apply). Diagnostic / recovery helper.
     pub fn installed_overlay_cells(&self) -> Result<Vec<Cell>> {
