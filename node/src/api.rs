@@ -4347,8 +4347,8 @@ async fn get_cell_proof(
     let cell_id_bytes: [u8; 32] = hex_decode(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let cell_id = dregg_cell::CellId(cell_id_bytes);
 
-    let canonical_cell = s.ledger.get(&cell_id).ok_or(StatusCode::NOT_FOUND)?;
-    let cell = cell_detail_response(id, Some(canonical_cell));
+    let canonical_cell = s.ledger.get(&cell_id);
+    let cell = cell_detail_response(id, canonical_cell);
 
     // Full sorted leaf set + flat root of the CURRENT ledger. Construction is
     // byte-identical to the attested root (both fold through
@@ -4385,8 +4385,10 @@ async fn get_cell_proof(
             && root.threshold > 0
             && root.has_finalization_quorum()
     });
-    let (cell_bytes, attested_root_bytes) =
-        authenticated_cell_artifacts(canonical_cell, latest.as_ref(), merkle_root_bytes)?;
+    let (cell_bytes, attested_root_bytes) = match canonical_cell {
+        Some(cell) => authenticated_cell_artifacts(cell, latest.as_ref(), merkle_root_bytes)?,
+        None => (String::new(), None),
+    };
 
     Ok(Json(CellProofResponse {
         cell,
@@ -10453,6 +10455,32 @@ mod tests {
         );
         assert_eq!(balance_of(&s, &payer_id), 1_000, "ledger must be untouched");
         assert_eq!(balance_of(&s, &recipient_id), 0, "ledger must be untouched");
+    }
+
+    #[tokio::test]
+    async fn cell_proof_missing_cell_preserves_not_found_stub_contract() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = NodeState::new(tmp.path(), vec![]).expect("node state");
+        let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+        let app = router(state, false, recorder.handle());
+        let missing = hex_encode(&[0xAB; 32]);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/cell/{missing}/proof"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["cell"]["id"], missing);
+        assert_eq!(json["cell"]["fields"], serde_json::json!([]));
+        assert_eq!(json["cell_bytes"], "");
+        assert!(json["attested_root_bytes"].is_null());
     }
 
     #[test]

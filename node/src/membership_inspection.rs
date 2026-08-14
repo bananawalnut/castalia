@@ -10,13 +10,15 @@ use dregg_types::{FederationId, PublicKey};
 use starbridge_castalia_membership::{
     CHANGED_AT_SLOT, CREATED_AT_SLOT, CastaliaMemberApplicationV1, GENERATION_SLOT,
     MembershipStatus, STATUS_SLOT, castalia_membership_program, field_from_u64, membership_cell_id,
-    membership_initial_fields,
+    membership_creation_params, membership_initial_fields,
 };
 
 /// Maximum full-ledger leaves accepted by the bounded first-cut flat-root verifier.
 pub const MAX_INSPECTION_LEAVES: usize = 65_536;
 /// Maximum canonical serialized cell bytes accepted by the verifier.
 pub const MAX_INSPECTION_CELL_BYTES: usize = 1_048_576;
+/// Maximum exact serialized finalization artifact accepted before decoding.
+pub const MAX_INSPECTION_ATTESTED_ROOT_BYTES: usize = 1_048_576;
 
 #[derive(Clone, Debug)]
 pub struct AuthenticatedCellInspection {
@@ -26,8 +28,8 @@ pub struct AuthenticatedCellInspection {
     pub cell_bytes: Vec<u8>,
     /// Full canonical sorted ledger leaf set used by the current flat-root scheme.
     pub leaves: Vec<([u8; 32], [u8; 32])>,
-    /// Exact persisted finalization artifact, including its hybrid committee quorum.
-    pub attested_root: StoredAttestedRoot,
+    /// Exact canonical `postcard(StoredAttestedRoot)` bytes, including hybrid quorum.
+    pub attested_root_bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +54,8 @@ pub struct MembershipInspectionPolicy {
 pub enum MembershipInspectionError {
     CellTooLarge,
     MalformedCell,
+    AttestedRootTooLarge,
+    MalformedAttestedRoot,
     CellIdMismatch,
     InvalidLeaves,
     CellLeafMissing,
@@ -73,6 +77,8 @@ impl std::fmt::Display for MembershipInspectionError {
         formatter.write_str(match self {
             Self::CellTooLarge => "authenticated cell bytes exceed the verifier limit",
             Self::MalformedCell => "authenticated cell bytes are malformed or noncanonical",
+            Self::AttestedRootTooLarge => "attested-root bytes exceed the verifier limit",
+            Self::MalformedAttestedRoot => "attested-root bytes are malformed or noncanonical",
             Self::CellIdMismatch => "authenticated cell identity does not match the request",
             Self::InvalidLeaves => "authenticated ledger leaves are malformed or noncanonical",
             Self::CellLeafMissing => "authenticated cell leaf is absent or mismatched",
@@ -122,6 +128,20 @@ pub fn verify_authenticated_cell(
         return Err(MembershipInspectionError::CellIdMismatch);
     }
 
+    if inspection.attested_root_bytes.len() > MAX_INSPECTION_ATTESTED_ROOT_BYTES {
+        return Err(MembershipInspectionError::AttestedRootTooLarge);
+    }
+    let (attested_root, trailing): (StoredAttestedRoot, &[u8]) =
+        postcard::take_from_bytes(&inspection.attested_root_bytes)
+            .map_err(|_| MembershipInspectionError::MalformedAttestedRoot)?;
+    if !trailing.is_empty()
+        || postcard::to_stdvec(&attested_root)
+            .map_err(|_| MembershipInspectionError::MalformedAttestedRoot)?
+            != inspection.attested_root_bytes
+    {
+        return Err(MembershipInspectionError::MalformedAttestedRoot);
+    }
+
     if inspection.leaves.is_empty() || inspection.leaves.len() > MAX_INSPECTION_LEAVES {
         return Err(MembershipInspectionError::InvalidLeaves);
     }
@@ -142,13 +162,13 @@ pub fn verify_authenticated_cell(
     }
 
     let root = dregg_persist::canonical_ledger_root_from_leaves(&inspection.leaves);
-    if root != inspection.attested_root.merkle_root {
+    if root != attested_root.merkle_root {
         return Err(MembershipInspectionError::LedgerRootMismatch);
     }
-    if inspection.attested_root.federation_id != policy.federation_id {
+    if attested_root.federation_id != policy.federation_id {
         return Err(MembershipInspectionError::FederationMismatch);
     }
-    if inspection.attested_root.height < policy.minimum_height {
+    if attested_root.height < policy.minimum_height {
         return Err(MembershipInspectionError::HeightRollback);
     }
 
@@ -158,7 +178,7 @@ pub fn verify_authenticated_cell(
         .now_unix_seconds
         .checked_add(maximum_future_skew)
         .ok_or(MembershipInspectionError::FutureRoot)?;
-    if inspection.attested_root.timestamp > latest_allowed {
+    if attested_root.timestamp > latest_allowed {
         return Err(MembershipInspectionError::FutureRoot);
     }
     let maximum_age = i64::try_from(policy.maximum_age_seconds)
@@ -167,14 +187,12 @@ pub fn verify_authenticated_cell(
         .now_unix_seconds
         .checked_sub(maximum_age)
         .ok_or(MembershipInspectionError::StaleRoot)?;
-    if inspection.attested_root.timestamp < earliest_allowed {
+    if attested_root.timestamp < earliest_allowed {
         return Err(MembershipInspectionError::StaleRoot);
     }
 
-    if inspection.attested_root.threshold == 0
-        || !inspection
-            .attested_root
-            .verify_finalization_quorum(&policy.committee, &policy.ml_dsa_committee)
+    if attested_root.threshold == 0
+        || !attested_root.verify_finalization_quorum(&policy.committee, &policy.ml_dsa_committee)
     {
         return Err(MembershipInspectionError::InvalidFinalizationQuorum);
     }
@@ -187,7 +205,6 @@ pub struct CastaliaMembershipExpectation {
     pub authority_public_key: [u8; 32],
     pub application: CastaliaMemberApplicationV1,
     pub birth_nonce: u64,
-    pub required_status: Option<MembershipStatus>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -219,6 +236,11 @@ pub fn inspect_castalia_membership(
     cell: &Cell,
     expectation: &CastaliaMembershipExpectation,
 ) -> Result<VerifiedCastaliaMembership, MembershipInspectionError> {
+    if membership_creation_params(&expectation.application, expectation.authority_public_key)
+        .is_err()
+    {
+        return Err(MembershipInspectionError::MembershipFieldMismatch);
+    }
     if cell.public_key() != &expectation.authority_public_key {
         return Err(MembershipInspectionError::MembershipAuthorityMismatch);
     }
@@ -260,10 +282,7 @@ pub fn inspect_castalia_membership(
         4 => MembershipStatus::Expired,
         _ => return Err(MembershipInspectionError::MembershipStatusMismatch),
     };
-    if expectation
-        .required_status
-        .is_some_and(|required| required != status)
-    {
+    if status != MembershipStatus::Active {
         return Err(MembershipInspectionError::MembershipStatusMismatch);
     }
     let generation = canonical_field_u64(

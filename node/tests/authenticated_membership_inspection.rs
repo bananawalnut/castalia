@@ -112,7 +112,7 @@ fn genuine_fixture() -> (
         cell_id,
         cell_bytes,
         leaves,
-        attested_root,
+        attested_root_bytes: postcard::to_stdvec(&attested_root).unwrap(),
     };
     let policy = MembershipInspectionPolicy {
         federation_id,
@@ -126,11 +126,39 @@ fn genuine_fixture() -> (
     (cell, inspection, policy)
 }
 
+fn mutate_attested_root(
+    inspection: &mut AuthenticatedCellInspection,
+    mutate: impl FnOnce(&mut StoredAttestedRoot),
+) {
+    let mut root: StoredAttestedRoot =
+        postcard::from_bytes(&inspection.attested_root_bytes).unwrap();
+    mutate(&mut root);
+    inspection.attested_root_bytes = postcard::to_stdvec(&root).unwrap();
+}
+
 #[test]
 fn accepts_exact_cell_bytes_under_genuine_pinned_hybrid_quorum() {
     let (cell, inspection, policy) = genuine_fixture();
     let verified = verify_authenticated_cell(&inspection, &policy).unwrap();
     assert_eq!(verified, cell);
+}
+
+#[test]
+fn rejects_trailing_and_oversized_exact_attested_root_bytes() {
+    let (_, inspection, policy) = genuine_fixture();
+
+    let mut trailing = inspection.clone();
+    trailing.attested_root_bytes.push(0);
+    assert!(verify_authenticated_cell(&trailing, &policy).is_err());
+
+    let mut malformed = inspection.clone();
+    malformed.attested_root_bytes = vec![0xFF];
+    assert!(verify_authenticated_cell(&malformed, &policy).is_err());
+
+    let mut oversized = inspection;
+    oversized.attested_root_bytes =
+        vec![0; dregg_node::membership_inspection::MAX_INSPECTION_ATTESTED_ROOT_BYTES + 1];
+    assert!(verify_authenticated_cell(&oversized, &policy).is_err());
 }
 
 #[test]
@@ -150,8 +178,8 @@ fn rejects_each_untrusted_binding_and_count_only_attestation() {
     hostile.cell_id[0] ^= 1;
     hostile.leaves[0].0 = hostile.cell_id;
     hostile.leaves[0].1 = *blake3::hash(&hostile.cell_bytes).as_bytes();
-    hostile.attested_root.merkle_root =
-        dregg_persist::canonical_ledger_root_from_leaves(&hostile.leaves);
+    let hostile_root = dregg_persist::canonical_ledger_root_from_leaves(&hostile.leaves);
+    mutate_attested_root(&mut hostile, |root| root.merkle_root = hostile_root);
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection.clone();
@@ -159,8 +187,10 @@ fn rejects_each_untrusted_binding_and_count_only_attestation() {
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection.clone();
-    hostile.attested_root.finalization_quorum.clear();
-    hostile.attested_root.threshold = 1;
+    mutate_attested_root(&mut hostile, |root| {
+        root.finalization_quorum.clear();
+        root.threshold = 1;
+    });
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile_policy = policy.clone();
@@ -197,25 +227,31 @@ fn rejects_forged_duplicate_noncommittee_and_wrong_root_votes() {
     let (_, inspection, policy) = genuine_fixture();
 
     let mut hostile = inspection.clone();
-    hostile.attested_root.finalization_quorum[0].signature.0[0] ^= 1;
+    mutate_attested_root(&mut hostile, |root| {
+        root.finalization_quorum[0].signature.0[0] ^= 1;
+    });
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection.clone();
-    hostile.attested_root.finalization_quorum[1] =
-        hostile.attested_root.finalization_quorum[0].clone();
+    mutate_attested_root(&mut hostile, |root| {
+        root.finalization_quorum[1] = root.finalization_quorum[0].clone();
+    });
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection.clone();
-    hostile.attested_root.finalization_quorum[0].voter =
-        SigningKey::from_bytes(&[0x91; 32]).public_key();
+    mutate_attested_root(&mut hostile, |root| {
+        root.finalization_quorum[0].voter = SigningKey::from_bytes(&[0x91; 32]).public_key();
+    });
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection.clone();
-    hostile.attested_root.blocklace_block_id = Some([0x99; 32]);
+    mutate_attested_root(&mut hostile, |root| {
+        root.blocklace_block_id = Some([0x99; 32]);
+    });
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 
     let mut hostile = inspection;
-    hostile.attested_root.threshold = 0;
+    mutate_attested_root(&mut hostile, |root| root.threshold = 0);
     assert!(verify_authenticated_cell(&hostile, &policy).is_err());
 }
 
@@ -229,7 +265,6 @@ fn interprets_exact_active_castmem1_cell_against_member_key_application() {
             authority_public_key: AUTHORITY,
             application,
             birth_nonce: 7,
-            required_status: Some(MembershipStatus::Active),
         },
     )
     .unwrap();
@@ -240,13 +275,56 @@ fn interprets_exact_active_castmem1_cell_against_member_key_application() {
 }
 
 #[test]
+fn castmem1_membership_requires_active_status_even_without_caller_status_option() {
+    let expectation = CastaliaMembershipExpectation {
+        authority_public_key: AUTHORITY,
+        application: membership_application(),
+        birth_nonce: 7,
+    };
+    assert!(
+        inspect_castalia_membership(&membership_cell(MembershipStatus::Suspended), &expectation)
+            .is_err()
+    );
+}
+
+#[test]
+fn rejects_matching_but_unsupported_castmem1_application_constants() {
+    let mut application = membership_application();
+    application.application_version = 2;
+    let token = membership_birth_token_id(application.factory_id, application.commitment(), 7);
+    let mut cell = Cell::from_config(
+        AUTHORITY,
+        token,
+        CellConfig::hosted().with_program(castalia_membership_program(AUTHORITY)),
+    );
+    for (index, value) in membership_initial_fields(&application) {
+        cell.state.set_field(index as usize, field_from_u64(value));
+    }
+    cell.state
+        .set_field(12, field_from_u64(MembershipStatus::Active as u64));
+    cell.state.set_field(13, field_from_u64(1));
+    cell.state.set_field(15, field_from_u64(1_700_000_010));
+
+    assert!(
+        inspect_castalia_membership(
+            &cell,
+            &CastaliaMembershipExpectation {
+                authority_public_key: AUTHORITY,
+                application,
+                birth_nonce: 7,
+            },
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn rejects_wrong_key_authority_program_fields_status_and_timestamps() {
     let application = membership_application();
     let expectation = CastaliaMembershipExpectation {
         authority_public_key: AUTHORITY,
         application,
         birth_nonce: 7,
-        required_status: Some(MembershipStatus::Active),
     };
 
     let mut wrong = expectation.clone();
