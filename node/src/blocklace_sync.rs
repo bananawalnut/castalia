@@ -19849,25 +19849,55 @@ pub async fn bootstrap_from_checkpoint(
     peer_url: &str,
     self_key: ed25519_dalek::SigningKey,
     quorum_threshold: usize,
+    trusted_blocklace_hash: &[u8; 32],
+    trusted_ledger_root: &[u8; 32],
 ) -> Option<(
     dregg_blocklace::finality::Blocklace,
     Vec<(dregg_cell::CellId, dregg_cell::Cell)>,
 )> {
-    use dregg_blocklace::finality::CheckpointData;
-
     info!(peer = %peer_url, "attempting checkpoint-based bootstrap");
 
     let url = format!("{}/api/blocklace/checkpoint", peer_url);
     let resp_bytes = fetch_checkpoint_http(&url).await?;
     let checkpoint_resp: BlocklaceCheckpointResponse = serde_json::from_slice(&resp_bytes).ok()?;
 
+    let restored = restore_checkpoint_response(
+        &checkpoint_resp,
+        self_key,
+        quorum_threshold,
+        trusted_blocklace_hash,
+        trusted_ledger_root,
+    )?;
+    info!(peer = %peer_url, height = checkpoint_resp.height, "checkpoint bootstrap complete");
+    Some(restored)
+}
+
+/// Restore a peer checkpoint under an independently retained checkpoint/root pair.
+///
+/// The response hashes detect transport corruption only. Because the peer supplies
+/// both payloads and hashes, they are not membership authority. The mandatory
+/// checkpoint digest and ledger root must arrive together through a separately
+/// authenticated finality or continuity channel.
+fn restore_checkpoint_response(
+    checkpoint_resp: &BlocklaceCheckpointResponse,
+    self_key: ed25519_dalek::SigningKey,
+    quorum_threshold: usize,
+    trusted_blocklace_hash: &[u8; 32],
+    trusted_ledger_root: &[u8; 32],
+) -> Option<(
+    dregg_blocklace::finality::Blocklace,
+    Vec<(dregg_cell::CellId, dregg_cell::Cell)>,
+)> {
+    use dregg_blocklace::finality::CheckpointData;
+
     let blocklace_compressed = hex_decode_var(&checkpoint_resp.blocklace)?;
     let blocklace_bytes = decompress_checkpoint_data(&blocklace_compressed)?;
-
     let actual_hash = *blake3::hash(&blocklace_bytes).as_bytes();
+    if &actual_hash != trusted_blocklace_hash {
+        return None;
+    }
     let expected_hash = hex_decode_var(&checkpoint_resp.blocklace_hash)?;
     if actual_hash.as_slice() != expected_hash.as_slice() {
-        warn!(peer = %peer_url, "blocklace checkpoint hash mismatch");
         return None;
     }
 
@@ -19916,32 +19946,86 @@ pub async fn bootstrap_from_checkpoint(
 
     let ledger_compressed = hex_decode_var(&checkpoint_resp.ledger)?;
     let ledger_bytes = decompress_checkpoint_data(&ledger_compressed)?;
-
     let actual_ledger_hash = *blake3::hash(&ledger_bytes).as_bytes();
     let expected_ledger_hash = hex_decode_var(&checkpoint_resp.ledger_hash)?;
     if actual_ledger_hash.as_slice() != expected_ledger_hash.as_slice() {
-        warn!(peer = %peer_url, "ledger snapshot hash mismatch");
         return None;
     }
 
     let cells: Vec<(dregg_cell::CellId, dregg_cell::Cell)> =
-        match postcard::from_bytes(&ledger_bytes) {
-            Ok(cells) => cells,
-            Err(e) => {
-                warn!(peer = %peer_url, error = %e, "failed to deserialize ledger snapshot");
-                return None;
-            }
-        };
-
-    info!(
-        peer = %peer_url,
-        height = checkpoint_resp.height,
-        blocks = checkpoint_data.blocks.len(),
-        cells = cells.len(),
-        "checkpoint bootstrap complete"
-    );
+        postcard::from_bytes(&ledger_bytes).ok()?;
+    let mut ledger = dregg_cell::Ledger::new();
+    for (id, cell) in &cells {
+        if *id != cell.id() || ledger.contains(id) || ledger.insert_cell(cell.clone()).is_err() {
+            return None;
+        }
+    }
+    if &dregg_persist::canonical_ledger_root(&ledger) != trusted_ledger_root {
+        return None;
+    }
 
     Some((blocklace, cells))
+}
+
+#[cfg(test)]
+mod checkpoint_bootstrap_authority_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_peer_ledger_not_matching_independently_trusted_root() {
+        let producer_key = ed25519_dalek::SigningKey::from_bytes(&[0x41; 32]);
+        let checkpoint = dregg_blocklace::finality::Blocklace::new(producer_key, 1).checkpoint();
+        let blocklace_bytes = postcard::to_stdvec(&checkpoint).unwrap();
+        let ledger_bytes =
+            postcard::to_stdvec(&Vec::<(dregg_cell::CellId, dregg_cell::Cell)>::new()).unwrap();
+        let response = BlocklaceCheckpointResponse {
+            height: 0,
+            blocklace: hex_encode(&compress_checkpoint_data(&blocklace_bytes)),
+            ledger: hex_encode(&compress_checkpoint_data(&ledger_bytes)),
+            blocklace_hash: hex_encode(blake3::hash(&blocklace_bytes).as_bytes()),
+            ledger_hash: hex_encode(blake3::hash(&ledger_bytes).as_bytes()),
+        };
+
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                blake3::hash(&blocklace_bytes).as_bytes(),
+                &[0xA5; 32],
+            )
+            .is_none(),
+            "a peer-consistent ledger hash must not substitute for an independently trusted root"
+        );
+
+        let trusted_empty_root = dregg_persist::canonical_ledger_root(&dregg_cell::Ledger::new());
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x43; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                &[0xB6; 32],
+                &trusted_empty_root,
+            )
+            .is_none(),
+            "a peer-consistent checkpoint hash must not substitute for the independently trusted digest"
+        );
+
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x44; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                blake3::hash(&blocklace_bytes).as_bytes(),
+                &trusted_empty_root,
+            )
+            .is_some(),
+            "an authenticated blocklace plus an exact independently trusted ledger root should bootstrap"
+        );
+    }
 }
 
 async fn fetch_checkpoint_http(url: &str) -> Option<Vec<u8>> {
