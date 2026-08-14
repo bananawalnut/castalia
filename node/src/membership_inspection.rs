@@ -341,7 +341,11 @@ pub fn inspect_castalia_membership(
             .get_field(CHANGED_AT_SLOT as usize)
             .ok_or(MembershipInspectionError::MembershipFieldMismatch)?,
     )?;
-    if generation == 0 || created_at == 0 || changed_at <= created_at {
+    if generation == 0
+        || created_at != expectation.application.created_at
+        || created_at == 0
+        || changed_at <= created_at
+    {
         return Err(MembershipInspectionError::MembershipTimestampInvalid);
     }
 

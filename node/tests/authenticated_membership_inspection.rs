@@ -8,9 +8,9 @@ use dregg_node::membership_inspection::{
 use dregg_persist::federation::{QuorumSignature, StoredAttestedRoot};
 use dregg_types::{FederationId, SigningKey, sign};
 use starbridge_castalia_membership::{
-    CastaliaMemberApplicationV1, MembershipStatus, castalia_membership_factory_vk,
-    castalia_membership_program, field_from_u64, membership_birth_token_id,
-    membership_initial_fields,
+    CHANGED_AT_SLOT, CREATED_AT_SLOT, CastaliaMemberApplicationV1, MembershipStatus,
+    castalia_membership_factory_vk, castalia_membership_program, field_from_u64,
+    membership_birth_token_id, membership_initial_fields,
 };
 
 const AUTHORITY: [u8; 32] = [0x41; 32];
@@ -396,6 +396,26 @@ fn rejects_matching_but_unsupported_castmem1_application_constants() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn rejects_created_at_that_differs_from_the_committed_application() {
+    let expectation = CastaliaMembershipExpectation {
+        authority_public_key: AUTHORITY,
+        application: membership_application(),
+        birth_nonce: 7,
+    };
+    let mut cell = membership_cell(MembershipStatus::Active);
+    cell.state.set_field(
+        CREATED_AT_SLOT as usize,
+        field_from_u64(expectation.application.created_at + 1),
+    );
+    cell.state.set_field(
+        CHANGED_AT_SLOT as usize,
+        field_from_u64(expectation.application.created_at + 20),
+    );
+
+    assert!(inspect_castalia_membership(&cell, &expectation).is_err());
 }
 
 #[test]
