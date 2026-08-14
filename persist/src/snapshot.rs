@@ -326,7 +326,8 @@ impl PersistentStore {
     /// NOTE: this installs the checkpoint + a single synthetic commit head; the
     /// joiner does not gain the shipping node's full per-turn commit log (it does
     /// not need it — `checkpoint ⊕ overlay` is the finalized state). The
-    /// cell-by-id index is rebuilt from the overlay so `lookup_cell` works.
+    /// cell-by-id index is replaced from the complete verified ledger so `lookup_cell` works and
+    /// stale reused-joiner entries cannot survive merely because they predate the checkpoint.
     pub fn install_snapshot(&self, snapshot: &Snapshot, trusted_root: &[u8; 32]) -> Result<Ledger> {
         // 1. Verify against the trusted root BEFORE mutating any durable state.
         let ledger = self.apply_snapshot_verified(snapshot, trusted_root)?;
@@ -336,8 +337,8 @@ impl PersistentStore {
             self.store_ledger_checkpoint_snapshot(cp)?;
         }
 
-        // 3. Install the cell-by-id overlay so post-checkpoint cells resolve.
-        self.install_overlay_into_cell_index(&snapshot.overlay, &snapshot.deleted_cell_ids)?;
+        // 3. Atomically replace the complete cell-by-id index from the verified ledger.
+        self.replace_cell_index_from_ledger(&ledger)?;
 
         Ok(ledger)
     }
@@ -526,6 +527,40 @@ mod tests {
             .expect("install snapshot");
         assert!(installed.get(&doomed_id).is_none());
         assert!(joiner.lookup_cell(&doomed_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn install_snapshot_replaces_stale_index_entries_absent_from_entire_snapshot() {
+        let shipper = PersistentStore::open_in_memory().unwrap();
+        let live = cell(0x41, 900);
+        let mut authoritative = Ledger::new();
+        authoritative.insert_cell(live.clone()).unwrap();
+        shipper.checkpoint_ledger(&authoritative, 10).unwrap();
+
+        let snapshot = shipper.ship_snapshot(0).unwrap();
+        assert!(snapshot.overlay.is_empty());
+        assert!(snapshot.deleted_cell_ids.is_empty());
+
+        // This cell was deleted before the shipped checkpoint. Consequently it is
+        // absent from the checkpoint and has no post-checkpoint tombstone.
+        let stale = cell(0x42, 901);
+        let stale_id = stale.id();
+        let joiner = PersistentStore::open_in_memory().unwrap();
+        joiner
+            .install_overlay_into_cell_index(std::slice::from_ref(&stale), &[])
+            .expect("seed stale reused-joiner index");
+        assert!(joiner.lookup_cell(&stale_id).unwrap().is_some());
+
+        let mut installed = joiner
+            .install_snapshot(&snapshot, &snapshot.claimed_root)
+            .expect("install authoritative snapshot");
+        assert_eq!(installed.root(), authoritative.root());
+        assert!(installed.get(&stale_id).is_none());
+        assert!(
+            joiner.lookup_cell(&stale_id).unwrap().is_none(),
+            "snapshot installation must replace, not merge, the reusable cell index"
+        );
+        assert_eq!(joiner.lookup_cell(&live.id()).unwrap(), Some(live));
     }
 
     #[test]
