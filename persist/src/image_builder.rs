@@ -380,6 +380,8 @@ pub fn build_image(manifest: &ImageManifest) -> Result<ImageArtifact, BuildError
         deleted_cell_ids: Vec::new(),
         head: SnapshotHead {
             commit_cursor: 0,
+            height: 0,
+            applied_turn_block_ids: Vec::new(),
             block_executed_up_to: 0,
         },
         claimed_root,

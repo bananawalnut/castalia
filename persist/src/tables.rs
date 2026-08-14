@@ -197,6 +197,12 @@ pub const META_COMMIT_CURSOR: &str = "commit_cursor";
 /// `commit_cursor() == commit_log.len() + compacted_floor` (the pre-compaction
 /// `cursor == len` is the `compacted_floor == 0` special case).
 pub const META_COMMIT_COMPACTED: &str = "commit_compacted_floor";
+/// Snapshot-baseline finalized height used when prior commit history is compacted away.
+pub const META_SNAPSHOT_BASE_HEIGHT: &str = "snapshot_base_height";
+/// Snapshot-baseline block execution cursor used until a new local commit supersedes it.
+pub const META_SNAPSHOT_BASE_BLOCK_CURSOR: &str = "snapshot_base_block_cursor";
+/// Snapshot-baseline canonical ledger root (stored in [`METADATA_BYTES`]).
+pub const META_SNAPSHOT_BASE_ROOT: &str = "snapshot_base_root";
 
 /// Compacted turn block-ids: the blocklace `block_id` of every turn whose commit
 /// record was compacted away (presence = a turn this node DURABLY APPLIED whose
