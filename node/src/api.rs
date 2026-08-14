@@ -4304,15 +4304,33 @@ fn authenticated_cell_artifacts(
     served_root: [u8; 32],
 ) -> Result<(String, Option<String>), StatusCode> {
     let cell_bytes = postcard::to_stdvec(cell).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let cell_hex = bounded_inspection_artifact_hex(
+        cell_bytes,
+        crate::membership_inspection::MAX_INSPECTION_CELL_BYTES,
+    )?;
     let attested_root_bytes = attested_root
         .filter(|root| root.merkle_root == served_root)
         .filter(|root| root.threshold > 0)
         .filter(|root| root.has_finalization_quorum())
-        .map(postcard::to_stdvec)
-        .transpose()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map(|bytes| hex_encode_var(&bytes));
-    Ok((hex_encode_var(&cell_bytes), attested_root_bytes))
+        .map(|root| {
+            postcard::to_stdvec(root)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+                .and_then(|bytes| {
+                    bounded_inspection_artifact_hex(
+                        bytes,
+                        crate::membership_inspection::MAX_INSPECTION_ATTESTED_ROOT_BYTES,
+                    )
+                })
+        })
+        .transpose()?;
+    Ok((cell_hex, attested_root_bytes))
+}
+
+fn bounded_inspection_artifact_hex(bytes: Vec<u8>, limit: usize) -> Result<String, StatusCode> {
+    if bytes.len() > limit {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    Ok(hex_encode_var(&bytes))
 }
 
 fn bounded_inspection_leaves(
@@ -10550,6 +10568,22 @@ mod tests {
             vec![([0x01; 32], [0x02; 32]); crate::membership_inspection::MAX_INSPECTION_LEAVES + 1];
         assert_eq!(
             bounded_inspection_leaves(over_limit).unwrap_err(),
+            StatusCode::PAYLOAD_TOO_LARGE
+        );
+
+        assert!(
+            bounded_inspection_artifact_hex(
+                vec![0; crate::membership_inspection::MAX_INSPECTION_CELL_BYTES],
+                crate::membership_inspection::MAX_INSPECTION_CELL_BYTES,
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            bounded_inspection_artifact_hex(
+                vec![0; crate::membership_inspection::MAX_INSPECTION_ATTESTED_ROOT_BYTES + 1],
+                crate::membership_inspection::MAX_INSPECTION_ATTESTED_ROOT_BYTES,
+            )
+            .unwrap_err(),
             StatusCode::PAYLOAD_TOO_LARGE
         );
     }

@@ -34,6 +34,10 @@ pub struct AuthenticatedCellInspection {
 
 #[derive(Clone, Debug)]
 pub struct MembershipInspectionPolicy {
+    /// Caller-pinned BLAKE3 digest of the exact canonical `postcard(StoredAttestedRoot)` bytes.
+    /// This binds envelope metadata not covered by the finalization-vote preimage (federation,
+    /// height, timestamp, and threshold) and provides the caller's continuity trust root.
+    pub trusted_attested_root_digest: [u8; 32],
     /// Independently pinned federation identity.
     pub federation_id: FederationId,
     /// Independently pinned Ed25519 committee roster.
@@ -56,6 +60,7 @@ pub enum MembershipInspectionError {
     MalformedCell,
     AttestedRootTooLarge,
     MalformedAttestedRoot,
+    AttestedRootPinMismatch,
     CellIdMismatch,
     InvalidLeaves,
     CellLeafMissing,
@@ -79,6 +84,9 @@ impl std::fmt::Display for MembershipInspectionError {
             Self::MalformedCell => "authenticated cell bytes are malformed or noncanonical",
             Self::AttestedRootTooLarge => "attested-root bytes exceed the verifier limit",
             Self::MalformedAttestedRoot => "attested-root bytes are malformed or noncanonical",
+            Self::AttestedRootPinMismatch => {
+                "attested-root bytes do not match the caller-pinned continuity digest"
+            }
             Self::CellIdMismatch => "authenticated cell identity does not match the request",
             Self::InvalidLeaves => "authenticated ledger leaves are malformed or noncanonical",
             Self::CellLeafMissing => "authenticated cell leaf is absent or mismatched",
@@ -140,6 +148,11 @@ pub fn verify_authenticated_cell(
             != inspection.attested_root_bytes
     {
         return Err(MembershipInspectionError::MalformedAttestedRoot);
+    }
+    if blake3::hash(&inspection.attested_root_bytes).as_bytes()
+        != &policy.trusted_attested_root_digest
+    {
+        return Err(MembershipInspectionError::AttestedRootPinMismatch);
     }
 
     if inspection.leaves.is_empty() || inspection.leaves.len() > MAX_INSPECTION_LEAVES {
@@ -300,7 +313,7 @@ pub fn inspect_castalia_membership(
             .get_field(CHANGED_AT_SLOT as usize)
             .ok_or(MembershipInspectionError::MembershipFieldMismatch)?,
     )?;
-    if created_at == 0 || changed_at < created_at {
+    if generation == 0 || created_at == 0 || changed_at <= created_at {
         return Err(MembershipInspectionError::MembershipTimestampInvalid);
     }
 

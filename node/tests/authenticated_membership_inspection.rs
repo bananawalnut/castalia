@@ -108,13 +108,15 @@ fn genuine_fixture() -> (
         receipt_stream_root: None,
         finalization_quorum,
     };
+    let attested_root_bytes = postcard::to_stdvec(&attested_root).unwrap();
     let inspection = AuthenticatedCellInspection {
         cell_id,
         cell_bytes,
         leaves,
-        attested_root_bytes: postcard::to_stdvec(&attested_root).unwrap(),
+        attested_root_bytes: attested_root_bytes.clone(),
     };
     let policy = MembershipInspectionPolicy {
+        trusted_attested_root_digest: *blake3::hash(&attested_root_bytes).as_bytes(),
         federation_id,
         committee,
         ml_dsa_committee,
@@ -141,6 +143,26 @@ fn accepts_exact_cell_bytes_under_genuine_pinned_hybrid_quorum() {
     let (cell, inspection, policy) = genuine_fixture();
     let verified = verify_authenticated_cell(&inspection, &policy).unwrap();
     assert_eq!(verified, cell);
+}
+
+#[test]
+fn rejects_unsigned_attestation_metadata_relabeling_under_caller_pin() {
+    let (_, inspection, policy) = genuine_fixture();
+
+    let mutations: [fn(&mut StoredAttestedRoot); 4] = [
+        |root| root.federation_id.0[0] ^= 1,
+        |root| root.height += 1,
+        |root| root.timestamp += 1,
+        |root| root.threshold -= 1,
+    ];
+    for mutate in mutations {
+        let mut hostile = inspection.clone();
+        mutate_attested_root(&mut hostile, mutate);
+        assert_eq!(
+            verify_authenticated_cell(&hostile, &policy),
+            Err(dregg_node::membership_inspection::MembershipInspectionError::AttestedRootPinMismatch)
+        );
+    }
 }
 
 #[test]
@@ -357,6 +379,14 @@ fn rejects_wrong_key_authority_program_fields_status_and_timestamps() {
         inspect_castalia_membership(&membership_cell(MembershipStatus::Suspended), &expectation,)
             .is_err()
     );
+
+    let mut cell = membership_cell(MembershipStatus::Active);
+    cell.state.set_field(13, field_from_u64(0));
+    assert!(inspect_castalia_membership(&cell, &expectation).is_err());
+
+    let mut cell = membership_cell(MembershipStatus::Active);
+    cell.state.set_field(15, field_from_u64(1_700_000_000));
+    assert!(inspect_castalia_membership(&cell, &expectation).is_err());
 
     let mut cell = membership_cell(MembershipStatus::Active);
     cell.state.set_field(15, field_from_u64(1_699_999_999));
