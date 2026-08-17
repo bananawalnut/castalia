@@ -9,6 +9,10 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   check:
     name: Check
@@ -16,7 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -34,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
       # Reclaim the ~25 GB of preinstalled toolchains we never use. The hosted
@@ -107,7 +113,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -128,7 +134,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -145,7 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -162,7 +169,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
@@ -198,7 +205,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly
@@ -211,7 +218,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - run: bash scripts/no-unchecked-auth.sh
 
   no-degraded-felt:
@@ -222,7 +229,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
       - name: Install ast-grep (sg)
         run: npm install -g @ast-grep/cli@0.44.0
       - name: Faithful-commitment gate
@@ -240,7 +247,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
 
       # Install elan + the toolchain named in metatheory/lean-toolchain.
       - name: Install elan (Lean toolchain manager)
@@ -285,7 +292,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
 
       - name: Install elan (Lean toolchain manager)
         run: |

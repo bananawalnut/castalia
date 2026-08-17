@@ -19,6 +19,48 @@ Internet
   └── GitHub Actions nodes ──► devnet.dregg.fg-goose.online:9420 (QUIC gossip)
 ```
 
+## Private descriptor store
+
+`descriptor-store.yml` defines the separate `castalia-descriptor-store`
+CloudFormation stack in `us-east-1`. It creates a generated-name, private,
+versioned, SSE-S3 bucket plus two GitHub OIDC roles:
+
+- the read role trusts only `repo:bananawalnut/castalia:*` and can only call
+  `s3:GetObject` under `descriptors/v1/sha256/`;
+- the publish role trusts only the `descriptor-publish` GitHub environment and
+  can call only `s3:GetObject` and `s3:PutObject` under that prefix.
+
+Deploy with an authorized profile after validating the template. If the AWS
+account already has the GitHub Actions OIDC provider, pass its ARN; otherwise
+leave the parameter empty and the stack creates it.
+
+```bash
+aws cloudformation validate-template \
+  --template-body file://deploy/aws/descriptor-store.yml \
+  --region us-east-1
+
+aws cloudformation deploy \
+  --stack-name castalia-descriptor-store \
+  --template-file deploy/aws/descriptor-store.yml \
+  --region us-east-1 \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides ExistingGitHubOidcProviderArn="$GITHUB_OIDC_PROVIDER_ARN"
+```
+
+Copy the stack's generated bucket name and role ARNs into
+`.config/descriptor-store.json`, then publish only a directory whose seven
+files already match committed provenance:
+
+```bash
+python3 scripts/descriptor_store.py publish --source-dir /path/to/descriptors
+```
+
+The publisher is idempotent: existing content-addressed objects are not
+rewritten, and every object is downloaded and hash-checked after publication.
+Configure the GitHub `descriptor-publish` environment with `bananawalnut` as a
+required reviewer and restrict deployment branches to `main` and
+`descriptor-epoch/**`.
+
 ### 3-node federation (n=3, live)
 
 The instance can run the full 3-member federation (gateway = validator

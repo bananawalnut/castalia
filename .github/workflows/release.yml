@@ -16,6 +16,7 @@
 name: Release
 permissions:
   "contents": "write"
+  "id-token": "write"
 
 # This task will run whenever you push a git tag that looks like a version
 # like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
@@ -120,6 +121,8 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - name: Install Rust non-interactively if not already installed
         if: ${{ matrix.container }}
         run: |

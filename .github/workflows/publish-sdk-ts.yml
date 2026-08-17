@@ -26,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -36,7 +37,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: true   # include_str!'d staged registries live in LFS (.gitattributes)
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
 
       - uses: actions/setup-node@v4
         with:

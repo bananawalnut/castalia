@@ -7,12 +7,19 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   bench:
     name: Run benchmarks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-01-01

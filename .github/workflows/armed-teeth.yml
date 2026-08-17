@@ -56,6 +56,10 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   binding-teeth:
     name: Deployed light-client binding teeth (--ignored)
@@ -65,6 +69,9 @@ jobs:
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
 
       # Same disk reclaim as ci.yml's Linux test job: the hosted runner ships ~14 GB free on /,
       # which this workspace's target/ overruns (ci.yml documents the SIGBUS root cause at length).
@@ -152,6 +159,9 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
 
       # FAIL LOUD, EARLY. Without this the job's first symptom would be a wall of demand_lean
       # panics that read like the gates are broken, when the real cause is a runner with no seed.

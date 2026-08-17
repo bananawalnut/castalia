@@ -33,6 +33,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   build-test:
@@ -80,6 +81,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

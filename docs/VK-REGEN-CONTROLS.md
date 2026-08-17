@@ -19,10 +19,10 @@ found, the four controls, and what is implemented.
 |---|---|
 | Source of truth | Lean emitters, `metatheory/Dregg2/Circuit/Emit/*.lean` (the `EMITTERS` list in `scripts/emit_descriptors.py`) |
 | Regen command | `scripts/emit-descriptors.sh:1-23` → `scripts/emit_descriptors.py` — runs `lake env lean --run` per emitter, routes stdout into `circuit/descriptors/*.{json,tsv}`, re-pins the `*_FP` sha256 constants in five Rust files (the `GUARDED` list, `scripts/check-descriptor-drift.sh:40-47`) |
-| Freshness gate | `scripts/check-descriptor-drift.sh` (regenerate-and-diff), run in CI as the `descriptor-drift` job (`.github/workflows/ci.yml:253-287`) |
+| Freshness gate | `scripts/check-descriptor-drift.sh` (regenerate-and-diff), run in CI as the `descriptor-drift` job in `.github/workflows/ci.yml` |
 | The deployed VK | Compiled into the binary: `compute_recursive_vk_hash()` = VK-v2 layered hash over program bytes (`recursive_witness_bundle.rs:103`), the AIR fingerprint of `AIR_DESCRIPTOR` (`:137`), the verifier source hash (`:123`), and the pinned Plonky3 rev (`:111`). The registry accepts exactly this one hash (`:180-186`) |
 | Byte pins at rest | `*_FP` constants + `include_str!` in `circuit/src/effect_vm_descriptors.rs` etc. (self-consistency only — the drift-gate header, `check-descriptor-drift.sh:6-10`, says so plainly); the by-name predicate goldens (`circuit/src/descriptor_by_name.rs:33-40`) are additionally byte-pinned by Lean `#guard`s + `circuit-prove/tests/*_emit_gate.rs` |
-| Deployment | Descriptors are committed in-repo; the flip = push + rebuild (`docs/HANDOFF-v13-VK-EPOCH.md:54-69`). `genesis.json` carries only per-app factory VKs (`node/src/genesis.rs:365-383`), never the circuit VK |
+| Deployment | Small descriptors and provenance are committed in-repo. The seven staged TSVs are content-addressed under `descriptors/v1/sha256/<sha256>/<filename>` in the private descriptor S3 store and hydrated only after SHA-256 verification. The flip remains push + rebuild (`docs/HANDOFF-v13-VK-EPOCH.md:54-69`). `genesis.json` carries only per-app factory VKs (`node/src/genesis.rs:365-383`), never the circuit VK |
 
 **Who could trigger a regen before this change: anyone with a shell.**
 `scripts/emit-descriptors.sh` silently rewrote the tree. **What bound a deployed
@@ -115,13 +115,38 @@ and faking it with a name-only diff would launder regressions as green.
 
 1. Review + commit the Lean change under `metatheory/Dregg2/`.
 2. `DREGG_VK_REGEN_ACK="$(git rev-parse HEAD:metatheory/Dregg2)" scripts/emit-descriptors.sh`
-3. Review the printed change set; commit descriptors + FP files +
-   `PROVENANCE.json` + the `docs/VK-REGEN-LOG.md` row together.
-4. Consumers/federation operators: `python3 scripts/emit_descriptors.py
+3. Review the printed change set; commit the Git-tracked descriptors + FP files
+   + `PROVENANCE.json` + the `docs/VK-REGEN-LOG.md` row together. The seven
+   generated staged TSV working-tree files remain ignored.
+4. Push the epoch branch (`descriptor-epoch/**`) and manually dispatch
+   `.github/workflows/publish-descriptors.yml`. Its protected
+   `descriptor-publish` environment requires owner review; it independently
+   exports the seven TSVs from Lean, requires exact agreement with committed
+   provenance, publishes their content-addressed S3 objects, downloads them,
+   and re-verifies every hash. Publish before rerunning code CI.
+5. Consumers/federation operators: `python3 scripts/emit_descriptors.py
    --verify-provenance --strict` at the deploy rev before rebuilding/flipping.
-5. CI: the `descriptor-drift` job keeps re-deriving from Lean; adding a
-   `--verify-provenance` step to it (after the first stamp is committed) is a
-   one-line follow-up.
+6. CI: the `descriptor-drift` job hydrates the pinned TSVs, verifies them, and
+   keeps re-deriving the complete descriptor set from Lean.
+
+For an ordinary authorized local checkout with no epoch change, hydrate the
+committed set before compiling a `dregg-circuit` consumer:
+
+```sh
+python3 scripts/descriptor_store.py fetch
+python3 scripts/descriptor_store.py verify
+```
+
+`fetch` downloads into a temporary directory, validates every SHA-256 from
+`PROVENANCE.json`, and only then atomically installs all seven files. Public
+contributors rely on the GitHub OIDC workflow because the bucket is private.
+To reproduce the publish payload without changing repository artifacts,
+fingerprints, or provenance, export it to a directory outside the checkout:
+
+```sh
+python3 scripts/emit_descriptors.py --export-staged-tsv /tmp/castalia-descriptors
+python3 scripts/descriptor_store.py verify --source-dir /tmp/castalia-descriptors
+```
 
 Bootstrap note: the initial committed stamp is `mode=stamp-existing` (hashed
 from the on-disk set, not witnessed from an emit run) and records

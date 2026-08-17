@@ -37,6 +37,9 @@ touch nothing.
 
 Modes:
   (default)              emit from Lean, gate, install, stamp, log
+  --export-staged-tsv DIR
+                         emit the seven staged registry TSVs into DIR without
+                         touching the repository, fingerprints, or provenance
   --stamp-existing       stamp PROVENANCE.json from the CURRENT on-disk bytes
                          (no Lean run; ack-gated + logged, for bootstrap/re-pin)
   --verify-provenance    recompute hashes vs the stamp; --strict additionally
@@ -95,6 +98,19 @@ EMITTERS = [
     "EmitWideUMemWeldRegistryProbe.lean",    # ADDITIVE/STAGED: the WIDE+umem welded registry (covers wide V3)
     "EmitRotationV3SetFieldValue8.lean",     # ADDITIVE/STAGED: the setField VALUE8 epoch (8 written-slot members)
     "EmitLayoutManifest.lean",               # the rotated COLUMN LAYOUT, exported from Lean AS RUST
+]
+
+# Export-only hydration bootstrap needs exactly the seven large staged TSVs.
+# Keeping this list narrow avoids compiling unrelated descriptor producers while
+# retaining the full EMITTERS surface for ordinary regeneration and drift checks.
+STAGED_TSV_EMITTERS = [
+    "EmitRotationV3.lean",
+    "EmitWideTransferProbe.lean",
+    "EmitWideRegistryProbe.lean",
+    "EmitUMemCohort.lean",
+    "EmitUMemCohortMulti.lean",
+    "EmitWideUMemWeldRegistryProbe.lean",
+    "EmitRotationV3SetFieldValue8.lean",
 ]
 
 
@@ -516,6 +532,16 @@ WIDE_UMEM_WELD_REGISTRY_TSV = "rotation-wide-umem-welded-registry-staged.tsv"
 # `rotation-v3-staged-registry.tsv`; the live TSV / FP / VK are untouched.
 SETFIELD_VALUE8_TSV = "rotation-v3-setfield-value8-staged-registry.tsv"
 
+STAGED_TSV_FILES = (
+    SETFIELD_VALUE8_TSV,
+    ROTATION_TSV,
+    WIDE_REGISTRY_TSV,
+    WIDE_TRANSFER_TSV,
+    WIDE_UMEM_WELD_REGISTRY_TSV,
+    UMEM_COHORT_MULTI_TSV,
+    UMEM_COHORT_TSV,
+)
+
 
 def split_member_tsv(stdout: str, written, filename: str):
     """A registry emitter that prints one `key\tname\tjson` line per member (`IO.println`,
@@ -540,6 +566,42 @@ def split_cross_cell_conservation(stdout: str, written):
             f"emit_descriptors: cross-cell-conservation emitter produced unexpected output: {stdout[:80]!r}"
         )
     write_file(CROSS_CELL_CONSERVATION_FILE, stdout, written)
+
+
+def export_staged_tsv(written: dict[str, str], destination: Path) -> None:
+    """Install only the content-addressed staged TSV payloads outside the repo.
+
+    Export is deliberately separate from the descriptor regeneration install:
+    it does not rewrite descriptor files, fingerprints, provenance, generated
+    Rust, or the VK regeneration audit log.
+    """
+    missing = sorted(set(STAGED_TSV_FILES) - set(written))
+    if missing:
+        sys.exit(
+            "emit_descriptors: staged TSV export is incomplete:\n  "
+            + "\n  ".join(missing)
+        )
+
+    destination = destination.expanduser().resolve()
+    if destination == ROOT or destination.is_relative_to(ROOT):
+        sys.exit(
+            "emit_descriptors: --export-staged-tsv must target a directory "
+            "outside the repository"
+        )
+    destination.mkdir(parents=True, exist_ok=True)
+    collisions = [name for name in STAGED_TSV_FILES if (destination / name).exists()]
+    if collisions:
+        sys.exit(
+            "emit_descriptors: refusing to overwrite staged TSV export files:\n  "
+            + "\n  ".join(str(destination / name) for name in collisions)
+        )
+
+    for name in STAGED_TSV_FILES:
+        (destination / name).write_bytes(written[name].encode("utf-8"))
+    print(
+        f"emit_descriptors: exported {len(STAGED_TSV_FILES)} staged TSV files "
+        f"to {destination} without changing repository artifacts."
+    )
 
 
 # ---- FP rewriting -----------------------------------------------------------
@@ -654,9 +716,18 @@ def main():
     if "--stamp-existing" in argv:
         stamp_existing()
         return
-    if argv:
+    export_dir: Path | None = None
+    if len(argv) == 2 and argv[0] == "--export-staged-tsv":
+        export_dir = Path(argv[1]).expanduser().resolve()
+        if export_dir == ROOT or export_dir.is_relative_to(ROOT):
+            sys.exit(
+                "emit_descriptors: --export-staged-tsv must target a directory "
+                "outside the repository"
+            )
+    elif argv:
         sys.exit(f"emit_descriptors: unknown arguments {argv!r} "
-                 "(expected none, --stamp-existing, or --verify-provenance [--strict])")
+                 "(expected none, --export-staged-tsv DIR, --stamp-existing, "
+                 "or --verify-provenance [--strict])")
 
     if not (META / "lakefile.lean").exists() and not (META / "lakefile.toml").exists():
         sys.exit(f"emit_descriptors: not a lake project at {META}")
@@ -667,7 +738,8 @@ def main():
     dn2file = ir2_defname_to_file(rs_evd, c2f)
 
     print("emit_descriptors: running Lean emitters (source of truth)...")
-    for lean in EMITTERS:
+    selected_emitters = STAGED_TSV_EMITTERS if export_dir is not None else EMITTERS
+    for lean in selected_emitters:
         print(f"  -> {lean}")
         out = emit(lean)
         if lean.endswith("EmitAllJson.lean"):
@@ -699,15 +771,19 @@ def main():
 
     # Coverage check: every checked-in descriptor file must have been (re)emitted.
     # (PROVENANCE.json is the regen-control stamp, not an emitted artifact.)
-    on_disk = {p.name for p in DESC.iterdir() if p.is_file()}
-    missed = on_disk - set(written) - {PROVENANCE_FILE}
-    if missed:
-        sys.exit(
-            "emit_descriptors: these checked-in descriptors were NOT reproduced "
-            "by any emitter (routing gap):\n  " + "\n  ".join(sorted(missed))
-        )
+    if export_dir is None:
+        on_disk = {p.name for p in DESC.iterdir() if p.is_file()}
+        missed = on_disk - set(written) - {PROVENANCE_FILE}
+        if missed:
+            sys.exit(
+                "emit_descriptors: these checked-in descriptors were NOT reproduced "
+                "by any emitter (routing gap):\n  " + "\n  ".join(sorted(missed))
+            )
 
-    install_and_stamp(written)
+    if export_dir is not None:
+        export_staged_tsv(written, export_dir)
+    else:
+        install_and_stamp(written)
 
 
 if __name__ == "__main__":

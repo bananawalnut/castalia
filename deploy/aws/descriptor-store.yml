@@ -1,0 +1,138 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Private, versioned store for Castalia's content-addressed Lean descriptors.
+
+Parameters:
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ""
+    Description: Existing token.actions.githubusercontent.com IAM OIDC provider ARN, if present.
+
+Conditions:
+  CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, ""]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  DescriptorBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: castalia:component
+          Value: descriptor-store
+
+  DescriptorBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref DescriptorBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt DescriptorBucket.Arn
+              - !Sub "${DescriptorBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  DescriptorReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Read-only GitHub Actions hydration for bananawalnut/castalia.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: repo:bananawalnut/castalia:*
+      Policies:
+        - PolicyName: ReadContentAddressedDescriptors
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${DescriptorBucket.Arn}/descriptors/v1/sha256/*"
+
+  DescriptorPublishRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Protected GitHub environment publisher for immutable Castalia descriptors.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: repo:bananawalnut/castalia:environment:descriptor-publish
+      Policies:
+        - PolicyName: PublishContentAddressedDescriptors
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "${DescriptorBucket.Arn}/descriptors/v1/sha256/*"
+
+Outputs:
+  BucketName:
+    Description: Generated private descriptor bucket name.
+    Value: !Ref DescriptorBucket
+  Region:
+    Description: Region containing the descriptor store.
+    Value: !Ref AWS::Region
+  ReadRoleArn:
+    Description: GitHub Actions descriptor hydration role.
+    Value: !GetAtt DescriptorReadRole.Arn
+  PublishRoleArn:
+    Description: Protected descriptor publication role.
+    Value: !GetAtt DescriptorPublishRole.Arn
+  GitHubOidcProviderArn:
+    Description: GitHub Actions OIDC provider used by both roles.
+    Value: !If
+      - CreateGitHubOidcProvider
+      - !Ref GitHubOidcProvider
+      - !Ref ExistingGitHubOidcProviderArn

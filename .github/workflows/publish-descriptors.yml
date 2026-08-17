@@ -1,0 +1,70 @@
+name: Publish Lean descriptors
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Export, verify, and publish descriptors
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/descriptor-epoch/')
+    runs-on: ubuntu-latest
+    environment: descriptor-publish
+    env:
+      MATHLIB_REV: 1c2b90b13009c65b090d95a83c98e248deafb6f1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            -o elan-init.sh
+          bash elan-init.sh -y --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch pinned mathlib4
+        run: |
+          MATHLIB_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/src/mathlib4"
+          mkdir -p "$MATHLIB_DIR"
+          git clone https://github.com/leanprover-community/mathlib4 "$MATHLIB_DIR"
+          git -C "$MATHLIB_DIR" checkout "$MATHLIB_REV"
+          ( cd "$MATHLIB_DIR" && ~/.elan/bin/lake exe cache get )
+
+      - name: Build descriptor source of truth
+        working-directory: metatheory
+        run: lake build Dregg2
+
+      - name: Export staged TSVs from Lean
+        run: python3 scripts/emit_descriptors.py --export-staged-tsv "$RUNNER_TEMP/descriptors"
+
+      - name: Require exact agreement with committed provenance
+        run: python3 scripts/descriptor_store.py verify --source-dir "$RUNNER_TEMP/descriptors"
+
+      - name: Read publish role configuration
+        id: store
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          config = json.loads(Path(".config/descriptor-store.json").read_text())
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+              print(f"region={config['region']}", file=output)
+              print(f"publish_role_arn={config['publish_role_arn']}", file=output)
+          PY
+
+      - name: Assume descriptor publish role
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          aws-region: ${{ steps.store.outputs.region }}
+          role-to-assume: ${{ steps.store.outputs.publish_role_arn }}
+          role-session-name: castalia-descriptor-publish
+
+      - name: Publish and reverify immutable objects
+        run: python3 scripts/descriptor_store.py publish --source-dir "$RUNNER_TEMP/descriptors"

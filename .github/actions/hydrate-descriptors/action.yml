@@ -1,0 +1,52 @@
+name: Hydrate Lean descriptors
+description: Restore or fetch the hash-pinned staged descriptor TSVs.
+
+runs:
+  using: composite
+  steps:
+    - name: Read descriptor store configuration
+      id: store
+      shell: bash
+      run: |
+        PYTHON=python3
+        command -v "$PYTHON" >/dev/null 2>&1 || PYTHON=python
+        "$PYTHON" - <<'PY'
+        import json
+        import os
+        from pathlib import Path
+
+        config = json.loads(Path(".config/descriptor-store.json").read_text())
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
+            print(f"region={config['region']}", file=output)
+            print(f"read_role_arn={config['read_role_arn']}", file=output)
+        PY
+
+    - name: Restore descriptor cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: circuit/descriptors/*staged*.tsv
+        key: ${{ runner.os }}-castalia-descriptors-${{ hashFiles('circuit/descriptors/PROVENANCE.json', '.config/descriptor-store.json') }}
+
+    - name: Assume descriptor read role
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: aws-actions/configure-aws-credentials@v6.2.3
+      with:
+        aws-region: ${{ steps.store.outputs.region }}
+        role-to-assume: ${{ steps.store.outputs.read_role_arn }}
+        role-session-name: castalia-descriptor-hydration
+
+    - name: Fetch descriptors
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        PYTHON=python3
+        command -v "$PYTHON" >/dev/null 2>&1 || PYTHON=python
+        "$PYTHON" scripts/descriptor_store.py fetch
+
+    - name: Verify descriptors
+      shell: bash
+      run: |
+        PYTHON=python3
+        command -v "$PYTHON" >/dev/null 2>&1 || PYTHON=python
+        "$PYTHON" scripts/descriptor_store.py verify

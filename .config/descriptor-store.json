@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "region": "us-east-1",
+  "bucket": "castalia-descriptor-store-descriptorbucket-y9hhagxch8mt",
+  "prefix": "descriptors/v1/sha256",
+  "read_role_arn": "arn:aws:iam::044528206149:role/castalia-descriptor-store-DescriptorReadRole-Tw7U1tvnEti5",
+  "publish_role_arn": "arn:aws:iam::044528206149:role/castalia-descriptor-store-DescriptorPublishRole-TUSU4keIyXdZ",
+  "filenames": [
+    "rotation-v3-setfield-value8-staged-registry.tsv",
+    "rotation-v3-staged-registry.tsv",
+    "rotation-wide-registry-staged.tsv",
+    "rotation-wide-transfer-staged.tsv",
+    "rotation-wide-umem-welded-registry-staged.tsv",
+    "umem-cohort-multidomain-v1-staged-registry.tsv",
+    "umem-cohort-v1-staged-registry.tsv"
+  ]
+}

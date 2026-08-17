@@ -46,14 +46,15 @@ the desktop. *deos runs on dregg runs in robigalia.*)
 | **The machine-facing reference** | [README-LLMs.md](README-LLMs.md) |
 | **Community** | [Discord](https://discord.gg/eSTsv7DWcR) |
 
-There is no public server to point you at — dregg runs **on your machine**, from
-a clean checkout. The three doors below each need only this repo and `cargo`.
+There is no public runtime server to point you at — dregg runs **on your
+machine**. Builds that compile `dregg-circuit` also need the seven hash-pinned
+Lean descriptor TSVs described below.
 
 ---
 
 ## First five minutes (local)
 
-Everything here runs locally with no external service. Pick a door.
+Everything here runs locally after its build inputs are present. Pick a door.
 
 **What you need:** this repo, a recent Rust toolchain (`cargo`); `wasm-pack` for
 the browser playground; Docker for the site bundle. Plus ONE sibling checkout —
@@ -66,6 +67,21 @@ rev of the same URL via `[patch]`, so the override is a path patch), and every
 git clone https://github.com/emberian/plonky3-recursion ../plonky3-recursion
 git -C ../plonky3-recursion checkout 993efecd724261fff3fd894c06cc2525b5532e28
 ```
+
+Seven large Lean-generated descriptor TSVs are hydrated from the private
+descriptor store instead of Git LFS. Developers with authorized AWS credentials
+should bootstrap and verify them once per checkout:
+
+```sh
+python3 scripts/descriptor_store.py fetch
+python3 scripts/descriptor_store.py verify
+```
+
+GitHub Actions obtains read-only access through OIDC. Public contributors do not
+receive S3 credentials; workflows hydrate the files automatically, while local
+commands that compile `dregg-circuit` require an authorized hydration or an
+exact local Lean reproduction. The smaller JSON descriptors remain in Git, and
+atlas screenshots remain in Git LFS.
 
 ### A. Run a node and watch it execute a verified turn
 
