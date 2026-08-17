@@ -78,10 +78,11 @@ python3 scripts/descriptor_store.py verify
 ```
 
 GitHub Actions obtains read-only access through OIDC. Public contributors do not
-receive S3 credentials; workflows hydrate the files automatically, while local
-commands that compile `dregg-circuit` require an authorized hydration or an
-exact local Lean reproduction. The smaller JSON descriptors remain in Git, and
-atlas screenshots remain in Git LFS.
+receive S3 credentials: a warm workflow cache supplies the files, and a cold
+cache miss reproduces the exact provenance-pinned bytes with pinned Lean,
+mathlib, and installer inputs. Local commands that compile `dregg-circuit`
+require an authorized hydration or the same exact local Lean reproduction. The
+smaller JSON descriptors remain in Git, and atlas screenshots remain in Git LFS.
 
 ### A. Run a node and watch it execute a verified turn
 

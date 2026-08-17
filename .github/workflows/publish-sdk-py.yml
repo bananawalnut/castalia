@@ -83,12 +83,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+      - uses: ./.github/actions/hydrate-descriptors
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
           working-directory: sdk-py
           command: sdist
           args: --out dist
+      - name: Verify descriptor compiler inputs in sdist
+        run: python3 scripts/verify_descriptor_archive.py sdk-py/dist/*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-sdist

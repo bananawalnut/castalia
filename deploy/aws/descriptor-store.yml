@@ -59,6 +59,16 @@ Resources:
             Condition:
               Bool:
                 aws:SecureTransport: "false"
+          - Sid: DenyNonConditionalDescriptorWrites
+            Effect: Deny
+            Principal: "*"
+            Action: s3:PutObject
+            Resource: !Sub "${DescriptorBucket.Arn}/descriptors/v1/sha256/*"
+            Condition:
+              "Null":
+                "s3:if-none-match": "true"
+              Bool:
+                "s3:ObjectCreationOperation": "true"
 
   DescriptorReadRole:
     Type: AWS::IAM::Role
@@ -117,6 +127,32 @@ Resources:
                   - s3:PutObject
                 Resource: !Sub "${DescriptorBucket.Arn}/descriptors/v1/sha256/*"
 
+  DescriptorDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Read-only descriptor hydration for Castalia EC2 deployments.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadContentAddressedDescriptors
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${DescriptorBucket.Arn}/descriptors/v1/sha256/*"
+
+  DescriptorDeploymentInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref DescriptorDeploymentRole
+
 Outputs:
   BucketName:
     Description: Generated private descriptor bucket name.
@@ -130,6 +166,15 @@ Outputs:
   PublishRoleArn:
     Description: Protected descriptor publication role.
     Value: !GetAtt DescriptorPublishRole.Arn
+  DeploymentRoleArn:
+    Description: Read-only descriptor hydration role for deployment instances.
+    Value: !GetAtt DescriptorDeploymentRole.Arn
+  DeploymentInstanceProfileName:
+    Description: Instance profile to attach to Castalia deployment instances.
+    Value: !Ref DescriptorDeploymentInstanceProfile
+  DeploymentInstanceProfileArn:
+    Description: Instance profile ARN for Castalia deployment instances.
+    Value: !GetAtt DescriptorDeploymentInstanceProfile.Arn
   GitHubOidcProviderArn:
     Description: GitHub Actions OIDC provider used by both roles.
     Value: !If

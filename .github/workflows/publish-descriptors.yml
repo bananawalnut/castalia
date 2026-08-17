@@ -13,31 +13,14 @@ jobs:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/descriptor-epoch/')
     runs-on: ubuntu-latest
     environment: descriptor-publish
-    env:
-      MATHLIB_REV: 1c2b90b13009c65b090d95a83c98e248deafb6f1
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout v4.3.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           lfs: false
 
-      - name: Install elan
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
-            -o elan-init.sh
-          bash elan-init.sh -y --default-toolchain "$(cat metatheory/lean-toolchain)"
-          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch pinned mathlib4
-        run: |
-          MATHLIB_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/src/mathlib4"
-          mkdir -p "$MATHLIB_DIR"
-          git clone https://github.com/leanprover-community/mathlib4 "$MATHLIB_DIR"
-          git -C "$MATHLIB_DIR" checkout "$MATHLIB_REV"
-          ( cd "$MATHLIB_DIR" && ~/.elan/bin/lake exe cache get )
-
-      - name: Build descriptor source of truth
-        working-directory: metatheory
-        run: lake build Dregg2
+      - name: Bootstrap pinned descriptor source of truth
+        run: bash scripts/bootstrap_descriptor_source.sh
 
       - name: Export staged TSVs from Lean
         run: python3 scripts/emit_descriptors.py --export-staged-tsv "$RUNNER_TEMP/descriptors"
@@ -60,7 +43,8 @@ jobs:
           PY
 
       - name: Assume descriptor publish role
-        uses: aws-actions/configure-aws-credentials@v6.2.3
+        # aws-actions/configure-aws-credentials v6.2.3
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c
         with:
           aws-region: ${{ steps.store.outputs.region }}
           role-to-assume: ${{ steps.store.outputs.publish_role_arn }}

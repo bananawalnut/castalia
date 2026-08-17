@@ -19,30 +19,47 @@ runs:
         with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
             print(f"region={config['region']}", file=output)
             print(f"read_role_arn={config['read_role_arn']}", file=output)
+            oidc_available = bool(
+                os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
+                and os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+            )
+            print(f"oidc_available={str(oidc_available).lower()}", file=output)
         PY
 
     - name: Restore descriptor cache
       id: cache
-      uses: actions/cache@v4
+      # actions/cache v4.3.0
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
       with:
         path: circuit/descriptors/*staged*.tsv
         key: ${{ runner.os }}-castalia-descriptors-${{ hashFiles('circuit/descriptors/PROVENANCE.json', '.config/descriptor-store.json') }}
 
     - name: Assume descriptor read role
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: aws-actions/configure-aws-credentials@v6.2.3
+      if: steps.cache.outputs.cache-hit != 'true' && steps.store.outputs.oidc_available == 'true'
+      # aws-actions/configure-aws-credentials v6.2.3
+      uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c
       with:
         aws-region: ${{ steps.store.outputs.region }}
         role-to-assume: ${{ steps.store.outputs.read_role_arn }}
         role-session-name: castalia-descriptor-hydration
 
     - name: Fetch descriptors
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true' && steps.store.outputs.oidc_available == 'true'
       shell: bash
       run: |
         PYTHON=python3
         command -v "$PYTHON" >/dev/null 2>&1 || PYTHON=python
         "$PYTHON" scripts/descriptor_store.py fetch
+
+    - name: Reproduce descriptors without credentials
+      if: steps.cache.outputs.cache-hit != 'true' && steps.store.outputs.oidc_available != 'true'
+      shell: bash
+      run: |
+        bash scripts/bootstrap_descriptor_source.sh
+        export PATH="${ELAN_HOME:-$HOME/.elan}/bin:$PATH"
+        EXPORT_DIR="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/castalia-descriptor-export.XXXXXX")"
+        python3 scripts/emit_descriptors.py --export-staged-tsv "$EXPORT_DIR"
+        python3 scripts/descriptor_store.py install --source-dir "$EXPORT_DIR"
 
     - name: Verify descriptors
       shell: bash

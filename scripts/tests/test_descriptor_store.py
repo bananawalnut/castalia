@@ -36,14 +36,20 @@ def object_path(uri):
     _bucket, key = rest.split("/", 1)
     return store / key
 
-if args[:2] == ["s3api", "head-object"]:
+if args[:2] == ["s3api", "put-object"]:
     key = args[args.index("--key") + 1]
+    source = Path(args[args.index("--body") + 1])
+    if args[args.index("--if-none-match") + 1] != "*":
+        print("conditional write required", file=sys.stderr)
+        raise SystemExit(3)
     target = store / key
     if target.is_file():
-        print(json.dumps({"ContentLength": target.stat().st_size}))
-        raise SystemExit(0)
-    print("An error occurred (404) when calling HeadObject: Not Found", file=sys.stderr)
-    raise SystemExit(255)
+        print("An error occurred (PreconditionFailed) (412) when calling PutObject", file=sys.stderr)
+        raise SystemExit(255)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    print(json.dumps({"ETag": "fake"}))
+    raise SystemExit(0)
 
 if args[:2] == ["s3", "cp"]:
     source, destination = args[2], args[3]
@@ -138,6 +144,14 @@ class DescriptorStoreTests(unittest.TestCase):
         for name, payload in self.payloads.items():
             self.assertEqual((destination / name).read_bytes(), payload)
 
+    def test_verified_local_install_is_atomic(self) -> None:
+        source = Path(self.temp.name) / "install-source"
+        source.mkdir()
+        for name, payload in self.payloads.items():
+            (source / name).write_bytes(payload)
+        ds.install(source, self.root)
+        ds.verify(self.root)
+
     def test_checksum_mismatch_preserves_existing_files(self) -> None:
         self._seed_store()
         destination = self.root / ds.DESCRIPTOR_REL
@@ -196,15 +210,32 @@ class DescriptorStoreTests(unittest.TestCase):
         uploads = [
             call
             for call in calls
-            if call[:2] == ["s3", "cp"] and not call[2].startswith("s3://")
+            if call[:2] == ["s3api", "put-object"]
         ]
-        self.assertEqual(len(uploads), len(self.payloads))
+        self.assertEqual(len(uploads), 2 * len(self.payloads))
+        self.assertTrue(all("--if-none-match" in call for call in uploads))
+        self.assertFalse(any(call[:2] == ["s3api", "head-object"] for call in calls))
         config, descriptors = ds.load_store(self.root)
         for descriptor in descriptors:
             self.assertEqual(
                 (self.store / descriptor.key(config.prefix)).read_bytes(),
                 self.payloads[descriptor.filename],
             )
+
+    def test_existing_wrong_object_fails_closed_without_overwrite(self) -> None:
+        source = Path(self.temp.name) / "source"
+        source.mkdir()
+        for name, payload in self.payloads.items():
+            (source / name).write_bytes(payload)
+        config, descriptors = ds.load_store(self.root)
+        first = descriptors[0]
+        target = self.store / first.key(config.prefix)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"wrong-existing-bytes")
+
+        with self.assertRaisesRegex(ds.DescriptorStoreError, "checksum mismatch"):
+            ds.publish(source, self.root)
+        self.assertEqual(target.read_bytes(), b"wrong-existing-bytes")
 
 
 if __name__ == "__main__":

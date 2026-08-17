@@ -6,6 +6,15 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 description = "Zero-knowledge proof circuits for dregg authorization token chains"
+# The staged TSVs are hydrated build inputs and intentionally gitignored, so
+# Cargo must be told explicitly to include them in crate/source distributions.
+include = [
+    "Cargo.toml",
+    "src/**",
+    "descriptors/**",
+    "examples/**",
+    "tests/**",
+]
 
 [dependencies]
 # Plonky3 core (workspace-pinned). THE VERIFY FLOOR (split policy 2): these are

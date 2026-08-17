@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -258,6 +259,29 @@ def fetch(root: Path = ROOT) -> None:
     print(f"descriptor_store: fetched and verified {len(descriptors)} descriptors")
 
 
+def install(source_dir: Path, root: Path = ROOT) -> None:
+    """Atomically install an already-produced, provenance-matching descriptor set."""
+    _config, descriptors = load_store(root)
+    source_dir = source_dir.resolve()
+    verify_directory(source_dir, descriptors, source_only=True)
+
+    destination = root / DESCRIPTOR_REL
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="descriptor-install-", dir=destination.parent
+    ) as raw:
+        staged = Path(raw)
+        for descriptor in descriptors:
+            shutil.copyfile(
+                source_dir / descriptor.filename,
+                staged / descriptor.filename,
+            )
+        verify_directory(staged, descriptors, source_only=True)
+        _atomic_install(staged, destination, descriptors)
+    verify_directory(destination, descriptors, source_only=False)
+    print(f"descriptor_store: installed and verified {len(descriptors)} descriptors")
+
+
 def verify(root: Path = ROOT, source_dir: Path | None = None) -> None:
     _config, descriptors = load_store(root)
     directory = source_dir if source_dir is not None else root / DESCRIPTOR_REL
@@ -265,27 +289,40 @@ def verify(root: Path = ROOT, source_dir: Path | None = None) -> None:
     print(f"descriptor_store: verified {len(descriptors)} descriptors in {directory}")
 
 
-def _object_exists(config: StoreConfig, descriptor: Descriptor) -> bool:
+def _conditional_put(
+    config: StoreConfig,
+    descriptor: Descriptor,
+    source: Path,
+) -> None:
+    """Create an immutable key, treating a failed write-once precondition as success."""
     result = _run_aws(
         [
             "s3api",
-            "head-object",
+            "put-object",
             "--bucket",
             config.bucket,
             "--key",
             descriptor.key(config.prefix),
+            "--body",
+            str(source),
+            "--if-none-match",
+            "*",
             "--region",
             config.region,
         ],
         allow_failure=True,
     )
     if result.returncode == 0:
-        return True
+        return
     detail = f"{result.stdout}\n{result.stderr}".lower()
-    if "404" in detail or "not found" in detail or "nosuchkey" in detail:
-        return False
+    if (
+        "preconditionfailed" in detail
+        or "precondition failed" in detail
+        or "412" in detail
+    ):
+        return
     raise DescriptorStoreError(
-        "cannot determine whether immutable S3 object exists: "
+        "conditional immutable S3 upload failed: "
         + (result.stderr.strip() or result.stdout.strip() or str(result.returncode))
     )
 
@@ -298,19 +335,11 @@ def publish(source_dir: Path, root: Path = ROOT) -> None:
     with tempfile.TemporaryDirectory(prefix="descriptor-publish-verify-") as raw:
         downloaded = Path(raw)
         for descriptor in descriptors:
-            uri = f"s3://{config.bucket}/{descriptor.key(config.prefix)}"
-            if not _object_exists(config, descriptor):
-                _run_aws(
-                    [
-                        "s3",
-                        "cp",
-                        str(source_dir / descriptor.filename),
-                        uri,
-                        "--region",
-                        config.region,
-                        "--only-show-errors",
-                    ]
-                )
+            _conditional_put(
+                config,
+                descriptor,
+                source_dir / descriptor.filename,
+            )
             _download(config, descriptor, downloaded / descriptor.filename)
         verify_directory(downloaded, descriptors, source_only=True)
     print(f"descriptor_store: published and reverified {len(descriptors)} descriptors")
@@ -320,6 +349,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("fetch", help="download and atomically install all descriptors")
+    install_parser = subparsers.add_parser(
+        "install", help="atomically install a verified local descriptor set"
+    )
+    install_parser.add_argument("--source-dir", type=Path, required=True)
     verify_parser = subparsers.add_parser("verify", help="verify the hydrated descriptors")
     verify_parser.add_argument("--source-dir", type=Path)
     publish_parser = subparsers.add_parser("publish", help="publish immutable descriptors")
@@ -332,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "fetch":
             fetch()
+        elif args.command == "install":
+            install(args.source_dir)
         elif args.command == "verify":
             verify(source_dir=args.source_dir)
         elif args.command == "publish":

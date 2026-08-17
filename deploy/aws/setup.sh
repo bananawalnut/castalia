@@ -52,6 +52,12 @@ fi
 
 cd "$REPO_DIR"
 git pull origin "$BRANCH"
+"$REPO_DIR/deploy/aws/install-descriptor-tools.sh"
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "descriptor hydration needs AWS credentials; attach the descriptor-store deployment instance profile" >&2
+  exit 1
+fi
+python3 scripts/descriptor_store.py fetch
 cargo build --release -p dregg-node -p dregg-discord-bot
 
 # Create dregg user (runs the node process)

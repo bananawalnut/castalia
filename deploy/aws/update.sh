@@ -44,6 +44,13 @@ fi
 git fetch "$REMOTE" "$BRANCH"
 git merge --ff-only "$REMOTE_REF"
 
+deploy/aws/install-descriptor-tools.sh
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "descriptor hydration needs AWS credentials; attach the descriptor-store deployment instance profile" >&2
+  exit 1
+fi
+python3 scripts/descriptor_store.py fetch
+
 if [[ "$GATEWAY_ONLY" != "1" && ! -f "$ENV_FILE" ]]; then
   echo "missing bot env file: $ENV_FILE" >&2
   echo "copy deploy/aws/discord-bot.env.example to $ENV_FILE and fill secrets" >&2

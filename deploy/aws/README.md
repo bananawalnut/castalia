@@ -23,12 +23,18 @@ Internet
 
 `descriptor-store.yml` defines the separate `castalia-descriptor-store`
 CloudFormation stack in `us-east-1`. It creates a generated-name, private,
-versioned, SSE-S3 bucket plus two GitHub OIDC roles:
+versioned, SSE-S3 bucket, two GitHub OIDC roles, and a read-only EC2 deployment
+role/instance profile:
 
 - the read role trusts only `repo:bananawalnut/castalia:*` and can only call
   `s3:GetObject` under `descriptors/v1/sha256/`;
 - the publish role trusts only the `descriptor-publish` GitHub environment and
-  can call only `s3:GetObject` and `s3:PutObject` under that prefix.
+  can call only `s3:GetObject` and `s3:PutObject` under that prefix;
+- the deployment role trusts only EC2 and can only call `s3:GetObject` under
+  that prefix. Attach its generated instance profile to every gateway instance.
+
+The bucket policy rejects descriptor writes that omit `If-None-Match`, so even
+the publish role cannot replace the current version of a content-addressed key.
 
 Deploy with an authorized profile after validating the template. If the AWS
 account already has the GitHub Actions OIDC provider, pass its ARN; otherwise
@@ -61,6 +67,26 @@ Configure the GitHub `descriptor-publish` environment with `bananawalnut` as a
 required reviewer and restrict deployment branches to `main` and
 `descriptor-epoch/**`.
 
+Get the deployment profile name from the stack and attach it to an existing
+instance (or select it when launching a new instance):
+
+```bash
+DESCRIPTOR_PROFILE="$(aws cloudformation describe-stacks \
+  --stack-name castalia-descriptor-store \
+  --region us-east-1 \
+  --query 'Stacks[0].Outputs[?OutputKey==`DeploymentInstanceProfileName`].OutputValue' \
+  --output text)"
+
+aws ec2 associate-iam-instance-profile \
+  --instance-id "$INSTANCE_ID" \
+  --iam-instance-profile "Name=$DESCRIPTOR_PROFILE" \
+  --region us-east-1
+```
+
+If an instance already has a profile, add the deployment role's exact
+`s3:GetObject` permission to that role or explicitly replace the association;
+EC2 permits only one instance profile per instance.
+
 ### 3-node federation (n=3, live)
 
 The instance can run the full 3-member federation (gateway = validator
@@ -89,6 +115,7 @@ by choice: reach them on the instance via `localhost:8420`.
 - Ports open: 80 (HTTP, for ACME), 443 (HTTPS), 8420 (HTTP API, optional direct), 9420 (QUIC gossip)
 - SSH access configured
 - GitHub deploy key for the source repo (`git@github.com:emberian/dregg.git`, or your `DREGG_REPO_URL`)
+- The descriptor-store deployment instance profile attached to the instance
 
 ## First-Time Setup
 
@@ -119,7 +146,8 @@ bash /opt/dregg/deploy/aws/update.sh
 ```
 
 The update script refuses to deploy over local or untracked changes. It fetches
-`origin/main`, fast-forwards the checkout, builds both `dregg-node` and
+`origin/main`, fast-forwards the checkout, hydrates and verifies the seven
+descriptor inputs through the instance profile, builds both `dregg-node` and
 `dregg-discord-bot`, restarts both systemd services, updates Caddy when needed,
 and runs `deploy/aws/preflight-discord-bot.sh`.
 
