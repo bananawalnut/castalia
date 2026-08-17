@@ -83,4 +83,40 @@ fi
     echo "actual:   $ACTUAL_MATHLIB_REV" >&2
     exit 1
   fi
+
+  # The emitter modules import local Dregg2 modules. Mathlib's cache only
+  # provides dependency oleans, so a fresh checkout must compile those roots
+  # before export-only hydration or publication can invoke the emitters.
+  #
+  # Build the roots sequentially: the umbrella `lake build Dregg2` also builds
+  # thousands of unrelated proof modules and can exhaust a runner's memory.
+  DREGG2_EMITTER_ROOTS=(
+    Dregg2.Circuit.Emit.EffectVmEmitRotation
+    Dregg2.Circuit.Emit.EffectVmEmitRotationR
+    Dregg2.Circuit.Emit.EffectVmEmitRotationCaveat
+    Dregg2.Circuit.Emit.EffectVmEmitRotationV3
+    Dregg2.Circuit.Emit.CapOpenEmit
+    Dregg2.Circuit.Emit.CapOpenTurnPins
+    Dregg2.Circuit.RotatedKernelRefinementExercise
+    Dregg2.Circuit.RotatedKernelRefinementCapOpenAvail
+    Dregg2.Circuit.Emit.EffectVmEmitRotationWide
+    Dregg2.Circuit.Emit.HeapOpenEmit
+    Dregg2.Circuit.Emit.FieldsOpenEmit
+    Dregg2.Circuit.Emit.AvailWireMembers
+    Dregg2.Circuit.Emit.AvailWideMembers
+    Dregg2.Circuit.Emit.AvailWideFeeMember
+    Dregg2.Circuit.Emit.AccumulatorInsertEmit
+    Dregg2.Circuit.Emit.CarrierComposed
+    Dregg2.Circuit.Emit.EffectVmEmitUMemCohort
+    Dregg2.Circuit.Emit.EffectVmEmitUMemCohortMulti
+    Dregg2.Circuit.Emit.EffectVmEmitUMemWeldWide
+    Dregg2.Deos.BareCohortFloorRefuseWide
+    Dregg2.Deos.DischargeSatDescriptor
+    Dregg2.Deos.VaultSatDescriptor
+    Dregg2.Deos.SettleEscrowSatDescriptor
+    Dregg2.Circuit.Emit.EffectVmEmitRotationV3Refused
+  )
+  for module in "${DREGG2_EMITTER_ROOTS[@]}"; do
+    lake build "+$module"
+  done
 )

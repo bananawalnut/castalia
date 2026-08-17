@@ -25,6 +25,16 @@ EXPECTED_FILENAMES = {
     "umem-cohort-v1-staged-registry.tsv",
 }
 
+STAGED_EMITTERS = (
+    "EmitRotationV3.lean",
+    "EmitWideTransferProbe.lean",
+    "EmitWideRegistryProbe.lean",
+    "EmitUMemCohort.lean",
+    "EmitUMemCohortMulti.lean",
+    "EmitWideUMemWeldRegistryProbe.lean",
+    "EmitRotationV3SetFieldValue8.lean",
+)
+
 
 class DescriptorStoreTemplateTests(unittest.TestCase):
     @classmethod
@@ -103,6 +113,31 @@ class DescriptorStoreTemplateTests(unittest.TestCase):
         ):
             self.assertIn(checksum, bootstrap)
         self.assertNotIn("/latest/", bootstrap)
+
+    def test_descriptor_bootstrap_builds_emitter_imports_after_fetching_cache(self) -> None:
+        bootstrap = BOOTSTRAP.read_text()
+        self.assertIn("lake exe cache get", bootstrap)
+        self.assertIn('lake build "+$module"', bootstrap)
+        self.assertLess(
+            bootstrap.index("lake exe cache get"),
+            bootstrap.index('lake build "+$module"'),
+        )
+
+        block = re.search(
+            r"DREGG2_EMITTER_ROOTS=\(\n(?P<roots>.*?)\n\s*\)", bootstrap, re.S
+        )
+        self.assertIsNotNone(block)
+        configured_roots = {
+            line.strip() for line in block.group("roots").splitlines() if line.strip()
+        }
+        direct_imports = {
+            line.removeprefix("import ").strip()
+            for emitter in STAGED_EMITTERS
+            for line in (ROOT / "metatheory" / emitter).read_text().splitlines()
+            if line.startswith("import Dregg2.")
+        }
+        self.assertEqual(configured_roots, direct_imports)
+        self.assertNotRegex(bootstrap, r"(?m)^\s*lake build Dregg2\s*$")
 
     def test_deployment_hydrates_before_building(self) -> None:
         for relative in ("deploy/aws/setup.sh", "deploy/aws/update.sh"):
