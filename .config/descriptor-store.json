@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "region": "us-east-1",
-  "bucket": "castalia-descriptor-store-descriptorbucket-y9hhagxch8mt",
+  "bucket": "castalia-descriptor-store-descriptorbucket-15evvshq8y1a",
   "prefix": "descriptors/v1/sha256",
-  "read_role_arn": "arn:aws:iam::044528206149:role/castalia-descriptor-store-DescriptorReadRole-Tw7U1tvnEti5",
-  "publish_role_arn": "arn:aws:iam::044528206149:role/castalia-descriptor-store-DescriptorPublishRole-TUSU4keIyXdZ",
+  "read_role_arn": "arn:aws:iam::610992396917:role/castalia-descriptor-store-DescriptorReadRole-5lAkMoq33pjg",
+  "publish_role_arn": "arn:aws:iam::610992396917:role/castalia-descriptor-store-DescriptorPublishRole-ItRZDJUnEyw1",
   "filenames": [
     "rotation-v3-setfield-value8-staged-registry.tsv",
     "rotation-v3-staged-registry.tsv",
