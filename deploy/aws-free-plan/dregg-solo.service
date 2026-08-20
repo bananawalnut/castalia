@@ -1,0 +1,51 @@
+[Unit]
+Description=Castalia Dregg bootstrap node (solo)
+Documentation=https://github.com/bananawalnut/castalia
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=dregg
+Group=dregg
+WorkingDirectory=/opt/dregg
+ExecStart=/opt/dregg/bin/dregg-node run \
+    --data-dir /opt/dregg-data \
+    --port 8420 \
+    --bind 127.0.0.1 \
+    --node-index 0 \
+    --federation-size 1 \
+    --federation-mode solo \
+    --consensus blocklace
+Restart=always
+RestartSec=5
+Environment=RUST_LOG=info
+Environment=DREGG_GATEWAY=true
+Environment=DREGG_LEAN_PRODUCER=1
+Environment=DREGG_TRUSTED_PROXIES=127.0.0.1,::1
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/dregg-data
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectHostname=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+LimitNOFILE=65536
+LimitNPROC=2048
+MemoryHigh=65%
+MemoryMax=75%
+TasksMax=1024
+
+[Install]
+WantedBy=multi-user.target

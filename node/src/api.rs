@@ -1036,6 +1036,8 @@ pub struct CellListEntry {
     pub nonce: u64,
     pub capability_count: usize,
     pub has_delegate: bool,
+    /// Whether the cell carries the separate scoped delegation record.
+    pub has_delegation: bool,
     pub has_program: bool,
     pub found: bool,
 }
@@ -1051,6 +1053,10 @@ pub struct CellDetailResponse {
     /// Alias for JS inspector compat (cell.js + Starbridge Remote expect num_capabilities in some paths).
     pub num_capabilities: usize,
     pub has_delegate: bool,
+    /// Separate from the legacy `delegate` owner pointer. Security-sensitive
+    /// consumers must require both indicators to be false when delegation is
+    /// forbidden by their contract.
+    pub has_delegation: bool,
     pub delegate: Option<String>,
     pub has_program: bool,
     pub public_key: String,
@@ -2532,7 +2538,11 @@ pub fn router_with_cors(
                     post_set_passphrase(connect_info, headers, state, body, limiter)
                 }
             }),
-        );
+        )
+        // Permissionless Castalia membership: the Member Key's signature is
+        // the request authorization. This deliberately sits outside the node
+        // operator bearer-auth layer.
+        .merge(crate::castalia_membership::routes());
 
     // Faucet endpoint (only available in devnet mode).
     if enable_faucet {
@@ -6341,6 +6351,7 @@ async fn get_all_cells(
             nonce: cell.state.nonce(),
             capability_count: cell.capabilities.len(),
             has_delegate: cell.delegate.is_some(),
+            has_delegation: cell.delegation.is_some(),
             has_program: !matches!(cell.program, dregg_cell::CellProgram::None),
             found: true,
         })
@@ -6399,6 +6410,7 @@ fn cell_detail_response(
             capability_count: cell.capabilities.len(),
             num_capabilities: cell.capabilities.len(),
             has_delegate: cell.delegate.is_some(),
+            has_delegation: cell.delegation.is_some(),
             delegate: cell.delegate.as_ref().map(|d| hex_encode(&d.0)),
             has_program: !matches!(cell.program, dregg_cell::CellProgram::None),
             public_key: hex_encode(cell.public_key()),
@@ -6426,6 +6438,7 @@ fn cell_detail_response(
             capability_count: 0,
             num_capabilities: 0,
             has_delegate: false,
+            has_delegation: false,
             delegate: None,
             has_program: false,
             public_key: String::new(),
@@ -12940,6 +12953,7 @@ mod tests {
             nonce: 1,
             capability_count: 2,
             has_delegate: false,
+            has_delegation: false,
             has_program: true,
             found: true,
         })

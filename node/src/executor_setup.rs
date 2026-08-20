@@ -400,10 +400,14 @@ pub fn configure_turn_executor(
         executor.register_issuer_well(*token_id, *well);
     }
 
-    // Castalia C3: genesis pins the institutional authority. Reconstruct and
-    // deploy the exact descriptor + full method-dispatched child program on
-    // every fresh production executor. A mismatch is a configuration/store
-    // integrity event; never continue with membership enforcement omitted.
+    // Castalia v2: every node exposes the same permissionless, member-owned
+    // factory. It has no institutional key and is therefore composed even when
+    // genesis has no legacy membership authority.
+    crate::castalia_membership::deploy_permissionless_checked(&mut executor.factory_registry_mut())
+        .expect("public Castalia membership factory must compose exactly");
+
+    // Castalia v1 compatibility: when genesis pins an institutional authority,
+    // also reconstruct the legacy application-lifecycle factory.
     if let Some(authority) = s.castalia_membership_authority {
         crate::castalia_membership::deploy_checked(authority, &mut executor.factory_registry_mut())
             .expect("genesis-pinned Castalia membership factory must compose exactly");

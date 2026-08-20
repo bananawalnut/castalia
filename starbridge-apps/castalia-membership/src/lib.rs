@@ -1,5 +1,9 @@
 //! Castalia-owned institutional membership cells.
 
+mod permissionless;
+
+pub use permissionless::*;
+
 use dregg_cell::program::{SimpleStateConstraint, TransitionCase, TransitionGuard};
 use dregg_cell::{
     CellMode, CellProgram, ChildVkStrategy, FactoryCreationParams, FactoryDescriptor, FactoryError,
@@ -20,7 +24,7 @@ pub fn symbol(name: &str) -> [u8; 32] {
     *blake3::hash(name.as_bytes()).as_bytes()
 }
 
-fn canonical_program_vk(program: &CellProgram) -> [u8; 32] {
+pub(crate) fn canonical_program_vk(program: &CellProgram) -> [u8; 32] {
     let program_bytes = dregg_cell::factory::canonical_program_bytes(program);
     canonical_vk_v2(&VkComponents {
         program_bytes: &program_bytes,

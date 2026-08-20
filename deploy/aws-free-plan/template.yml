@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Castalia single-node Dregg bootstrap on the AWS Free Account Plan
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Existing EC2 key pair used for operator SSH access
+  OperatorCidr:
+    Type: String
+    Description: Exact operator IPv4 CIDR allowed to reach SSH, normally x.x.x.x/32
+    AllowedPattern: "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}/(?:[0-9]|[12][0-9]|3[0-2])$"
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.small
+      - c7i-flex.large
+    Description: Start with t3.small; use c7i-flex.large only if the acceptance soak fails
+
+Conditions:
+  IsBurstableT3: !Equals [!Ref InstanceType, t3.small]
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: castalia-dregg-free-plan
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.1.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: castalia-dregg-public
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PublicSubnet
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Castalia Dregg public HTTPS and operator-only SSH
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref OperatorCidr
+          Description: Operator SSH
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: ACME HTTP validation
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Wallet HTTPS API
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: castalia-dregg-free-plan
+
+  Node:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "{{resolve:ssm:/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id}}"
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      Monitoring: false
+      CreditSpecification: !If
+        - IsBurstableT3
+        - CPUCredits: standard
+        - !Ref AWS::NoValue
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+        InstanceMetadataTags: disabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            DeleteOnTermination: true
+            Encrypted: true
+            VolumeSize: 20
+            VolumeType: gp3
+      UserData:
+        Fn::Base64: !Sub |
+          #cloud-config
+          package_update: true
+          package_upgrade: false
+          packages:
+            - age
+            - ca-certificates
+            - curl
+            - debian-archive-keyring
+            - debian-keyring
+            - gnupg
+            - jq
+            - ufw
+          write_files:
+            - path: /etc/sysctl.d/60-dregg-network.conf
+              owner: root:root
+              permissions: "0644"
+              content: |
+                net.ipv4.tcp_syncookies = 1
+                net.ipv4.conf.all.accept_redirects = 0
+                net.ipv4.conf.default.accept_redirects = 0
+                net.ipv4.conf.all.send_redirects = 0
+                net.ipv4.conf.default.send_redirects = 0
+          runcmd:
+            - [install, -d, -m, "0755", /opt/dregg]
+            - [install, -d, -m, "0755", /opt/dregg/bin]
+            - [install, -d, -m, "0755", /opt/dregg/releases]
+            - [install, -d, -m, "0700", /opt/dregg-backups]
+            - [bash, -lc, "curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/gpg.key | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg"]
+            - [bash, -lc, "curl -1sLf https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt > /etc/apt/sources.list.d/caddy-stable.list"]
+            - [bash, -lc, "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y caddy"]
+            - [ufw, default, deny, incoming]
+            - [ufw, default, allow, outgoing]
+            - [ufw, allow, OpenSSH]
+            - [ufw, allow, 80/tcp]
+            - [ufw, allow, 443/tcp]
+            - [ufw, --force, enable]
+            - [sysctl, --system]
+          final_message: "Castalia AWS bootstrap host is ready after $UPTIME seconds"
+      Tags:
+        - Key: Name
+          Value: castalia-dregg-bootstrap
+        - Key: CastaliaCostBoundary
+          Value: aws-free-account-plan
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: castalia-dregg-bootstrap
+
+  ElasticIpAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt ElasticIp.AllocationId
+      InstanceId: !Ref Node
+
+Outputs:
+  InstanceId:
+    Value: !Ref Node
+  PublicIp:
+    Value: !Ref ElasticIp
+  SshCommand:
+    Value: !Sub "ssh ubuntu@${ElasticIp}"
+  NodeHostname:
+    Value: dregg.zenith-research.ca
