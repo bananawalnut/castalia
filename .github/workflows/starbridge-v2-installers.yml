@@ -160,19 +160,11 @@ jobs:
           bash elan-init.sh -y --default-toolchain "$(cat metatheory/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Reconstruct the pinned mathlib path dependency
+      - name: Fetch pinned mathlib cache through Lake
         if: steps.lean-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          # metatheory/lakefile.toml pins mathlib as a LOCAL PATH dep; bootstrap.sh
-          # reads that path. Recreate it at the pinned rev + pull the prebuilt cache.
-          MATHLIB_REL="$(sed -n 's/^path = "\(.*\)"/\1/p' metatheory/lakefile.toml | head -1)"
-          MATHLIB_REV="$(grep -oE '[0-9a-f]{40}' metatheory/lakefile.toml | head -1)"
-          MATHLIB_DIR="$(cd metatheory && pwd)/$MATHLIB_REL"
-          mkdir -p "$(dirname "$MATHLIB_DIR")"
-          git clone https://github.com/leanprover-community/mathlib4 "$MATHLIB_DIR"
-          git -C "$MATHLIB_DIR" checkout "$MATHLIB_REV"
-          ( cd "$MATHLIB_DIR" && "$HOME/.elan/bin/lake" exe cache get )
+          ( cd metatheory && "$HOME/.elan/bin/lake" exe cache get )
 
       - name: bootstrap.sh — build + seed libdregg_lean.a
         if: steps.lean-cache.outputs.cache-hit != 'true'
@@ -370,17 +362,11 @@ jobs:
           bash elan-init.sh -y --default-toolchain "$(cat metatheory/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - name: Reconstruct the pinned mathlib path dependency
+      - name: Fetch pinned mathlib cache through Lake
         if: steps.lean-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          MATHLIB_REL="$(sed -n 's/^path = "\(.*\)"/\1/p' metatheory/lakefile.toml | head -1)"
-          MATHLIB_REV="$(grep -oE '[0-9a-f]{40}' metatheory/lakefile.toml | head -1)"
-          MATHLIB_DIR="$(cd metatheory && pwd)/$MATHLIB_REL"
-          mkdir -p "$(dirname "$MATHLIB_DIR")"
-          git clone https://github.com/leanprover-community/mathlib4 "$MATHLIB_DIR"
-          git -C "$MATHLIB_DIR" checkout "$MATHLIB_REV"
-          ( cd "$MATHLIB_DIR" && "$HOME/.elan/bin/lake" exe cache get )
+          ( cd metatheory && "$HOME/.elan/bin/lake" exe cache get )
 
       - name: bootstrap.sh — build + seed libdregg_lean.a
         if: steps.lean-cache.outputs.cache-hit != 'true'

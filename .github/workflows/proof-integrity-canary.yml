@@ -22,8 +22,6 @@ jobs:
     name: C-c1 keystone falsifiability gate
     runs-on: ubuntu-latest
     # Same elan + pinned-mathlib setup as ci.yml's metatheory-no-sorry job (the canary needs `lake`).
-    env:
-      MATHLIB_REV: 1c2b90b13009c65b090d95a83c98e248deafb6f1
     steps:
       - uses: actions/checkout@v4
 
@@ -34,15 +32,8 @@ jobs:
           bash elan-init.sh -y --default-toolchain "$(cat metatheory/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      # The lakefile's mathlib require is a local path two levels above the repo root; reconstruct it
-      # at the pinned rev and pull the prebuilt .olean cache (don't recompile mathlib).
-      - name: Fetch pinned mathlib4
-        run: |
-          MATHLIB_DIR="$(cd "$GITHUB_WORKSPACE/../.." && pwd)/src/mathlib4"
-          mkdir -p "$MATHLIB_DIR"
-          git clone https://github.com/leanprover-community/mathlib4 "$MATHLIB_DIR"
-          git -C "$MATHLIB_DIR" checkout "$MATHLIB_REV"
-          ( cd "$MATHLIB_DIR" && ~/.elan/bin/lake exe cache get )
+      - name: Fetch pinned mathlib cache through Lake
+        run: ( cd metatheory && lake exe cache get )
 
       # The gate: BASELINE must be GREEN, then AUTH-GRAPH-DROP + LEDGER-SPEC-DROP must each go RED.
       # Exits nonzero (failing the job) iff a load-bearing C-c1 proof regressed to decorative.

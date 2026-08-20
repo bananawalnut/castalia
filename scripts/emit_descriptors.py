@@ -93,6 +93,7 @@ EMITTERS = [
     "EmitWideRegistryProbe.lean",            # ADDITIVE: the 57-member faithful 8-felt wide registry (covers live V3)
     "EmitBilateralLegs.lean",                # bilateral-aggregation legs
     "EmitCrossCellConservation.lean",        # turn-wide cross-cell Σδ=0 conservation AIR (foolable gap #6)
+    "EmitCertFDescriptor.lean",               # verified Cert-F AIR
     "EmitUMemCohort.lean",                   # ADDITIVE/STAGED: the umem-form per-effect cohort registry
     "EmitUMemCohortMulti.lean",              # ADDITIVE/STAGED: the MULTI-DOMAIN umem-form cohort registry
     "EmitWideUMemWeldRegistryProbe.lean",    # ADDITIVE/STAGED: the WIDE+umem welded registry (covers wide V3)
@@ -568,6 +569,19 @@ def split_cross_cell_conservation(stdout: str, written):
     write_file(CROSS_CELL_CONSERVATION_FILE, stdout, written)
 
 
+CERT_F_FILE = "dregg-cert-f-ir2.json"
+
+
+def split_cert_f(stdout: str, written):
+    """The Cert-F emitter uses ``IO.print`` so the checked-in artifact is the
+    canonical JSON with no trailing newline."""
+    if not stdout.startswith('{"name":"cert-f","ir":2'):
+        sys.exit(
+            f"emit_descriptors: Cert-F emitter produced unexpected output: {stdout[:80]!r}"
+        )
+    write_file(CERT_F_FILE, stdout, written)
+
+
 def export_staged_tsv(written: dict[str, str], destination: Path) -> None:
     """Install only the content-addressed staged TSV payloads outside the repo.
 
@@ -758,6 +772,8 @@ def main():
             split_layout(out, written)
         elif lean.endswith("EmitCrossCellConservation.lean"):
             split_cross_cell_conservation(out, written)
+        elif lean.endswith("EmitCertFDescriptor.lean"):
+            split_cert_f(out, written)
         elif lean.endswith("EmitUMemCohortMulti.lean"):
             split_member_tsv(out, written, UMEM_COHORT_MULTI_TSV)
         elif lean.endswith("EmitUMemCohort.lean"):
