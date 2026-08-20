@@ -1194,14 +1194,9 @@ jobs:
       - name: cargo audit (ignores sourced from /audit.toml)
         run: |
           set -euo pipefail
-          # Extract the RUSTSEC ids from the [advisories].ignore array in
-          # audit.toml and turn each into a `--ignore <id>` flag. Match ONLY the
-          # QUOTED array elements ("RUSTSEC-…"), never a bare mention in a comment
-          # — otherwise a RUSTSEC id typed into a comment silently suppresses a
-          # live advisory (the grep-scanned-the-whole-file footgun; audit.toml's
-          # own per-entry comments name the ids, and fixed advisories are written
-          # prefix-stripped to dodge the old grep — both now moot).
-          mapfile -t IDS < <(grep -oE '"RUSTSEC-[0-9]{4}-[0-9]{4}"' audit.toml | tr -d '"' | sort -u)
+          # Read only the explicit [advisories].ignore array. Scraping comments
+          # would silently turn a documented, non-exempt advisory into an ignore.
+          mapfile -t IDS < <(python3 scripts/audit_ignore_ids.py)
           IGNORE_ARGS=()
           for id in "${IDS[@]}"; do IGNORE_ARGS+=(--ignore "$id"); done
           echo "Ignoring ${#IDS[@]} assessed advisories: ${IDS[*]}"

@@ -1,0 +1,178 @@
+name: Castalia bootstrap node
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/castalia-bootstrap-node.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "node/**"
+      - "dregg-lean-ffi/**"
+      - "exec-lean/**"
+      - "metatheory/**"
+      - "circuit/**"
+      - "scripts/bootstrap.sh"
+      - "scripts/cargo_metadata_to_spdx.py"
+      - "scripts/write_bootstrap_provenance.py"
+  push:
+    branches: [main]
+    tags: ["castalia-bootstrap-v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (for example castalia-bootstrap-v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: castalia-bootstrap-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verified-artifact:
+    name: Verified Lean Linux x86-64 artifact
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: castalia-bootstrap-linux-x86-64
+
+      - name: Bootstrap the pinned verified Lean executor
+        run: bash scripts/bootstrap.sh
+
+      - name: Build the production node without marshal-only fallback
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+        run: cargo build --locked --release -p dregg-node
+
+      - name: Boot and assert the verified producer at runtime
+        run: |
+          set -euo pipefail
+          DATA_DIR="$(mktemp -d "${RUNNER_TEMP}/castalia-node.XXXXXX")"
+          STATUS_JSON="${RUNNER_TEMP}/status.json"
+          LOG="${RUNNER_TEMP}/dregg-node.log"
+          target/release/dregg-node init --data-dir "$DATA_DIR"
+          target/release/dregg-node run \
+            --data-dir "$DATA_DIR" \
+            --port 18420 \
+            --bind 127.0.0.1 \
+            --gossip-port 19420 \
+            --federation-size 1 \
+            --federation-mode solo >"$LOG" 2>&1 &
+          NODE_PID=$!
+          trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:18420/status >"$STATUS_JSON"; then
+              break
+            fi
+            sleep 1
+          done
+          test -s "$STATUS_JSON" || { cat "$LOG"; exit 1; }
+          jq -e '
+            .state_producer == "lean" and
+            .lean_producer == true and
+            .federation_mode == "solo"
+          ' "$STATUS_JSON"
+          if grep -Eqi 'marshal-only|un-verified rust executor' "$LOG"; then
+            echo "::error::runtime log indicates an unverified producer"
+            exit 1
+          fi
+          cp "$STATUS_JSON" "${RUNNER_TEMP}/verified-status.json"
+          kill "$NODE_PID"
+          wait "$NODE_PID" || true
+          trap - EXIT
+
+      - name: Package checksum, provenance, and SPDX SBOM
+        run: |
+          set -euo pipefail
+          OUT="${RUNNER_TEMP}/castalia-bootstrap-node-linux-x86_64"
+          mkdir -p "$OUT"
+          install -m 0755 target/release/dregg-node "$OUT/dregg-node"
+          ( cd "$OUT" && sha256sum dregg-node > dregg-node.sha256 )
+          cargo metadata --locked --format-version 1 > "${RUNNER_TEMP}/cargo-metadata.json"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+            python3 scripts/cargo_metadata_to_spdx.py \
+              --metadata "${RUNNER_TEMP}/cargo-metadata.json" \
+              --root-package dregg-node \
+              --output "$OUT/dregg-node.spdx.json"
+          python3 scripts/write_bootstrap_provenance.py \
+            --binary "$OUT/dregg-node" \
+            --status "${RUNNER_TEMP}/verified-status.json" \
+            --sbom "$OUT/dregg-node.spdx.json" \
+            --output "$OUT/provenance.json"
+          SHA="$(awk 'NR == 1 { print $1 }' "$OUT/dregg-node.sha256")"
+          jq -e --arg sha "$SHA" '
+            .binary.sha256 == $sha and
+            .stateProducer == "lean" and
+            .leanProducer == true and
+            (.revision | test("^[0-9a-f]{40}$"))
+          ' "$OUT/provenance.json"
+          jq -e '.spdxVersion == "SPDX-2.3" and (.packages | length) > 0' \
+            "$OUT/dregg-node.spdx.json"
+
+      - name: Upload verified deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: castalia-bootstrap-node-linux-x86_64
+          path: ${{ runner.temp }}/castalia-bootstrap-node-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish protected release
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/castalia-bootstrap-v')
+    needs: verified-artifact
+    runs-on: ubuntu-24.04
+    environment: castalia-bootstrap-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: castalia-bootstrap-node-linux-x86_64
+          path: artifact
+
+      - name: Publish immutable GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^castalia-bootstrap-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::invalid Castalia bootstrap release tag: $RELEASE_TAG"
+            exit 2
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifact/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" artifact/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Castalia bootstrap node $RELEASE_TAG" \
+              --generate-notes
+          fi

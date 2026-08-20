@@ -13,58 +13,87 @@
 
 [advisories]
 ignore = [
+    # ── Expiry: 2026-11-20. Alloy optional on-chain graph. ───────────────────
+    # RUSTSEC-2025-0073 — alloy-dyn-abi 1.3.0 TypedData hashing panic. The only
+    # first-party Alloy consumer is dregg-chain's opt-in `on-chain` feature; its
+    # listener/provider code never imports TypedData or calls EIP-712 hashing.
+    # The patched core line is blocked by byte-compatibility pins shared with
+    # eth-lightclient. Re-evaluate the full Alloy pin at expiry.
+    "RUSTSEC-2025-0073",
+
+    # ── Expiry: 2026-11-20. Non-node HTTP/2 client graphs. ──────────────────
+    # RUSTSEC-2026-0258 — old h2 is pulled by the AWS narrator and Servo
+    # WebDriver; dregg-node's production closure uses patched h2 0.4.18.
+    # Narrator talks only to AWS over authenticated TLS, and WebDriver is local
+    # development tooling. Remove when aws-smithy drops hyper/h2 0.3.
+    "RUSTSEC-2026-0258",
+
+    # ── Expiry: 2026-11-20. Optional DNS resolver without DNSSEC. ────────────
+    # hickory-proto 0.25.2 exists only behind starbridge-domains' `live-dns`
+    # feature and is absent from the bootstrap-node closure. 0118 requires a
+    # DNSSEC feature we do not enable; 0119's attacker-sized record encoder is
+    # not used by the client's single bounded lookup. Upgrade to 0.26.x at expiry.
+    "RUSTSEC-2026-0118",
+    "RUSTSEC-2026-0119",
+
+    # ── Expiry: 2026-11-20. Build-time local XML only. ───────────────────────
+    # 0194/0195 affect crafted XML. quick-xml 0.30/0.39 enters through
+    # xcb/wayland-scanner/zbus in GPUI/Servo and parses dependency-owned protocol
+    # XML during builds, never node requests or wallet data. Upstreams currently
+    # require pre-0.41 APIs.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+
     # ── Arkworks ZK stack (ark-relations → ark-crypto-primitives / ark-poly-
     #    commit → dregg-hints) pins the pre-0.3 tracing-subscriber. ────────────
     # RUSTSEC-2025-0055 — tracing-subscriber 0.2.25: ANSI-escape sequences in a
-    # logged value can be injected into terminal output. Reachable only if
+    # logged value can be injected into terminal output. Expiry: 2026-11-20.
+    # Reachable only if
     # UNTRUSTED data is formatted through ark-relations' `tracing` spans; the
     # dregg crates feed ark-relations only their own constraint-system metadata,
     # never attacker-controlled strings. Patched in >=0.3.20, which Arkworks
-    # 0.5.x does not yet depend on. Remove when ark-relations bumps.
+    # 0.5.x does not yet depend on. Remove when ark-relations bumps or at expiry.
     "RUSTSEC-2025-0055",
 
-    # ── Serenity 0.12.5 (Discord bot) → tokio-tungstenite 0.21 → rustls 0.22 →
+    # ── Expiry: 2026-11-20. Serenity 0.12.5 → rustls 0.22. ──────────────────
     #    rustls-webpki 0.102.8. The discord-bot connects only to Discord's own
     #    TLS endpoint (a trusted, pinned-CA server), so the webpki cert-path
     #    advisories below — all DoS / path-building on ATTACKER-supplied cert
     #    chains — are not reachable: there is no untrusted-server leg. Patched in
     #    rustls-webpki >=0.103.x, which Serenity 0.12.x does not yet pull. Remove
-    #    when serenity bumps its rustls. ────────────────────────────────────────
+    #    when serenity bumps its rustls or at expiry. ──────────────────────────
     "RUSTSEC-2026-0104",  # rustls-webpki: DoS via crafted certificate chain
     "RUSTSEC-2026-0099",  # rustls-webpki: cert path-building advisory
     "RUSTSEC-2026-0098",  # rustls-webpki: cert path-building advisory
     "RUSTSEC-2026-0049",  # rustls-webpki: name-constraint check (priv-esc class)
 
-    # ── pg-dregg's Postgres client path, captured in the shared lockfile. ──────
-    # pg-dregg is EXCLUDED from the workspace (root Cargo.toml `exclude`), so
-    # these crates are LOCKED but NOT built by the audited workspace graph
-    # (`cargo tree -i` finds no active reverse path). All three advisories below
+    # ── Expiry: 2026-11-20. Optional Postgres client path. ───────────────────
+    # These crates are not in the default/bootstrap-node graph. All advisories
     # require a connection to an UNTRUSTED or MITM Postgres server; pg-dregg
     # connects only to its own managed, trusted local Postgres. Patched in
-    # postgres-protocol >=0.6.12 / tokio-postgres >=0.7.18, which the locked
-    # transitive graph does not yet permit. Remove on the next lock refresh that
-    # pulls the patched line.
+    # postgres-protocol >=0.6.12 / tokio-postgres >=0.7.18 currently conflicts
+    # with lockstitch's hmac 0.13 prerelease `reset` feature. Remove on the first
+    # compatible lockstitch release or at expiry.
     "RUSTSEC-2026-0179",  # postgres-protocol: unbounded SCRAM iteration DoS
     "RUSTSEC-2026-0180",  # postgres-protocol: SCRAM/auth DoS (companion)
     "RUSTSEC-2026-0178",  # tokio-postgres: DoS (companion to the above)
 
-    # ── rsa 0.9.10 — RUSTSEC-2023-0071 (Marvin timing side-channel in PKCS#1
+    # ── Expiry: 2026-11-20. rsa 0.9.10 — RUSTSEC-2023-0071. ─────────────────
     #    decryption). NO patched release exists upstream (`patched: []`), so it
     #    cannot be bumped away. rsa is lockfile-only here (no active reverse
     #    path) and the dregg crypto floor uses ed25519 / Pedersen / AEAD, not
     #    RSA decryption, so the timing oracle is not exercised. Tracked upstream;
-    #    remove when rsa ships a constant-time fix.
+    #    remove when rsa ships a constant-time fix or at expiry.
     "RUSTSEC-2023-0071",
 
-    # ── ml-dsa — RUSTSEC-2025-0144 (timing side-channel in ML-DSA decomposition).
-    #    ml-dsa is the post-quantum (Dilithium) signature crate. It is LOCKFILE-
-    #    ONLY here — `cargo tree -i ml-dsa` finds NO active reverse path in the
-    #    audited workspace graph, and no first-party dregg code references it
+    # ── Expiry: 2026-11-20. ml-dsa RUSTSEC-2025-0144. ───────────────────────
+    #    ml-dsa is used only by Servo's script graph, not the node, and no
+    #    first-party dregg code references it
     #    (grep-clean). The deployed crypto floor signs with ed25519 / Pedersen and
     #    commits with Poseidon2 — never ml-dsa's decomposition — so the timing
     #    oracle is not exercised. A patched >=0.1.0-rc.3 exists but the locked
     #    transitive graph does not yet pull it; remove on the next lock refresh
-    #    that does.
+    #    that does; replace or remove the Servo edge at expiry.
     "RUSTSEC-2025-0144",
 
     # ── quick-xml — RUSTSEC-2026-0194 / -0195 (quadratic start-tag duplicate-
