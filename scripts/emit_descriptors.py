@@ -53,6 +53,7 @@ Exit codes: 0 = ok/no-op · 1 = routing/verify failure · 2 = emitter failed ·
 from __future__ import annotations
 
 import datetime
+import difflib
 import getpass
 import hashlib
 import json
@@ -696,6 +697,20 @@ def install_and_stamp(written: dict[str, str]) -> None:
             f"{n_fp} FP constants are byte-identical to the Lean emission."
         )
         return
+
+    # Generated Rust modules are small, public source artifacts. Show their
+    # exact textual drift before the authorization gate refuses the install so
+    # protected CI reports an actionable difference instead of only a path.
+    # Descriptor JSON remains hash/path-only because those files can be large.
+    for path, new_text in sorted(changed_gen.items()):
+        old_text = path.read_text() if path.exists() else ""
+        diff = difflib.unified_diff(
+            old_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{path.relative_to(ROOT)}",
+            tofile=f"b/{path.relative_to(ROOT)} (Lean emission)",
+        )
+        sys.stderr.write("".join(diff))
 
     auth = require_regen_ack(changed, "this emission")
 
