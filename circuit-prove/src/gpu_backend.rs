@@ -4498,7 +4498,7 @@ where
         Ordering::Relaxed,
     );
     GPU_RECURSION_LAYERS.fetch_add(1, Ordering::Relaxed);
-    Ok(RecursionOutput(cpu_proof, gpu.cpu_prover_data))
+    Ok(RecursionOutput(cpu_proof, Some(gpu.cpu_prover_data)))
 }
 
 /// [`prove_recursion_layer_auto_with_expose`] without an exposed-claim hook.
@@ -4568,7 +4568,7 @@ pub fn prove_recursion_aggregation_auto_with_expose(
         Ordering::Relaxed,
     );
     GPU_RECURSION_LAYERS.fetch_add(1, Ordering::Relaxed);
-    Ok(RecursionOutput(cpu_proof, gpu.cpu_prover_data))
+    Ok(RecursionOutput(cpu_proof, Some(gpu.cpu_prover_data)))
 }
 
 /// The GPU twin of the recursion backend's non-primitive prover registration —
