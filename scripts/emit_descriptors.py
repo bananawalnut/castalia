@@ -91,6 +91,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import difflib
 import getpass
 import hashlib
 import io
@@ -3173,6 +3174,21 @@ def install_and_stamp(written: dict[str, str]) -> None:
         )
         return
 
+    # Generated Rust modules are small, public source artifacts. Show their
+    # exact textual drift before either installing a generated-only update or
+    # refusing a descriptor-changing regeneration, so CI reports an actionable
+    # difference instead of only a path. Descriptor JSON remains hash/path-only
+    # because those files can be large.
+    for path, new_text in sorted(changed_gen.items()):
+        old_text = path.read_text() if path.exists() else ""
+        diff = difflib.unified_diff(
+            old_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{path.relative_to(ROOT)}",
+            tofile=f"b/{path.relative_to(ROOT)} (Lean emission)",
+        )
+        sys.stderr.write("".join(diff))
+
     # A Lean-authored Rust projection is not a VK regeneration. Requiring the federation-rekey ACK
     # for a generated-module-only change made the safe half of a layout refactor impossible to run
     # through the canonical emitter. Geometry changes remain protected: because the Lean descriptor
@@ -3191,7 +3207,6 @@ def install_and_stamp(written: dict[str, str]) -> None:
             "module(s); descriptor bytes and FP constants are unchanged (no VK regen)."
         )
         return
-
     auth = require_regen_ack(reasons, "this emission")
 
     for name in changed_desc:
