@@ -206,4 +206,3 @@ jq -n \
       finalCreated: false
     }
   ' | tee "castalia-membership-soak-${MEMBERSHIP_CELL_ID}.json"
-
