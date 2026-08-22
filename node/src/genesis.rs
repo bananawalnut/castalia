@@ -303,6 +303,125 @@ pub fn refuse_derivable_player_grant(genesis: &serde_json::Value) -> Result<(), 
     Ok(())
 }
 
+/// Write the production committee-of-one genesis used by the Castalia
+/// bootstrap node. Unlike [`run_genesis`], this consumes the existing node
+/// identity and creates no faucet, demo identities, `.devnet` marker, or
+/// Starbridge application cells. Its sole issuance is the private relay
+/// balance the node spends to sponsor permissionless membership births.
+pub fn write_solo_genesis(data_dir: &Path) -> Result<(), String> {
+    const MEMBERSHIP_RELAY_BALANCE: i64 = 1_000_000_000_000;
+    let key_path = data_dir.join("node.key");
+    let key_bytes: [u8; 32] = std::fs::read(&key_path)
+        .map_err(|error| format!("could not read {}: {error}", key_path.display()))?
+        .try_into()
+        .map_err(|bytes: Vec<u8>| {
+            format!(
+                "{} must contain exactly 32 bytes, found {}",
+                key_path.display(),
+                bytes.len()
+            )
+        })?;
+
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&key_bytes);
+    let public_key = signing_key.verifying_key().to_bytes();
+    let (ml_dsa_public_key, _ml_dsa_secret_key) =
+        dregg_federation::frost::MlDsaSigningKey::from_seed(&key_bytes);
+    let hybrid_id = dregg_types::hybrid_id_commitment(&public_key, &ml_dsa_public_key.0);
+    let federation_id = dregg_federation::derive_federation_id_hybrid_with_epoch(
+        &[dregg_types::PublicKey(public_key)],
+        std::slice::from_ref(&ml_dsa_public_key),
+        0,
+    );
+
+    // Solo mode does not consume XMSS votes, but the shared genesis schema
+    // requires the commitment. Bind it to the secret node identity instead of
+    // reusing the public devnet placeholder context.
+    let xmss_root = blake3::derive_key("castalia-solo-xmss-root-v1", &key_bytes);
+    let issuer_well_secret = blake3::derive_key("castalia-solo-issuer-well-key-v1", &key_bytes);
+    let fee_well_secret = blake3::derive_key("castalia-solo-fee-well-key-v1", &key_bytes);
+    let issuer_well_public = ed25519_dalek::SigningKey::from_bytes(&issuer_well_secret)
+        .verifying_key()
+        .to_bytes();
+    let fee_well_public = ed25519_dalek::SigningKey::from_bytes(&fee_well_secret)
+        .verifying_key()
+        .to_bytes();
+    let default_token_id = *blake3::hash(b"default").as_bytes();
+    let issuer_well = derive_cell_id(&issuer_well_public, &default_token_id);
+    let fee_well = derive_cell_id(&fee_well_public, &default_token_id);
+    let relay_cell = derive_cell_id(&public_key, &default_token_id);
+
+    let genesis = GenesisConfig {
+        federation_id: hex_encode(&federation_id),
+        deployment_domain: Some("castalia.permissionless-membership.v2".to_string()),
+        committee_epoch: 0,
+        // A production bootstrap descriptor must be byte-stable across repeated
+        // `init --solo-genesis` invocations. This fixed deployment coordinate is
+        // persisted in genesis and scopes deterministic causal replay; it is not
+        // a claim about the operator's wall clock.
+        consensus_genesis_unix_seconds: 1_700_000_000,
+        consensus_time_mode: CONSENSUS_TIME_V1_DEVNET_CAUSAL_MODE,
+        epoch_length: 1_000,
+        checkpoint_interval: 100,
+        validators: vec![GenesisValidator {
+            name: "castalia-bootstrap-0".to_string(),
+            public_key: hex_encode(&public_key),
+            xmss_root: hex_encode(&xmss_root),
+            ml_dsa_public_key: Some(hex_encode(&ml_dsa_public_key.0)),
+            hybrid_id: Some(hex_encode(&hybrid_id)),
+        }],
+        threshold: dregg_federation::quorum_threshold(1),
+        initial_cells: vec![
+            GenesisCell {
+                id: issuer_well.clone(),
+                public_key: hex_encode(&issuer_well_public),
+                token_id: hex_encode(&default_token_id),
+                balance: -MEMBERSHIP_RELAY_BALANCE,
+            },
+            GenesisCell {
+                id: fee_well.clone(),
+                public_key: hex_encode(&fee_well_public),
+                token_id: hex_encode(&default_token_id),
+                balance: 0,
+            },
+            GenesisCell {
+                id: relay_cell.clone(),
+                public_key: hex_encode(&public_key),
+                token_id: hex_encode(&default_token_id),
+                balance: MEMBERSHIP_RELAY_BALANCE,
+            },
+        ],
+        issuer_well: issuer_well.clone(),
+        fee_well,
+        genesis_moves: vec![GenesisMove {
+            from: issuer_well,
+            to: relay_cell,
+            amount: MEMBERSHIP_RELAY_BALANCE as u64,
+        }],
+        player_grant: None,
+        starbridge_cells: Vec::new(),
+    };
+    let encoded = serde_json::to_string_pretty(&genesis)
+        .map_err(|error| format!("could not encode solo genesis: {error}"))?
+        + "\n";
+    let genesis_path = data_dir.join("genesis.json");
+    if genesis_path.exists() {
+        let existing = std::fs::read_to_string(&genesis_path)
+            .map_err(|error| format!("could not read {}: {error}", genesis_path.display()))?;
+        if existing != encoded {
+            return Err(format!(
+                "{} already exists with different contents",
+                genesis_path.display()
+            ));
+        }
+    } else {
+        std::fs::write(&genesis_path, encoded)
+            .map_err(|error| format!("could not write {}: {error}", genesis_path.display()))?;
+    }
+    write_key_file(data_dir, "issuer-well.key", &issuer_well_secret);
+    write_key_file(data_dir, "fee-well.key", &fee_well_secret);
+    Ok(())
+}
+
 /// Run the genesis configuration generation.
 pub fn run_genesis(validators: usize, epoch_length: u64, checkpoint_interval: u64, output: &Path) {
     run_genesis_with_options(
@@ -1590,6 +1709,47 @@ mod tests {
         let a = auxiliary_genesis_key("dregg-devnet-fee-well-key-v1", Some("ab"), &federation);
         let b = auxiliary_genesis_key("dregg-devnet-fee-well-key-v1", Some("a"), &federation);
         assert_ne!(a, b, "domain bytes precede an explicit NUL delimiter");
+    }
+
+    #[test]
+    fn solo_genesis_uses_existing_identity_without_devnet_material() {
+        let temp = tempfile::tempdir().unwrap();
+        let node_key = [7u8; 32];
+        std::fs::write(temp.path().join("node.key"), node_key).unwrap();
+
+        write_solo_genesis(temp.path()).unwrap();
+        write_solo_genesis(temp.path()).unwrap();
+
+        let genesis: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(temp.path().join("genesis.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(genesis["validators"].as_array().unwrap().len(), 1);
+        assert_eq!(genesis["initial_cells"].as_array().unwrap().len(), 3);
+        assert_eq!(genesis["threshold"], 1);
+        assert_eq!(genesis["genesis_moves"].as_array().unwrap().len(), 1);
+        let relay_public_key = ed25519_dalek::SigningKey::from_bytes(&node_key)
+            .verifying_key()
+            .to_bytes();
+        let relay_id = derive_cell_id(&relay_public_key, blake3::hash(b"default").as_bytes());
+        let cells = genesis["initial_cells"].as_array().unwrap();
+        let relay = cells
+            .iter()
+            .find(|cell| cell["id"] == relay_id)
+            .expect("solo genesis funds the node relay cell");
+        assert!(relay["balance"].as_i64().unwrap() > 0);
+        assert_eq!(
+            cells
+                .iter()
+                .map(|cell| cell["balance"].as_i64().unwrap() as i128)
+                .sum::<i128>(),
+            0
+        );
+        assert_eq!(genesis["genesis_moves"][0]["to"], relay_id);
+        assert!(genesis.get("starbridge_cells").is_none());
+        assert!(!temp.path().join(".devnet").exists());
+        assert!(!temp.path().join("faucet.key").exists());
+        assert!(!temp.path().join("agent-alice.key").exists());
     }
 
     #[test]

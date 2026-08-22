@@ -419,6 +419,11 @@ pub enum Command {
         /// Data directory to initialize.
         #[arg(long, default_value = "~/.dregg")]
         data_dir: String,
+
+        /// Also write a production committee-of-one genesis descriptor with
+        /// no faucet, demo balances, agents, or Starbridge seed cells.
+        #[arg(long)]
+        solo_genesis: bool,
     },
 
     /// Install the one authenticated Lean-emitted Path of Angels Signal head.
@@ -1367,7 +1372,17 @@ pub async fn run(cli: Cli) {
             )
             .await
         }
-        Command::Init { data_dir } => init::init_node(&data_dir),
+        Command::Init {
+            data_dir,
+            solo_genesis,
+        } => {
+            init::init_node(&data_dir);
+            if solo_genesis && let Err(error) = genesis::write_solo_genesis(&expand_path(&data_dir))
+            {
+                eprintln!("error: could not write solo genesis: {error}");
+                std::process::exit(1);
+            }
+        }
         Command::InitPoaSignal {
             data_dir,
             deployment_manifest,

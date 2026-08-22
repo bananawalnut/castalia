@@ -6,13 +6,18 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use dregg_cell::{AuthRequired, CapabilityRef, CellId, FACET_STATE_WRITER};
+use base64::Engine as _;
+use dregg_cell::{AuthRequired, CapabilityRef, CellId, FACET_STATE_WRITER, Ledger};
+use dregg_persist::{CellOverlayOp, PersistentStore};
 use dregg_sdk::{AgentCipherclerk, SignedTurn};
 use dregg_turn::Effect;
+use ed25519_dalek::{Signer, SigningKey};
 use starbridge_castalia_membership::{
+    CASTALIA_PERMISSIONLESS_JOIN_DOMAIN, CASTALIA_PERMISSIONLESS_MEMBERSHIP_SCHEMA_VERSION,
     CHANGED_AT_SLOT, CastaliaMemberApplicationV1, GENERATION_SLOT, MembershipStatus, STATUS_SLOT,
     castalia_membership_factory, field_from_u64, membership_birth_token_id,
-    membership_initial_fields,
+    membership_initial_fields, permissionless_membership_cell_id,
+    permissionless_membership_child_program_vk, permissionless_membership_factory_vk,
 };
 use zeroize::Zeroizing;
 
@@ -121,10 +126,17 @@ fn wait_ready(port: u16) -> bool {
     false
 }
 
-fn launch(data_dir: &std::path::Path, http: u16, gossip: u16, log_name: &str) -> NodeProc {
+fn launch(
+    data_dir: &std::path::Path,
+    http: u16,
+    gossip: u16,
+    log_name: &str,
+    enable_faucet: bool,
+) -> NodeProc {
     let log = data_dir.join(log_name);
     let log_file = std::fs::File::create(&log).unwrap();
-    let child = Command::new(NODE_BIN)
+    let mut command = Command::new(NODE_BIN);
+    command
         .arg("run")
         .arg("--data-dir")
         .arg(data_dir)
@@ -137,13 +149,19 @@ fn launch(data_dir: &std::path::Path, http: u16, gossip: u16, log_name: &str) ->
         .args(["--federation-mode", "solo"])
         .args(["--consensus", "blocklace"])
         .args(["--idle-heartbeat-ms", "2000"])
-        .args(["--block-cadence-ms", "500"])
-        .arg("--enable-faucet")
-        .env("DREGG_LEAN_PRODUCER", "0")
-        // This subprocess drill exercises persistence/composition against the
-        // Rust executor when the local test artifact is marshal-only. Production
-        // startup remains fail-closed without the verified Lean archive.
-        .env("DREGG_ALLOW_UNVERIFIED_CONSENSUS", "1")
+        .args(["--block-cadence-ms", "500"]);
+    if enable_faucet {
+        command.arg("--enable-faucet");
+    }
+    // Local developer tests may use a marshal-only artifact. The protected
+    // release workflow sets CASTALIA_TEST_REQUIRE_LEAN=1, in which case the
+    // subprocess must boot with the verified producer and no escape hatch.
+    if std::env::var("CASTALIA_TEST_REQUIRE_LEAN").as_deref() != Ok("1") {
+        command
+            .env("DREGG_LEAN_PRODUCER", "0")
+            .env("DREGG_ALLOW_UNVERIFIED_CONSENSUS", "1");
+    }
+    let child = command
         .env("RUST_LOG", "warn")
         .stdout(Stdio::null())
         .stderr(Stdio::from(log_file))
@@ -153,6 +171,33 @@ fn launch(data_dir: &std::path::Path, http: u16, gossip: u16, log_name: &str) ->
         child: Some(child),
         log,
     }
+}
+
+fn permissionless_join_body(key: &SigningKey) -> Vec<u8> {
+    let owner = key.verifying_key().to_bytes();
+    let mut transcript = CASTALIA_PERMISSIONLESS_JOIN_DOMAIN.to_vec();
+    transcript.extend_from_slice(&owner);
+    serde_json::to_vec(&serde_json::json!({
+        "version": CASTALIA_PERMISSIONLESS_MEMBERSHIP_SCHEMA_VERSION,
+        "ownerPublicKey": hex(&owner),
+        "signatureSuite": "Ed25519",
+        "signature": base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(key.sign(&transcript).to_bytes()),
+    }))
+    .unwrap()
+}
+
+fn join_membership(port: u16, body: &[u8]) -> (String, serde_json::Value) {
+    let response = http_post(
+        port,
+        "/api/castalia/memberships",
+        "application/json",
+        None,
+        body,
+    )
+    .expect("membership request reached node");
+    let json = response_json(&response);
+    (response, json)
 }
 
 fn unlock(port: u16) -> String {
@@ -284,6 +329,37 @@ fn now_plus_hour() -> i64 {
         + 3600
 }
 
+fn durable_cell_diagnostics(data_dir: &std::path::Path) -> Vec<([u8; 32], usize, [u8; 32])> {
+    let store = PersistentStore::open(&data_dir.join("dregg.redb")).expect("open durable store");
+    let (checkpoint_height, mut ledger) = store
+        .load_latest_ledger_checkpoint()
+        .expect("load checkpoint")
+        .unwrap_or_else(|| (0, Ledger::new()));
+    for operation in store
+        .cell_overlay_since(checkpoint_height)
+        .expect("load durable overlay")
+    {
+        match operation {
+            CellOverlayOp::Upsert(cell) => {
+                let _ = ledger.remove(&cell.id());
+                ledger.insert_cell(cell).expect("apply durable upsert");
+            }
+            CellOverlayOp::Remove(cell_id) => {
+                let _ = ledger.remove(&cell_id);
+            }
+        }
+    }
+    let mut cells = ledger
+        .iter()
+        .map(|(cell_id, cell)| {
+            let bytes = postcard::to_stdvec(cell).expect("canonical cell serialization");
+            (cell_id.0, bytes.len(), *blake3::hash(&bytes).as_bytes())
+        })
+        .collect::<Vec<_>>();
+    cells.sort_unstable_by_key(|(cell_id, _, _)| *cell_id);
+    cells
+}
+
 fn lifecycle_turn(
     clerk: &AgentCipherclerk,
     federation_id: &[u8; 32],
@@ -383,6 +459,102 @@ fn expose_active_membership_to_wallet_smoke(
 }
 
 #[test]
+fn permissionless_v2_join_is_idempotent_and_survives_production_solo_restart() {
+    let temp = tempfile::tempdir().unwrap();
+    let node_dir = temp.path().join("node");
+    assert!(
+        Command::new(NODE_BIN)
+            .args(["init", "--data-dir"])
+            .arg(&node_dir)
+            .arg("--solo-genesis")
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(node_dir.join("node.key").is_file());
+    assert!(node_dir.join("genesis.json").is_file());
+    assert!(!node_dir.join(".devnet").exists());
+    assert!(!node_dir.join("faucet.key").exists());
+
+    let member_key = SigningKey::from_bytes(&[0x71; 32]);
+    let owner = member_key.verifying_key().to_bytes();
+    let membership_id = permissionless_membership_cell_id(owner);
+    let join_body = permissionless_join_body(&member_key);
+    let http = free_port();
+    let gossip = free_port();
+
+    let first = launch(&node_dir, http, gossip, "v2-first-boot.log", false);
+    assert!(wait_ready(http), "first boot failed: {}", first.log_text());
+    if std::env::var("CASTALIA_TEST_REQUIRE_LEAN").as_deref() == Ok("1") {
+        let status = response_json(&http_get(http, "/status").expect("status response"));
+        assert_eq!(status["state_producer"], "lean");
+        assert_eq!(status["lean_producer"], true);
+    }
+    let (first_wire, first_join) = join_membership(http, &join_body);
+    assert!(
+        first_wire.contains("200 OK"),
+        "first join failed: {first_wire}"
+    );
+    assert_eq!(first_join["created"], true);
+    assert_eq!(first_join["version"], 2);
+    assert_eq!(first_join["state"], "active");
+    assert_eq!(first_join["generation"], 0);
+    assert_eq!(first_join["membershipCellId"], hex(&membership_id.0));
+    assert_eq!(first_join["ownerPublicKey"], hex(&owner));
+    assert_eq!(
+        first_join["factoryId"],
+        hex(&permissionless_membership_factory_vk())
+    );
+    assert_eq!(
+        first_join["programId"],
+        hex(&permissionless_membership_child_program_vk())
+    );
+    assert!(cell_detail(http, membership_id).is_some());
+
+    let (retry_wire, retry) = join_membership(http, &join_body);
+    assert!(retry_wire.contains("200 OK"), "retry failed: {retry_wire}");
+    assert_eq!(retry["membershipCellId"], first_join["membershipCellId"]);
+    assert_eq!(retry["stateCommitment"], first_join["stateCommitment"]);
+    assert_eq!(retry["created"], false);
+
+    let wrong_key = SigningKey::from_bytes(&[0x72; 32]);
+    let mut substituted: serde_json::Value = serde_json::from_slice(&join_body).unwrap();
+    substituted["ownerPublicKey"] =
+        serde_json::Value::String(hex(&wrong_key.verifying_key().to_bytes()));
+    let (invalid_wire, invalid) = join_membership(http, &serde_json::to_vec(&substituted).unwrap());
+    assert!(
+        invalid_wire.contains("400 Bad Request"),
+        "owner-substitution attack did not fail closed: {invalid_wire}"
+    );
+    assert_eq!(invalid["error"], "invalid_signature");
+    assert!(
+        cell_detail(
+            http,
+            permissionless_membership_cell_id(wrong_key.verifying_key().to_bytes())
+        )
+        .is_none()
+    );
+
+    first.stop();
+    assert!(node_dir.join("dregg.redb").is_file());
+    let second = launch(&node_dir, http, gossip, "v2-second-boot.log", false);
+    assert!(wait_ready(http), "restart failed: {}", second.log_text());
+    assert!(cell_detail(http, membership_id).is_some());
+    let (post_restart_wire, post_restart) = join_membership(http, &join_body);
+    assert!(
+        post_restart_wire.contains("200 OK"),
+        "post-restart retry failed: {post_restart_wire}"
+    );
+    assert_eq!(post_restart["membershipCellId"], hex(&membership_id.0));
+    assert_eq!(
+        post_restart["stateCommitment"],
+        first_join["stateCommitment"]
+    );
+    assert_eq!(post_restart["created"], false);
+    second.stop();
+}
+
+#[test]
 fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
     let temp = tempfile::tempdir().unwrap();
     let genesis_dir = temp.path().join("genesis");
@@ -419,7 +591,7 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
 
     let http = free_port();
     let gossip = free_port();
-    let first = launch(&node_dir, http, gossip, "first-boot.log");
+    let first = launch(&node_dir, http, gossip, "first-boot.log", true);
     assert!(wait_ready(http), "first boot failed: {}", first.log_text());
     let bearer = unlock(http);
 
@@ -566,13 +738,13 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
 
     let first_boot_log = first.log_text();
     first.stop();
-    let second = launch(&node_dir, http, gossip, "second-boot.log");
+    let cells_before_restart = durable_cell_diagnostics(&node_dir);
+    let second = launch(&node_dir, http, gossip, "second-boot.log", true);
     assert!(
         wait_ready(http),
         "restart failed: first_boot_log={first_boot_log}; second_boot_log={}",
         second.log_text()
     );
-    let bearer = unlock(http);
     let reconstructed = wait_cell(http, member, 1, MembershipStatus::Active);
     assert_eq!(reconstructed["fields"], fields_before_restart);
     assert_eq!(reconstructed["nonce"], nonce_before_restart);
@@ -583,6 +755,21 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
         authority_nonce_before_restart,
         "authority replay nonce must survive the physical restart"
     );
+
+    second.stop();
+    let cells_after_restart = durable_cell_diagnostics(&node_dir);
+    assert_eq!(
+        cells_after_restart, cells_before_restart,
+        "exact durable cells drifted across process restart; diagnostics are sorted \
+         (cell_id, postcard_byte_length, blake3(postcard(Cell)))"
+    );
+    let third = launch(&node_dir, http, gossip, "third-boot.log", true);
+    assert!(
+        wait_ready(http),
+        "lifecycle-continuation boot failed: {}",
+        third.log_text()
+    );
+    let bearer = unlock(http);
 
     let steps = [
         (
