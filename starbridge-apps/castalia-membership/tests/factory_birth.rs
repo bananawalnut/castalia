@@ -68,17 +68,17 @@ fn factory_birth_installs_and_enforces_exact_method_dispatched_program() {
         vec![
             Effect::SetField {
                 cell: member,
-                index: STATUS_SLOT as usize,
+                index: u64::from(STATUS_SLOT),
                 value: field_from_u64(MembershipStatus::Active as u64),
             },
             Effect::SetField {
                 cell: member,
-                index: GENERATION_SLOT as usize,
+                index: u64::from(GENERATION_SLOT),
                 value: field_from_u64(1),
             },
             Effect::SetField {
                 cell: member,
-                index: CHANGED_AT_SLOT as usize,
+                index: u64::from(CHANGED_AT_SLOT),
                 value: field_from_u64(application.created_at + 1),
             },
         ],
