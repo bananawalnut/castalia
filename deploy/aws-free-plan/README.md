@@ -59,7 +59,8 @@ sudo deploy/aws-free-plan/install.sh \
   ./dregg-node \
   ./dregg-node.sha256 \
   ./provenance.json \
-  ./dregg-node.spdx.json
+  ./dregg-node.spdx.json \
+  DEPLOYED_COMMIT_40_HEX
 ```
 
 The installer independently checks the binary checksum, Lean-producer
@@ -67,6 +68,12 @@ provenance, revision, and SPDX document before placing the binary in a
 content-addressed release directory. Upgrades refuse to proceed until
 `CASTALIA_ENCRYPTED_BACKUP_CONFIRMED=YES` records that an off-machine backup was
 decrypted and inspected.
+
+On first install the verified binary creates a production committee-of-one
+genesis bound to its new node key. That genesis contains only the issuer well,
+fee well, and a funded private relay cell used to sponsor membership births. It
+contains no faucet, demo identities, demo balances, `.devnet` marker, or
+Starbridge seed cells.
 
 ## 3. Preflight and 30-minute acceptance soak
 
@@ -110,9 +117,10 @@ sudo deploy/aws-free-plan/create-encrypted-backup.sh \
 ```
 
 Copy both the `.age` file and `.sha256` file off EC2. Verify the checksum,
-decrypt it off-machine, inspect that it contains `node.key`, `genesis.json`, and
-the durable ledger, then test restoration with `restore-backup.sh`. The restore
-script keeps the replaced data directory as a timestamped rollback copy.
+decrypt it off-machine, inspect that it contains `node.key`, `genesis.json`,
+`issuer-well.key`, `fee-well.key`, and the durable ledger, then test restoration
+with `restore-backup.sh`. The restore script rejects unsafe archive entries and
+keeps the replaced data directory as a timestamped rollback copy.
 
 Binary rollback is ledger-preserving:
 

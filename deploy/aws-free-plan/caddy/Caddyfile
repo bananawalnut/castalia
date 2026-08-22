@@ -19,17 +19,29 @@
         respond "" 204
     }
 
-    handle /api/castalia/memberships {
+    @membership_join {
+        method POST
+        path /api/castalia/memberships
+    }
+    handle @membership_join {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }
     }
-    handle /api/cell/* {
+    @cell_read {
+        method GET
+        path /api/cell/*
+    }
+    handle @cell_read {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }
     }
-    handle /status {
+    @status_read {
+        method GET
+        path /status
+    }
+    handle @status_read {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }

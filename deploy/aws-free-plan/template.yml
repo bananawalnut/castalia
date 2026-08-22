@@ -147,6 +147,14 @@ Resources:
                 net.ipv4.conf.default.accept_redirects = 0
                 net.ipv4.conf.all.send_redirects = 0
                 net.ipv4.conf.default.send_redirects = 0
+            - path: /etc/ssh/sshd_config.d/60-castalia-bootstrap.conf
+              owner: root:root
+              permissions: "0644"
+              content: |
+                PasswordAuthentication no
+                KbdInteractiveAuthentication no
+                PermitRootLogin no
+                AllowUsers ubuntu
           runcmd:
             - [install, -d, -m, "0755", /opt/dregg]
             - [install, -d, -m, "0755", /opt/dregg/bin]
@@ -157,11 +165,12 @@ Resources:
             - [bash, -lc, "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y caddy"]
             - [ufw, default, deny, incoming]
             - [ufw, default, allow, outgoing]
-            - [ufw, allow, OpenSSH]
+            - [bash, -lc, "ufw allow from ${OperatorCidr} to any port 22 proto tcp"]
             - [ufw, allow, 80/tcp]
             - [ufw, allow, 443/tcp]
             - [ufw, --force, enable]
             - [sysctl, --system]
+            - [systemctl, restart, ssh]
           final_message: "Castalia AWS bootstrap host is ready after $UPTIME seconds"
       Tags:
         - Key: Name
