@@ -375,17 +375,17 @@ fn lifecycle_turn(
     let effects = vec![
         Effect::SetField {
             cell: member,
-            index: STATUS_SLOT as usize,
+            index: u64::from(STATUS_SLOT),
             value: field_from_u64(status as u64),
         },
         Effect::SetField {
             cell: member,
-            index: GENERATION_SLOT as usize,
+            index: u64::from(GENERATION_SLOT),
             value: field_from_u64(generation),
         },
         Effect::SetField {
             cell: member,
-            index: CHANGED_AT_SLOT as usize,
+            index: u64::from(CHANGED_AT_SLOT),
             value: field_from_u64(changed_at),
         },
     ];
@@ -823,5 +823,5 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
     );
     assert_eq!(detail["balance"], balance_before_restart);
 
-    second.stop();
+    third.stop();
 }

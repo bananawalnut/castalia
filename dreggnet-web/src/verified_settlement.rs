@@ -150,13 +150,9 @@ fn install_and_probe() -> Result<(), String> {
         installed = conservation_oracle,
         "conservation oracle: per-asset Σδ=0 is decided by the verified `dregg_cross_cell_conserves`"
     );
-    // The SAME predicate, read here as "is this the deployed native-release configuration" rather
-    // than as a statement about conservation: it reproduces this refusal's original
-    // `all(not(debug_assertions), any(unix, windows))` cfg exactly, so the behaviour is unchanged.
-    // (Conservation's own requirement predicate is BROADER —
-    // `dregg_turn::executor::native_build_requires_oracle()` is `any(unix, windows)` with no profile
-    // clause, which is why `dregg-node` panics on a missing conservation oracle in debug too. This
-    // surface deliberately keeps the narrower release-only refusal it shipped with.)
+    // The SAME release-only platform predicate the conservation startup check uses by default.
+    // `DREGG_REQUIRE_LEAN=1` can additionally promote debug binaries to a hard refusal, while this
+    // settlement surface preserves the release-only refusal it shipped with.
     if dregg_sdk::constraint_subset_fails_closed_without_oracle() && !conservation_oracle {
         return Err(
             "the verified cross-cell conservation oracle did not register (the linked archive \

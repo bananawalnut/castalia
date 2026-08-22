@@ -1376,11 +1376,13 @@ pub async fn run(cli: Cli) {
             data_dir,
             solo_genesis,
         } => {
-            init::init_node(&data_dir);
-            if solo_genesis && let Err(error) = genesis::write_solo_genesis(&expand_path(&data_dir))
-            {
-                eprintln!("error: could not write solo genesis: {error}");
-                std::process::exit(1);
+            if solo_genesis {
+                if let Err(error) = init::init_solo_node(&data_dir) {
+                    eprintln!("error: could not initialize production solo node: {error}");
+                    std::process::exit(1);
+                }
+            } else {
+                init::init_node(&data_dir);
             }
         }
         Command::InitPoaSignal {

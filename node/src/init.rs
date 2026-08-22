@@ -36,6 +36,48 @@
 
 use std::path::Path;
 
+/// Initialize the production committee-of-one profile selected by
+/// `dregg-node init --solo-genesis`.
+///
+/// This must not call [`init_node`] first: that command intentionally creates a
+/// devnet descriptor and marker. Writing the production descriptor afterwards
+/// then either fails closed because `genesis.json` differs or, worse, leaves
+/// devnet material beside a production node. The production path mints only the
+/// node identity and lets [`crate::genesis::write_solo_genesis`] derive the
+/// committee, relay, and well coordinates from that identity.
+pub(crate) fn init_solo_node(data_dir: &str) -> Result<(), String> {
+    let data_path = crate::expand_path(data_dir);
+    std::fs::create_dir_all(&data_path)
+        .map_err(|error| format!("could not create {}: {error}", data_path.display()))?;
+
+    let key_path = data_path.join("node.key");
+    if !key_path.exists() {
+        let mut seed = [0u8; 32];
+        getrandom::fill(&mut seed).map_err(|error| format!("getrandom failed: {error}"))?;
+        std::fs::write(&key_path, seed)
+            .map_err(|error| format!("could not write {}: {error}", key_path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|error| format!("could not chmod 0600 {}: {error}", key_path.display()))?;
+        }
+    }
+
+    crate::genesis::write_solo_genesis(&data_path)?;
+    let public_key = public_key_hex(&key_path)?;
+    println!(
+        "Initialized production solo dregg-node data directory: {}",
+        data_path.display()
+    );
+    println!("Node public key: {public_key}");
+    println!("No devnet marker, faucet, demo identity, or Starbridge seed cells were created.");
+    println!();
+    println!("Start the node with:");
+    println!("  dregg-node run --data-dir {data_dir} --federation-mode solo");
+    Ok(())
+}
+
 /// Epoch length + checkpoint interval for the solo chain `init` mints. These are
 /// the defaults `Command::Genesis` declares, so `init` and `genesis --validators 1`
 /// produce the same shape of chain.
@@ -154,6 +196,24 @@ fn public_key_hex(key_path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn solo_init_is_idempotent_and_never_creates_devnet_material() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("production-solo");
+        let path = dir.to_str().expect("utf-8 path");
+
+        init_solo_node(path).expect("first production solo init");
+        let key = std::fs::read(dir.join("node.key")).expect("node.key");
+        let genesis = std::fs::read(dir.join("genesis.json")).expect("genesis.json");
+        init_solo_node(path).expect("idempotent production solo init");
+
+        assert_eq!(std::fs::read(dir.join("node.key")).unwrap(), key);
+        assert_eq!(std::fs::read(dir.join("genesis.json")).unwrap(), genesis);
+        assert!(!dir.join(".devnet").exists());
+        assert!(!dir.join("faucet.key").exists());
+        assert!(!dir.join("node-0.key").exists());
+    }
 
     /// The whole point: after `init`, the file `run`'s blocklace gate reads
     /// exists and carries BOTH fields it refuses to start without.

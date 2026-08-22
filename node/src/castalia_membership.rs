@@ -527,11 +527,9 @@ mod tests {
         assert!(signed.signer.verify(&turn_hash, &signed.signature));
 
         let executor = crate::executor_setup::new_submit_executor(&s);
-        crate::api::seed_executor_receipt_head(
-            &executor,
-            operator_id,
-            signed.turn.previous_receipt_hash,
-        );
+        if let Some(previous_receipt_hash) = signed.turn.previous_receipt_hash {
+            executor.record_authoritative_receipt_head(operator_id, previous_receipt_hash);
+        }
         assert!(matches!(
             crate::executor_setup::execute_via_producer(
                 &executor,
