@@ -12,17 +12,15 @@ on:
       - "metatheory/**"
       - "circuit/**"
       - "scripts/bootstrap.sh"
+      - "scripts/check-descriptor-drift.sh"
+      - "scripts/check-emit-gate-weld.py"
+      - "scripts/emit_descriptors.py"
       - "scripts/cargo_metadata_to_spdx.py"
       - "scripts/write_bootstrap_provenance.py"
   push:
     branches: [main]
     tags: ["castalia-bootstrap-v*"]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Release tag (for example castalia-bootstrap-v0.1.0)"
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -35,9 +33,9 @@ jobs:
   verified-artifact:
     name: Verified Lean Linux x86-64 artifact
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: false
 
@@ -47,22 +45,33 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-06-21
+          components: rustfmt
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: castalia-bootstrap-linux-x86-64
 
+      - name: Verify checked-in canonical descriptor set
+        run: |
+          set -euo pipefail
+          python3 scripts/emit_descriptors.py --verify-provenance --rev HEAD
+          python3 scripts/emit_descriptors.py --verify-by-name-routing
+          python3 scripts/check-emit-gate-weld.py
+
       - name: Bootstrap the pinned verified Lean executor
         run: bash scripts/bootstrap.sh
+
+      - name: Re-derive canonical descriptors from Lean
+        run: bash scripts/check-descriptor-drift.sh
 
       - name: Build the production node without marshal-only fallback
         env:
@@ -72,7 +81,8 @@ jobs:
       - name: Boot and assert the verified producer at runtime
         run: |
           set -euo pipefail
-          DATA_DIR="$(mktemp -d "${RUNNER_TEMP}/castalia-node.XXXXXX")"
+          DATA_ROOT="$(mktemp -d "${RUNNER_TEMP}/castalia-node.XXXXXX")"
+          DATA_DIR="${DATA_ROOT}/data"
           STATUS_JSON="${RUNNER_TEMP}/status.json"
           LOG="${RUNNER_TEMP}/dregg-node.log"
           target/release/dregg-node init --data-dir "$DATA_DIR"
@@ -135,7 +145,7 @@ jobs:
             "$OUT/dregg-node.spdx.json"
 
       - name: Upload verified deployment bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: castalia-bootstrap-node-linux-x86_64
           path: ${{ runner.temp }}/castalia-bootstrap-node-linux-x86_64
@@ -152,7 +162,7 @@ jobs:
       contents: write
     steps:
       - name: Download verified bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: castalia-bootstrap-node-linux-x86_64
           path: artifact
@@ -160,7 +170,7 @@ jobs:
       - name: Publish immutable GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           if ! [[ "$RELEASE_TAG" =~ ^castalia-bootstrap-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
@@ -168,11 +178,11 @@ jobs:
             exit 2
           fi
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" artifact/* --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" artifact/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "Castalia bootstrap node $RELEASE_TAG" \
-              --generate-notes
+            echo "::error::release $RELEASE_TAG already exists; verified assets are immutable"
+            exit 3
           fi
+          gh release create "$RELEASE_TAG" artifact/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Castalia bootstrap node $RELEASE_TAG" \
+            --generate-notes
