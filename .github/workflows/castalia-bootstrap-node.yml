@@ -71,7 +71,36 @@ jobs:
         run: bash scripts/bootstrap.sh
 
       - name: Re-derive canonical descriptors from Lean
+        id: descriptor_drift
+        continue-on-error: true
         run: bash scripts/check-descriptor-drift.sh
+
+      - name: Materialize review-only descriptor drift diagnostics
+        if: steps.descriptor_drift.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          DREGG_VK_REGEN_ACK="$(git rev-parse HEAD:metatheory/Dregg2)" \
+            scripts/emit-descriptors.sh
+          git status --short > "${RUNNER_TEMP}/descriptor-drift.status"
+          git diff --binary > "${RUNNER_TEMP}/descriptor-drift.patch"
+          test -s "${RUNNER_TEMP}/descriptor-drift.patch"
+
+      - name: Upload descriptor drift diagnostics
+        if: steps.descriptor_drift.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: canonical-descriptor-drift
+          path: |
+            ${{ runner.temp }}/descriptor-drift.status
+            ${{ runner.temp }}/descriptor-drift.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce canonical descriptor agreement
+        if: steps.descriptor_drift.outcome == 'failure'
+        run: |
+          echo "::error::Lean-emitted canonical descriptors drifted; review canonical-descriptor-drift"
+          exit 1
 
       - name: Build the production node without marshal-only fallback
         env:
