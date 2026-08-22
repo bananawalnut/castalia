@@ -317,7 +317,9 @@ fn check_constitution_membership() -> Result<(), String> {
     }
 
     // Apply the proposal.
-    let applied = manager.apply_if_passed(&proposal_block);
+    let applied = manager
+        .apply_if_passed(&proposal_block)
+        .map_err(|refusal| format!("proposal application was refused: {refusal:?}"))?;
     if !applied {
         return Err("proposal should pass after threshold votes".into());
     }
