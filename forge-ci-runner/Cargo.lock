@@ -1900,6 +1900,7 @@ dependencies = [
 [[package]]
 name = "p3-circuit"
 version = "0.1.0"
+source = "git+https://github.com/emberian/plonky3-recursion?rev=fc3c6df#fc3c6dfac26e2082653d2a617a1740446ce33f05"
 dependencies = [
  "hashbrown 0.16.1",
  "itertools 0.14.0",
@@ -2163,6 +2164,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon1-circuit-air"
 version = "0.1.0"
+source = "git+https://github.com/emberian/plonky3-recursion?rev=fc3c6df#fc3c6dfac26e2082653d2a617a1740446ce33f05"
 dependencies = [
  "itertools 0.14.0",
  "p3-air",
@@ -2212,6 +2214,7 @@ dependencies = [
 [[package]]
 name = "p3-poseidon2-circuit-air"
 version = "0.1.0"
+source = "git+https://github.com/emberian/plonky3-recursion?rev=fc3c6df#fc3c6dfac26e2082653d2a617a1740446ce33f05"
 dependencies = [
  "itertools 0.14.0",
  "p3-air",
@@ -3441,11 +3444,3 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
-
-[[patch.unused]]
-name = "p3-circuit-prover"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "p3-recursion"
-version = "0.1.0"

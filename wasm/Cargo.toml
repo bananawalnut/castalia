@@ -279,30 +279,14 @@ p3-fri = { path = "../vendor/plonky3-fri-82cfad73" }
 # `prover` on the single circuit instance in this graph — which compiles
 # `circuit/src/plonky3_recursion_impl.rs` + `ivc_turn_chain.rs`, both of which
 # reference `RecursionInput::NativeBatchStark`. That variant lives in the pushed
-# fork's `update-plonky3-rev` branch, which the `[patch]` below pins for this
-# workspace via a sibling checkout. `dregg-circuit`'s `p3-*` deps are
+# fork's `update-plonky3-rev` branch. `dregg-circuit`'s `p3-*` deps are
 # `{ workspace = true }` and resolve against the ROOT workspace (circuit is a
 # root member), whose git pin is the pushed fork tip
 # `fc3c6dfac26e2082653d2a617a1740446ce33f05` (the `update-plonky3-rev` tip: a
 # constant's VALUE is now a PREPROCESSED column of `ConstAir`, so every
 # preprocessed commitment — and every `RecursionVk` derived from one — moves.
-# It descends from 0a4a554's GPU recursion prove path by two commits; keep this
-# comment, the root Cargo.toml pin, and pages-wasm.yml's clone rev in lockstep —
-# they are the SAME circuit or the VK forks). cargo
-# forbids a `[patch]` that re-points a git source to a different rev of the
-# SAME URL, so the override is a path patch onto the sibling checkout:
-#   git clone https://github.com/emberian/plonky3-recursion ../../plonky3-recursion
-#   git -C ../../plonky3-recursion checkout fc3c6dfac26e2082653d2a617a1740446ce33f05
-# CI does exactly this (`.github/workflows/pages-wasm.yml`,`extension.yml`,
-# `publish-sdk-ts.yml` clone the sibling at rev `fc3c6df` — the pushed
-# `update-plonky3-rev` tip carrying the ConstAir preprocessed-value change); a dev clone does the
-# same (README "What you need"). The root pins above sit at this same tip
-# (root Cargo.toml [patch] block comment has the runbook). NOTE: if the local
-# sibling runs AHEAD of the push, a locally built
-# pkg embeds a verifier no pushed rev reproduces; push the fork tip before
-# shipping bits.
-[patch."https://github.com/emberian/plonky3-recursion"]
-p3-recursion = { path = "../../plonky3-recursion/recursion" }
-p3-circuit = { path = "../../plonky3-recursion/circuit" }
-p3-circuit-prover = { path = "../../plonky3-recursion/circuit-prover" }
-p3-poseidon2-circuit-air = { path = "../../plonky3-recursion/poseidon2-circuit-air" }
+# It descends from 0a4a554's GPU recursion prove path by two commits. The root
+# workspace dependencies pin the complete immutable revision
+# `fc3c6dfac26e2082653d2a617a1740446ce33f05`; this standalone workspace resolves
+# those transitive packages from that Git source too. There is no sibling path
+# override, so a clean clone cannot silently build a different verifier.
