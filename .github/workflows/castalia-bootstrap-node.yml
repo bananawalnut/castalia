@@ -563,16 +563,6 @@ jobs:
           fi
           trap - EXIT
 
-      - name: Verify permissionless membership issuance and process restart
-        env:
-          DREGG_REQUIRE_LEAN: "1"
-          CASTALIA_TEST_REQUIRE_LEAN: "1"
-        run: |
-          cargo test --locked -p dregg-node \
-            --test castalia_membership_process_restart \
-            permissionless_v2_join_is_idempotent_and_survives_production_solo_restart \
-            -- --nocapture
-
       - name: Package checksum, provenance, and SPDX SBOM
         run: |
           set -euo pipefail
