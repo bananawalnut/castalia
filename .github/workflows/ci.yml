@@ -1394,6 +1394,23 @@ jobs:
           fi
           exit "$status"
 
+      # The lifecycle test drives the production supervisor through a full
+      # committee start, successful clearing, short-roster refusal, and
+      # dishonest-dealer refusal. Its target is feature-gated because it links
+      # the verified PQ runtime, so a plain workspace test silently omits it.
+      # This job already owns the content-keyed Lean archive; run the test here
+      # and demand that neither the build nor spawned processes can fall back.
+      - name: Distributed committee lifecycle with verified PQ runtime
+        if: steps.pin.outputs.armed == '1'
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
+        run: |
+          cargo test -p fhegg-fhe \
+            --features verified-pq-runtime-tests \
+            --test distributed_committee_lifecycle \
+            -- --nocapture
+
   mina-attestation:
     name: Mina↔dregg Poseidon attestation zkApp (runs it, and proves the gate can go red)
     # ⚑ SLOW LANE — see the `schedule:` block at the top of this file. Skipped on a push to

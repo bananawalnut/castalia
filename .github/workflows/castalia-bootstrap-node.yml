@@ -15,6 +15,7 @@ on:
       - "scripts/check-descriptor-drift.sh"
       - "scripts/check-emit-gate-weld.py"
       - "scripts/build-descriptor-emitter-checkpoint.sh"
+      - "scripts/build-descriptor-emitter-checkpoint-serial.sh"
       - "scripts/emit_descriptors.py"
       - "scripts/cargo_metadata_to_spdx.py"
       - "scripts/write_bootstrap_provenance.py"
@@ -210,7 +211,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: metatheory/.lake/build
-          key: castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          key: castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
           restore-keys: |
             castalia-lean-emitter-b-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
 
@@ -220,7 +221,7 @@ jobs:
 
       - name: Build descriptor emitter checkpoint C
         if: steps.lean_cache.outputs.cache-hit != 'true'
-        run: bash scripts/build-descriptor-emitter-checkpoint.sh 88 132
+        run: bash scripts/build-descriptor-emitter-checkpoint-serial.sh 88 132
 
   verified-emitter-checkpoint-d:
     name: Verified Lean emitter checkpoint D
@@ -248,9 +249,9 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: metatheory/.lake/build
-          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
           restore-keys: |
-            castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+            castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
 
       - name: Require emitter checkpoint C
         if: steps.lean_cache.outputs.cache-hit != 'true'
@@ -258,7 +259,7 @@ jobs:
 
       - name: Build descriptor emitter checkpoint D
         if: steps.lean_cache.outputs.cache-hit != 'true'
-        run: bash scripts/build-descriptor-emitter-checkpoint.sh 132 173
+        run: bash scripts/build-descriptor-emitter-checkpoint-serial.sh 132 173
 
   verified-kernel:
     name: Verified Lean kernel and canonical descriptors
@@ -295,7 +296,7 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: metatheory/.lake/build
-          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
           fail-on-cache-miss: true
 
       - name: Verify the restored Lean checkpoints

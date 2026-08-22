@@ -674,6 +674,7 @@ impl FourStep {
 
 // ------------------------------------------------------- exact FP32 via AMX
 
+#[cfg(target_os = "macos")]
 #[link(name = "Accelerate", kind = "framework")]
 extern "C" {
     fn cblas_sgemm(
@@ -694,7 +695,9 @@ extern "C" {
     );
 }
 
+#[cfg(target_os = "macos")]
 const CBLAS_ROW_MAJOR: i32 = 101;
+#[cfg(target_os = "macos")]
 const CBLAS_NO_TRANS: i32 = 111;
 
 /// Is a BAT contraction of `dim` elements at K limbs exactly representable in
@@ -707,6 +710,7 @@ fn fp32_exact_bound(dim: usize, k: u32) -> (u64, bool) {
 
 /// One BAT step-1 GEMM through Accelerate: A (R x KC) @ W (KC x KC) with 8-bit
 /// entries held as f32. Returns the wall time; the caller checks exactness.
+#[cfg(target_os = "macos")]
 fn amx_bat_gemm(r_dim: usize, c_dim: usize, k: u32, reps: usize) -> (f64, f32) {
     let kc = c_dim * k as usize;
     let a: Vec<f32> = (0..r_dim * kc).map(|i| ((i * 37) % 256) as f32).collect();
@@ -1056,60 +1060,65 @@ fn main() {
     println!();
 
     // ---- the only real matrix engine on this box ---------------------------
-    println!("== AMX (Accelerate sgemm): the BAT step-1 contraction on a real matrix unit ==");
-    for (label, q) in [
-        ("BabyBear (31b)", BABYBEAR),
-        ("FOLD q2 (37b)", FOLD_MODULI[2]),
-    ] {
-        let k = k_limbs(q);
-        let kc = 64 * k as usize;
-        let (max, exact) = fp32_exact_bound(64, k);
-        let (secs, _probe) = amx_bat_gemm(64, 64, k, 20);
-        let macs = 64.0 * kc as f64 * kc as f64;
-        println!(
-            "  {label}: (64 x {kc}) @ ({kc} x {kc}) = {:.2} MMAC in {:.1} us -> {:.1} GMAC/s   [{}]",
-            macs / 1e6,
-            secs * 1e6,
-            macs / secs / 1e9,
-            if exact {
-                format!("exact, max partial {max} < 2^24")
-            } else {
-                format!("NOT EXACT in fp32: max partial {max} >= 2^24")
-            }
-        );
-    }
-
-    // The small BAT tile is call-overhead bound; measure AMX's peak too, so the
-    // matrix unit is not understated by our tile choice.
-    for &dim in &[256usize, 1024] {
-        let a: Vec<f32> = (0..dim * dim).map(|i| ((i * 37) % 256) as f32).collect();
-        let b: Vec<f32> = (0..dim * dim).map(|i| ((i * 91) % 256) as f32).collect();
-        let mut c = vec![0f32; dim * dim];
-        let secs = best_secs(10, || unsafe {
-            cblas_sgemm(
-                CBLAS_ROW_MAJOR,
-                CBLAS_NO_TRANS,
-                CBLAS_NO_TRANS,
-                dim as i32,
-                dim as i32,
-                dim as i32,
-                1.0,
-                a.as_ptr(),
-                dim as i32,
-                b.as_ptr(),
-                dim as i32,
-                0.0,
-                c.as_mut_ptr(),
-                dim as i32,
+    #[cfg(target_os = "macos")]
+    {
+        println!("== AMX (Accelerate sgemm): the BAT step-1 contraction on a real matrix unit ==");
+        for (label, q) in [
+            ("BabyBear (31b)", BABYBEAR),
+            ("FOLD q2 (37b)", FOLD_MODULI[2]),
+        ] {
+            let k = k_limbs(q);
+            let kc = 64 * k as usize;
+            let (max, exact) = fp32_exact_bound(64, k);
+            let (secs, _probe) = amx_bat_gemm(64, 64, k, 20);
+            let macs = 64.0 * kc as f64 * kc as f64;
+            println!(
+                "  {label}: (64 x {kc}) @ ({kc} x {kc}) = {:.2} MMAC in {:.1} us -> {:.1} GMAC/s   [{}]",
+                macs / 1e6,
+                secs * 1e6,
+                macs / secs / 1e9,
+                if exact {
+                    format!("exact, max partial {max} < 2^24")
+                } else {
+                    format!("NOT EXACT in fp32: max partial {max} >= 2^24")
+                }
             );
-        });
-        let macs = (dim as f64).powi(3);
-        println!(
-            "  AMX peak probe {dim}^3: {:.1} GMAC/s  (sink {:.0})",
-            macs / secs / 1e9,
-            c[0]
-        );
+        }
+
+        // The small BAT tile is call-overhead bound; measure AMX's peak too, so the
+        // matrix unit is not understated by our tile choice.
+        for &dim in &[256usize, 1024] {
+            let a: Vec<f32> = (0..dim * dim).map(|i| ((i * 37) % 256) as f32).collect();
+            let b: Vec<f32> = (0..dim * dim).map(|i| ((i * 91) % 256) as f32).collect();
+            let mut c = vec![0f32; dim * dim];
+            let secs = best_secs(10, || unsafe {
+                cblas_sgemm(
+                    CBLAS_ROW_MAJOR,
+                    CBLAS_NO_TRANS,
+                    CBLAS_NO_TRANS,
+                    dim as i32,
+                    dim as i32,
+                    dim as i32,
+                    1.0,
+                    a.as_ptr(),
+                    dim as i32,
+                    b.as_ptr(),
+                    dim as i32,
+                    0.0,
+                    c.as_mut_ptr(),
+                    dim as i32,
+                );
+            });
+            let macs = (dim as f64).powi(3);
+            println!(
+                "  AMX peak probe {dim}^3: {:.1} GMAC/s  (sink {:.0})",
+                macs / secs / 1e9,
+                c[0]
+            );
+        }
     }
+    #[cfg(not(target_os = "macos"))]
+    println!("== AMX measurement unavailable: Accelerate is macOS-only ==");
 
     // A scalar modmul rate for the same box, to price the ratio.
     let q = FOLD_MODULI[0];
