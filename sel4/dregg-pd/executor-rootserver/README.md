@@ -37,7 +37,8 @@ qemu-system-aarch64 -machine virt,virtualization=on -cpu cortex-a53 -m 3072M \
 
 Prereqs: `../executor-pd/out` (run that lane's closure + runtime build first), the
 `aarch64-linux-gnu` + `aarch64-linux-musl` cross GCCs, CMake+ninja, libclang, and
-the vendored rust-sel4 at `~/sel4-sdk/rust-sel4`.
+the rust-sel4 revision pinned in `Cargo.toml`. The build scripts may vendor that
+same revision under `~/sel4-sdk/rust-sel4`, but manifest resolution is portable.
 
 ## How it works (the architecture)
 

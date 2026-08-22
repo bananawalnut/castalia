@@ -58,8 +58,8 @@ emitted numbers reproduce `proof.oracles(...)`:
 
 The crate is deliberately **outside** the breadstuffs workspace (its own `[workspace]`), so that
 arkworks 0.5 / proof-systems 0.3.0 / the forked `num-bigint` never enter the breadstuffs lockfile.
-It expects `mina-rust` as a **sibling checkout** of this repo (`../../../../mina-rust`), openmina
-rev **`82480cd468`** (v0.19.0).
+Its three OpenMina crates resolve directly from immutable rev
+**`82480cd468f1963b73dc0b700161036411449e4c`** (v0.19.0); no sibling checkout is required.
 
 ```
 cd metatheory/fixtures/pickles-extractors

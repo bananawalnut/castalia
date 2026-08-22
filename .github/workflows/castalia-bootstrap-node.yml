@@ -14,6 +14,7 @@ on:
       - "scripts/bootstrap.sh"
       - "scripts/check-descriptor-drift.sh"
       - "scripts/check-emit-gate-weld.py"
+      - "scripts/build-descriptor-emitter-checkpoint.sh"
       - "scripts/emit_descriptors.py"
       - "scripts/cargo_metadata_to_spdx.py"
       - "scripts/write_bootstrap_provenance.py"
@@ -107,9 +108,161 @@ jobs:
           bash scripts/ci-mathlib-cache.sh
           ( cd metatheory && lake build Dregg2.Circuit.Emit.AutomataflCoord )
 
+  verified-emitter-checkpoint-a:
+    name: Verified Lean emitter checkpoint A
+    needs: verified-emitter-foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint A
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-a-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-foundation-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+
+      - name: Require the emitter-foundation checkpoint
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AutomataflCoord.olean
+
+      - name: Build descriptor emitter checkpoint A
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 0 44
+
+  verified-emitter-checkpoint-b:
+    name: Verified Lean emitter checkpoint B
+    needs: verified-emitter-checkpoint-a
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint B
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-b-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-a-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+
+      - name: Require emitter checkpoint A
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AvailWireMembers.olean
+
+      - name: Build descriptor emitter checkpoint B
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 44 88
+
+  verified-emitter-checkpoint-c:
+    name: Verified Lean emitter checkpoint C
+    needs: verified-emitter-checkpoint-b
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint C
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-b-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+
+      - name: Require emitter checkpoint B
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/EffectVmEmitTurnChainBinding.olean
+
+      - name: Build descriptor emitter checkpoint C
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 88 132
+
+  verified-emitter-checkpoint-d:
+    name: Verified Lean emitter checkpoint D
+    needs: verified-emitter-checkpoint-c
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint D
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+
+      - name: Require emitter checkpoint C
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/LightClientSolanaAir.olean
+
+      - name: Build descriptor emitter checkpoint D
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 132 173
+
   verified-kernel:
     name: Verified Lean kernel and canonical descriptors
-    needs: verified-emitter-foundation
+    needs: verified-emitter-checkpoint-d
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -138,11 +291,11 @@ jobs:
         with:
           shared-key: castalia-bootstrap-kernel-linux-x86-64
 
-      - name: Restore the verified emitter-foundation checkpoint
+      - name: Restore the complete verified emitter checkpoint
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: metatheory/.lake/build
-          key: castalia-lean-emitter-foundation-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
           fail-on-cache-miss: true
 
       - name: Verify the restored Lean checkpoints
@@ -150,6 +303,7 @@ jobs:
           set -euo pipefail
           test -s metatheory/.lake/build/lib/lean/Dregg2/FFI.olean
           test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AutomataflCoord.olean
+          test -s metatheory/.lake/build/lib/lean/Market/CertFDescriptor.olean
 
       - name: Verify checked-in canonical descriptor set
         run: |

@@ -637,9 +637,13 @@ def workspace_roots(root: Path) -> list[Path]:
 
 
 def cargo_metadata(cwd: Path, args: list[str]) -> dict | None:
+    # Metadata only parses and resolves manifests; it does not compile the target. Always use the
+    # repository's CI toolchain so a standalone target workspace cannot require a machine-local
+    # rustup alias (for example SP1's `succinct`) merely to enumerate its feature surface.
+    command = ["cargo", "+nightly-2026-06-21", "metadata", "--format-version", "1", *args]
     for extra in (["--offline"], []):
         p = subprocess.run(
-            ["cargo", "metadata", "--format-version", "1", *args, *extra],
+            [*command, *extra],
             cwd=cwd,
             capture_output=True,
             text=True,
