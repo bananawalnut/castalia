@@ -30,8 +30,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  verified-artifact:
-    name: Verified Lean Linux x86-64 artifact
+  verified-kernel:
+    name: Verified Lean kernel and canonical descriptors
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
           curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
@@ -58,7 +58,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          shared-key: castalia-bootstrap-linux-x86-64
+          shared-key: castalia-bootstrap-kernel-linux-x86-64
 
       - name: Verify checked-in canonical descriptor set
         run: |
@@ -67,8 +67,23 @@ jobs:
           python3 scripts/emit_descriptors.py --verify-by-name-routing
           python3 scripts/check-emit-gate-weld.py
 
-      - name: Bootstrap the pinned verified Lean executor
-        run: bash scripts/bootstrap.sh
+      - name: Build the executor and descriptor emitters in one Lean graph
+        run: |
+          set -euo pipefail
+          bash scripts/ci-mathlib-cache.sh
+          EMIT_MODULES=()
+          while IFS= read -r module; do
+            [ -n "$module" ] && EMIT_MODULES+=("$module")
+          done < <(python3 scripts/emit_descriptors.py --list-emitter-modules)
+          if [ "${#EMIT_MODULES[@]}" -eq 0 ]; then
+            echo "::error::descriptor emitter module set is empty"
+            exit 2
+          fi
+          echo "Building Dregg2.FFI, Dregg2, and ${#EMIT_MODULES[@]} descriptor emitter modules together"
+          (
+            cd metatheory
+            lake build Dregg2.FFI Dregg2 "${EMIT_MODULES[@]}"
+          )
 
       - name: Re-derive canonical descriptors from Lean
         id: descriptor_drift
@@ -101,6 +116,98 @@ jobs:
         run: |
           echo "::error::Lean-emitted canonical descriptors drifted; review canonical-descriptor-drift"
           exit 1
+
+      - name: Seed and attest the verified Lean kernel
+        run: |
+          set -euo pipefail
+          ARCH="dregg-lean-ffi/libdregg_lean.a"
+          dregg-lean-ffi/scripts/seed-dregg2-closure.sh
+          test -s "$ARCH"
+          bash scripts/lean-seed-key.sh > "$ARCH.provenance"
+          SHA="$(sha256sum "$ARCH" | awk 'NR == 1 { print $1 }')"
+          {
+            echo "SHA256=$SHA"
+            echo "SOURCE_REVISION=$(git rev-parse HEAD)"
+            echo "GENERATED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$ARCH.provenance"
+          EXPECTED_KEY="$(bash scripts/lean-seed-key.sh --key)"
+          RECORDED_KEY="$(sed -n 's/^KEY=//p' "$ARCH.provenance" | head -1)"
+          RECORDED_SHA="$(sed -n 's/^SHA256=//p' "$ARCH.provenance" | head -1)"
+          test -n "$EXPECTED_KEY"
+          test "$RECORDED_KEY" = "$EXPECTED_KEY"
+          test "$RECORDED_SHA" = "$SHA"
+          BUNDLE="${RUNNER_TEMP}/verified-lean-seed"
+          mkdir -p "$BUNDLE"
+          zstd -q -3 -T0 "$ARCH" -o "$BUNDLE/libdregg_lean.a.zst"
+          cp "$ARCH.provenance" "$BUNDLE/libdregg_lean.a.provenance"
+
+      - name: Upload content-keyed Lean kernel seed
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: castalia-verified-lean-seed-linux-x86_64
+          path: ${{ runner.temp }}/verified-lean-seed
+          if-no-files-found: error
+          retention-days: 3
+
+  verified-artifact:
+    name: Verified Lean Linux x86-64 artifact
+    needs: verified-kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and pinned Lean runtime prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: castalia-bootstrap-node-linux-x86-64
+
+      - name: Download the verified Lean kernel seed
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: castalia-verified-lean-seed-linux-x86_64
+          path: ${{ runner.temp }}/verified-lean-seed
+
+      - name: Install the verified Lean kernel seed
+        run: |
+          set -euo pipefail
+          BUNDLE="${RUNNER_TEMP}/verified-lean-seed"
+          zstd -d -q "$BUNDLE/libdregg_lean.a.zst" \
+            -o dregg-lean-ffi/libdregg_lean.a
+          cp "$BUNDLE/libdregg_lean.a.provenance" \
+            dregg-lean-ffi/libdregg_lean.a.provenance
+
+      - name: Verify seed provenance against this checkout
+        run: |
+          set -euo pipefail
+          ARCH="dregg-lean-ffi/libdregg_lean.a"
+          PROVENANCE="$ARCH.provenance"
+          test -s "$ARCH"
+          test -s "$PROVENANCE"
+          EXPECTED_KEY="$(bash scripts/lean-seed-key.sh --key)"
+          RECORDED_KEY="$(sed -n 's/^KEY=//p' "$PROVENANCE" | head -1)"
+          RECORDED_SHA="$(sed -n 's/^SHA256=//p' "$PROVENANCE" | head -1)"
+          LIVE_SHA="$(sha256sum "$ARCH" | awk 'NR == 1 { print $1 }')"
+          test -n "$EXPECTED_KEY"
+          test "$RECORDED_KEY" = "$EXPECTED_KEY"
+          test "$RECORDED_SHA" = "$LIVE_SHA"
 
       - name: Build the production node without marshal-only fallback
         env:
