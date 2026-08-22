@@ -3594,42 +3594,48 @@ impl TurnExecutor {
         // For FromSet strategy: use the claimed VK (already validated above).
         // For FixedProgram: derive the canonical VK and retain the exact program
         // bytes for installation. For Fixed/None: use the declared fixed/claimed VK.
-        let (effective_vk, fixed_program) = {
+        let (effective_vk, exact_program) = {
             let registry = self.factory_registry.borrow();
             let descriptor = registry.get(factory_vk);
-            match descriptor.and_then(|d| d.child_vk_strategy.as_ref()) {
-                Some(dregg_cell::factory::ChildVkStrategy::Derived { base_vk }) => {
-                    let param_hash =
-                        dregg_cell::factory::ChildVkStrategy::compute_param_hash(params);
-                    (
-                        Some(dregg_cell::factory::ChildVkStrategy::derive_child_vk(
-                            base_vk,
-                            &param_hash,
-                        )),
-                        None,
-                    )
-                }
-                Some(dregg_cell::factory::ChildVkStrategy::FromSet { .. }) => {
-                    // Already validated; use the claimed VK.
-                    (params.program_vk, None)
-                }
-                Some(dregg_cell::factory::ChildVkStrategy::Fixed(vk)) => (*vk, None),
-                Some(dregg_cell::factory::ChildVkStrategy::FixedProgram {
-                    program,
-                    air_fingerprint,
-                    verifier_fingerprint,
-                    proving_system_bytes,
-                }) => (
-                    Some(dregg_cell::factory::canonical_program_vk_v2_from_recipe(
+            let deployed_full_program = registry.full_child_program(factory_vk).cloned();
+            let (effective_vk, embedded_fixed_program) =
+                match descriptor.and_then(|d| d.child_vk_strategy.as_ref()) {
+                    Some(dregg_cell::factory::ChildVkStrategy::Derived { base_vk }) => {
+                        let param_hash =
+                            dregg_cell::factory::ChildVkStrategy::compute_param_hash(params);
+                        (
+                            Some(dregg_cell::factory::ChildVkStrategy::derive_child_vk(
+                                base_vk,
+                                &param_hash,
+                            )),
+                            None,
+                        )
+                    }
+                    Some(dregg_cell::factory::ChildVkStrategy::FromSet { .. }) => {
+                        // Already validated; use the claimed VK.
+                        (params.program_vk, None)
+                    }
+                    Some(dregg_cell::factory::ChildVkStrategy::Fixed(vk)) => (*vk, None),
+                    Some(dregg_cell::factory::ChildVkStrategy::FixedProgram {
                         program,
-                        *air_fingerprint,
+                        air_fingerprint,
                         verifier_fingerprint,
                         proving_system_bytes,
-                    )),
-                    Some(program.clone()),
-                ),
-                None => (params.program_vk, None),
-            }
+                    }) => (
+                        Some(dregg_cell::factory::canonical_program_vk_v2_from_recipe(
+                            program,
+                            *air_fingerprint,
+                            verifier_fingerprint,
+                            proving_system_bytes,
+                        )),
+                        Some(program.clone()),
+                    ),
+                    None => (params.program_vk, None),
+                };
+            (
+                effective_vk,
+                embedded_fixed_program.or(deployed_full_program),
+            )
         };
 
         // Create the cell. THE ASSET IS INHERITED, THE SALT IS THE PAYLOAD'S:
@@ -3676,9 +3682,10 @@ impl TurnExecutor {
             ));
         }
 
-        // Install the executable program welded by `FixedProgram`, or fall back
-        // to the factory descriptor's perpetual slot caveats (`state_constraints`)
-        // for legacy strategies. Without either,
+        // Install the executable program welded by `FixedProgram` or by the
+        // registry's checked layered-v2 full-program deployment. Fall back to
+        // the factory descriptor's perpetual slot caveats (`state_constraints`)
+        // only for legacy deployments. Without either,
         // the descriptor's Lane-G caveats (WriteOnce / Monotonic / …) never
         // bite: `apply_create_cell_from_factory` previously installed only the
         // VK *identifier*, leaving `cell.program == CellProgram::None`, so the
@@ -3687,7 +3694,7 @@ impl TurnExecutor {
         // factory advertises; installing them here is what makes a
         // factory-born cell's gating actually enforce on every subsequent turn
         // that touches it (reject-on-violation / accept-on-conform).
-        if let Some(program) = fixed_program {
+        if let Some(program) = exact_program {
             new_cell.program = program;
         } else {
             let state_constraints = self

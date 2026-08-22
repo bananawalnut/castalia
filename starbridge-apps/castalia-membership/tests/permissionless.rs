@@ -96,7 +96,7 @@ fn permissionless_contract_identifiers_are_stable() {
     );
     assert_eq!(
         hex32(starbridge_castalia_membership::permissionless_membership_child_program_vk()),
-        "63daa3adfa47c7ad07a28b5a7a48777b001f24eed6613a47b548ce6bf79a68cc"
+        "6c37adae385c40894127e766deb9aff54e4cd01b0ccf01aff1ac7c12e24441fd"
     );
     assert_eq!(
         hex32(permissionless_membership_token_id()),
