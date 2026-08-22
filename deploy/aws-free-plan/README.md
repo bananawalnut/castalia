@@ -88,15 +88,30 @@ matching public/loopback identity, 25% memory headroom, private port 8420, and
 404 responses from every unreviewed public route. The malformed Join probe must
 fail closed with HTTP 400.
 
-Then use the production Wallet package to issue one membership, retry it, and
-repeat the read/retry cycle for 30 minutes while watching:
+Use the production Wallet package to create the owner membership. For the
+machine-enforced soak, capture that exact signed v2 join request from the
+acceptance run (it contains only the public key and signature, never the private
+key or passphrase), copy it to the node, and run:
 
 ```sh
-watch -n 5 'systemctl --no-pager --full status dregg-solo; free -m'
+sudo deploy/aws-free-plan/soak-membership.sh \
+  dregg.zenith-research.ca \
+  ./signed-v2-join-request.json \
+  1800
 ```
 
-Run preflight again at the end. If `t3.small` cannot keep at least 25% memory
-available or remains unstable, redeploy with:
+The gate issues or reacquires the membership, proves retries return the same
+cell with `created: false`, reads the same public cell every ten seconds,
+requires at least 25% available memory, restarts `dregg-solo.service` halfway
+through, rechecks the membership, and runs preflight again. It writes a JSON
+soak record in the current directory. Set
+`CASTALIA_SOAK_EXPECT_FIRST_CREATED=true` when this is the first-ever issuance,
+or `false` when deliberately repeating acceptance for an existing key; the
+default accepts either initial state but still requires every retry to be
+idempotent.
+
+If `t3.small` cannot keep at least 25% memory available or remains unstable,
+redeploy with:
 
 ```sh
 export CASTALIA_INSTANCE_TYPE=c7i-flex.large
@@ -127,6 +142,10 @@ Binary rollback is ledger-preserving:
 ```sh
 sudo deploy/aws-free-plan/rollback-binary.sh PREVIOUS_BINARY_SHA256
 ```
+
+After the clean-profile and recovery checks pass, fill in
+[`ACCEPTANCE-RECORD.md`](ACCEPTANCE-RECORD.md), including hashes for the release,
+wallet package, soak record, and decrypt-tested off-machine backup.
 
 ## Public boundary
 
