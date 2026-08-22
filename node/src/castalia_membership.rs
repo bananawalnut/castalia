@@ -296,7 +296,6 @@ fn prepare_membership_turn(
     };
     let executor = crate::executor_setup::new_submit_executor(s);
     turn.fee = executor.estimate_cost(&turn);
-    crate::api::seed_executor_receipt_head(&executor, operator, previous_receipt_hash);
 
     // Admission is a dry run against an isolated ledger clone. The exact same
     // signed bytes are submitted below and re-executed by blocklace finality.

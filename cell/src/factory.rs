@@ -1421,6 +1421,11 @@ impl FactoryRegistry {
             .collect();
         Ok(Self {
             descriptors,
+            // Full child programs are verified deployment material rather than
+            // mutable quota state. Node executor setup deterministically
+            // re-deploys each canonical full program after restoring this v1
+            // descriptor/count snapshot, and refuses any descriptor conflict.
+            full_child_programs: std::collections::HashMap::new(),
             creation_counts,
             current_epoch: snapshot.current_epoch,
         })

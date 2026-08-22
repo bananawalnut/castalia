@@ -5617,10 +5617,6 @@ async fn submit_signed_turn(
     let action_count = signed.turn.call_forest.action_count();
     let signed_for_gossip = signed.clone();
 
-    // Consensus finalization is the sole durable writer whenever a blocklace
-    // handle is active, including a committee of one. Admission still executes
-    // against the live pre-state to fail closed, but its mutations are a dry run.
-    let consensus_active = state.blocklace().await.is_some();
     let mut s = state.write().await;
     if !s.unlocked {
         return Err(StatusCode::FORBIDDEN);
@@ -5676,7 +5672,6 @@ async fn submit_signed_turn(
             crate::metrics::inc_turns_executed("committed");
             crate::metrics::record_turn_execution_duration(start.elapsed().as_secs_f64());
             crate::metrics::set_ledger_cell_count(s.ledger.len() as f64);
-
 
             // F-DOS-1 / PATH-PRESERVE Phase 5b: the executor already validated +
             // committed this turn (the soundness boundary); no inline proving / no
@@ -9279,7 +9274,7 @@ async fn post_faucet(
     };
     let recipient_cell_id = dregg_cell::CellId(recipient_bytes);
 
-    match &req.public_key {
+    let recipient_public_key = match &req.public_key {
         Some(pk_hex) => {
             let pk: [u8; 32] = match hex_decode(pk_hex) {
                 Ok(pk) => pk,
@@ -9304,10 +9299,10 @@ async fn post_faucet(
                     error: Some("public_key does not derive the recipient cell".to_string()),
                 }));
             }
-            ()
+            Some(pk)
         }
-        None => (),
-    }
+        None => None,
+    };
 
     // Rate limit check.
     if req.amount > 0 && !limiter.check(&req.recipient).await {

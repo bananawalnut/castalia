@@ -479,6 +479,15 @@ jobs:
           DREGG_REQUIRE_LEAN: "1"
         run: cargo build --locked --release -p dregg-node
 
+      - name: Prove permissionless issuance survives a production solo restart
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+          CASTALIA_TEST_REQUIRE_LEAN: "1"
+        run: >-
+          cargo test --locked --release -p dregg-node
+          --test castalia_membership_process_restart
+          permissionless_v2_join_is_idempotent_and_survives_production_solo_restart
+
       - name: Boot and assert the verified producer at runtime
         run: |
           set -euo pipefail
@@ -486,7 +495,7 @@ jobs:
           DATA_DIR="${DATA_ROOT}/data"
           STATUS_JSON="${RUNNER_TEMP}/status.json"
           LOG="${RUNNER_TEMP}/dregg-node.log"
-          target/release/dregg-node init --data-dir "$DATA_DIR"
+          target/release/dregg-node init --data-dir "$DATA_DIR" --solo-genesis
           target/release/dregg-node run \
             --data-dir "$DATA_DIR" \
             --port 18420 \

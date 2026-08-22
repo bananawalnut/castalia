@@ -19904,7 +19904,7 @@ fn restore_checkpoint_response(
     let checkpoint_data: CheckpointData = match postcard::from_bytes(&blocklace_bytes) {
         Ok(data) => data,
         Err(e) => {
-            warn!(peer = %peer_url, error = %e, "failed to deserialize blocklace checkpoint");
+            warn!(error = %e, "failed to deserialize blocklace checkpoint");
             return None;
         }
     };
@@ -19924,20 +19924,19 @@ fn restore_checkpoint_response(
     ) {
         Ok(lace) => lace,
         Err(e) => {
-            warn!(peer = %peer_url, error = %e, "failed to restore blocklace from checkpoint");
+            warn!(error = %e, "failed to restore blocklace from checkpoint");
             return None;
         }
     };
     let consensus_time_policy = match consensus_time_policy_v1_from_env() {
         Ok(policy) => policy,
         Err(error) => {
-            warn!(peer = %peer_url, error = %error, "checkpoint bootstrap lacks consensus-time-v1 deployment coordinate");
+            warn!(error = %error, "checkpoint bootstrap lacks consensus-time-v1 deployment coordinate");
             return None;
         }
     };
     if let Err(error) = blocklace.restore_consensus_time_v1(consensus_time_policy) {
         warn!(
-            peer = %peer_url,
             error = %error,
             "peer checkpoint is incompatible with the local consensus-time-v1 flag day"
         );

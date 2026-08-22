@@ -376,18 +376,23 @@ pub fn write_solo_genesis(data_dir: &Path) -> Result<(), String> {
                 public_key: hex_encode(&issuer_well_public),
                 token_id: hex_encode(&default_token_id),
                 balance: -MEMBERSHIP_RELAY_BALANCE,
+                ml_dsa_public_key: Some(hex_encode(&ml_dsa_public_key_for_seed(
+                    &issuer_well_secret,
+                ))),
             },
             GenesisCell {
                 id: fee_well.clone(),
                 public_key: hex_encode(&fee_well_public),
                 token_id: hex_encode(&default_token_id),
                 balance: 0,
+                ml_dsa_public_key: Some(hex_encode(&ml_dsa_public_key_for_seed(&fee_well_secret))),
             },
             GenesisCell {
                 id: relay_cell.clone(),
                 public_key: hex_encode(&public_key),
                 token_id: hex_encode(&default_token_id),
                 balance: MEMBERSHIP_RELAY_BALANCE,
+                ml_dsa_public_key: Some(hex_encode(&ml_dsa_public_key.0)),
             },
         ],
         issuer_well: issuer_well.clone(),
