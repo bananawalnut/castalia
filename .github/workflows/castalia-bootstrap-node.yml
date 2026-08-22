@@ -79,10 +79,10 @@ jobs:
             echo "::error::descriptor emitter module set is empty"
             exit 2
           fi
-          echo "Building Dregg2.FFI, Dregg2, and ${#EMIT_MODULES[@]} descriptor emitter modules together"
+          echo "Building Dregg2.FFI and ${#EMIT_MODULES[@]} descriptor emitter modules together"
           (
             cd metatheory
-            lake build Dregg2.FFI Dregg2 "${EMIT_MODULES[@]}"
+            lake build Dregg2.FFI "${EMIT_MODULES[@]}"
           )
 
       - name: Re-derive canonical descriptors from Lean

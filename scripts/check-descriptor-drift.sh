@@ -201,6 +201,12 @@ fi
 # OUTSIDE its own build step had warmed the cache. The build set is DERIVED from the
 # emitters' own import lines (`--list-emitter-modules`), never hand-listed, so a new
 # emitter — or a new import to an existing one — cannot silently reopen the hole.
+#
+# Do not add the broad `Dregg2` root beside this derived set. It is not an emitter dependency:
+# doing so expanded the protected cold build to 10,599 jobs and the hosted runner was reclaimed
+# after 76 minutes with 375 unrelated default-target jobs still pending. The exact derived module
+# set is the authority for this gate; the separate verified-executor lane additionally builds
+# `Dregg2.FFI`, which is the production archive boundary.
 echo "check-descriptor-drift: building the Lean corpus (fresh oleans)..."
 EMIT_MODULES=()
 while IFS= read -r m; do
@@ -212,7 +218,7 @@ if [ "${#EMIT_MODULES[@]}" -eq 0 ]; then
   exit 2
 fi
 echo "check-descriptor-drift:   ${#EMIT_MODULES[@]} modules the emitters import"
-( cd "$ROOT/metatheory" && lake build Dregg2 "${EMIT_MODULES[@]}" )
+( cd "$ROOT/metatheory" && lake build "${EMIT_MODULES[@]}" )
 
 # The artifacts the emit OWNS (regenerates): the descriptor files, the five Rust
 # sources that carry generated `*_FP` constants, and the three WHOLE Lean-authored
