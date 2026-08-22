@@ -627,7 +627,6 @@ mod tests {
 
     #[test]
 
-
     fn install_snapshot_replaces_stale_index_entries_absent_from_entire_snapshot() {
         let shipper = PersistentStore::open_in_memory().unwrap();
         let live = cell(0x41, 900);
