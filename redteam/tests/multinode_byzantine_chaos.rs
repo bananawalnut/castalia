@@ -676,11 +676,15 @@ fn attack_double_spend_race_no_node_finalizes_one_fork() {
     let spender_id = Block::hybrid_id(&spender);
     assert_eq!(
         n1.tips().get(&spender_id),
-        Some(&dregg_blocklace::finality::CreatorTips::One(spend_to_alice.id()))
+        Some(&dregg_blocklace::finality::CreatorTips::One(
+            spend_to_alice.id()
+        ))
     );
     assert_eq!(
         n2.tips().get(&spender_id),
-        Some(&dregg_blocklace::finality::CreatorTips::One(spend_to_bob.id()))
+        Some(&dregg_blocklace::finality::CreatorTips::One(
+            spend_to_bob.id()
+        ))
     );
 
     // Now gossip cross-delivers the conflicting spend to each node.

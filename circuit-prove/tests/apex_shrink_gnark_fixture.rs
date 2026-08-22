@@ -519,7 +519,10 @@ fn the_apex_identity_is_one_chain_length_and_every_other_length_is_refused() {
         println!("  recursion_vk : {}", id.recursion_vk_hex);
         println!("  apex VK core : {:?}", id.apex_preprocessed_commit);
         println!("  root spine   : {spine:?}");
-        println!("  governance pin: {}", if pinned { "ACCEPTS" } else { "REFUSES" });
+        println!(
+            "  governance pin: {}",
+            if pinned { "ACCEPTS" } else { "REFUSES" }
+        );
         rows.push((
             n,
             id.recursion_vk_hex,

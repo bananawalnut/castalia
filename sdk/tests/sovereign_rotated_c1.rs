@@ -356,7 +356,10 @@ mod record_pin_anchor {
     #[test]
     fn rotated_sovereign_forged_after_vk_is_rejected() {
         let (_c, cell_id, ledger, before_cell) = setup_with_cell(1000);
-        assert!(before_cell.verification_key.is_none(), "before cell has no VK");
+        assert!(
+            before_cell.verification_key.is_none(),
+            "before cell has no VK"
+        );
 
         #[allow(deprecated)]
         let vk_honest = dregg_cell::VerificationKey::new(b"c1-setvk-honest".to_vec());

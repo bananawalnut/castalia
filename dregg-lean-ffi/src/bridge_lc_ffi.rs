@@ -3117,11 +3117,13 @@ mod tests {
 
         // The real block's decoded counts: idx_prev 2 · proof_prev 2 · vectors 2 · public 40 ·
         // w_comm 15 · s_evals 6 (PERMUTS-1) · coefficients 15 · t_comm 7 · chunk_size 1 ·
-        // idx IPA rounds 15 (k = log2 2^15) · proof lr.len() 15.
-        const OK: [usize; 11] = [2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 15];
-        let call = |v: [usize; 11]| {
+        // idx IPA rounds 15 (k = log2 2^15) · proof lr.len() 15 · 16 deferred
+        // bulletproof challenges · Step domain 2^16 · 43 unchunked previous-evaluation pairs.
+        const OK: [usize; 15] = [2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 15, 16, 16, 43, 1];
+        let call = |v: [usize; 15]| {
             verified_mina_wrap_shape_ok(
-                v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10],
+                v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8], v[9], v[10], v[11], v[12],
+                v[13], v[14],
             )
         };
         assert_eq!(
@@ -3152,6 +3154,10 @@ mod tests {
             (7, 8, "8 quotient chunks at chunk_size 1"),
             (8, 2, "a chunked index"),
             (10, 14, "a short IPA: 14 rounds against a 2^15 SRS"),
+            (11, 15, "15 challenges producing 39 public-input words"),
+            (12, 17, "a Step domain above the 2^16 backend bound"),
+            (13, 0, "an empty previous-evaluation walk"),
+            (14, 2, "a chunked previous evaluation"),
         ] {
             let mut bad = OK;
             bad[idx] = val;
@@ -3162,10 +3168,12 @@ mod tests {
             );
         }
 
-        let accept_raw =
-            shadow_mina_wrap_shape_ok(&mina_wrap_shape_wire(2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 15));
-        let reject_raw =
-            shadow_mina_wrap_shape_ok(&mina_wrap_shape_wire(2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 14));
+        let accept_raw = shadow_mina_wrap_shape_ok(&mina_wrap_shape_wire(
+            2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 15, 16, 16, 43, 1,
+        ));
+        let reject_raw = shadow_mina_wrap_shape_ok(&mina_wrap_shape_wire(
+            2, 2, 2, 40, 15, 6, 15, 7, 1, 15, 14, 16, 16, 43, 1,
+        ));
         assert_eq!(accept_raw.as_deref(), Ok("1"));
         assert_eq!(reject_raw.as_deref(), Ok("0"));
         assert_eq!(shadow_mina_wrap_shape_ok("garbage").as_deref(), Ok("ERR"));

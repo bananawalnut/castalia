@@ -509,7 +509,9 @@ fn field_limb(v: i64, what: &str, j: usize) -> Result<u32, String> {
     u32::try_from(v)
         .ok()
         .filter(|x| *x < 0x7800_0001)
-        .ok_or_else(|| format!("delta-absorb {what} limb {j} is {v}, not a canonical BabyBear value"))
+        .ok_or_else(|| {
+            format!("delta-absorb {what} limb {j} is {v}, not a canonical BabyBear value")
+        })
 }
 
 /// ⚑⚑⚑ **THE COVER OF `dregg-mina-wrap-closing-fs::v1`'s `delta-absorb-pis` PORT — and it
@@ -584,12 +586,16 @@ pub fn connect_delta_absorb_pis(
 
     // ── 96: the incoming sponge state IS the descriptor's declared `TR_IN`.
     for (j, v) in pins.tr_in.iter().enumerate() {
-        let k = cb.define_const(RecursionChallenge::from(P3BabyBear::from_u64(u64::from(*v))));
+        let k = cb.define_const(RecursionChallenge::from(P3BabyBear::from_u64(u64::from(
+            *v,
+        ))));
         cb.connect(absorb_claim[ABSORB_PI_IN_LO + j], k);
     }
     // ── 64: the absorbed pair IS the chain's own `.first`-pinned addend cells.
     for (j, v) in pins.delta.iter().enumerate() {
-        let k = cb.define_const(RecursionChallenge::from(P3BabyBear::from_u64(u64::from(*v))));
+        let k = cb.define_const(RecursionChallenge::from(P3BabyBear::from_u64(u64::from(
+            *v,
+        ))));
         cb.connect(absorb_claim[ABSORB_PI_ABSORBED_LO + j], k);
     }
     // ── 32: the published squeeze IS the absorb program's own output.
@@ -791,7 +797,9 @@ mod tests {
     /// zeroes one is a move of a REAL value, and every limb inside the declared 8-bit width so
     /// nothing is refused for being out of range instead of for disagreeing.
     fn squeeze_lanes() -> Vec<u32> {
-        (0..ABSORB_PI_OUT_WIDTH).map(|j| 1 + (j as u32 % 251)).collect()
+        (0..ABSORB_PI_OUT_WIDTH)
+            .map(|j| 1 + (j as u32 % 251))
+            .collect()
     }
 
     /// ⚑ **THE PINS ARE READ, NOT INVENTED — and they are not all zero.** If
@@ -799,7 +807,8 @@ mod tests {
     /// and the suite would look identical while measuring nothing.
     #[test]
     fn the_cover_pins_are_recovered_from_the_descriptors_own_bytes() {
-        let pins = delta_absorb_pins(&fs_descriptor()).expect("the `-fs` fixture declares its pins");
+        let pins =
+            delta_absorb_pins(&fs_descriptor()).expect("the `-fs` fixture declares its pins");
         assert_eq!(pins.tr_in.len(), ABSORB_PI_IN_WIDTH);
         assert_eq!(pins.delta.len(), ABSORB_PI_ABSORBED_WIDTH);
         assert!(
@@ -841,7 +850,11 @@ mod tests {
             let (mut fs, ab) = honest_pair(&pins, &sq);
             let before = fs[FS_PI_TROUT_LO + j];
             fs[FS_PI_TROUT_LO + j] = before ^ 1;
-            assert_ne!(fs[FS_PI_TROUT_LO + j], before, "the mutation must move a value");
+            assert_ne!(
+                fs[FS_PI_TROUT_LO + j],
+                before,
+                "the mutation must move a value"
+            );
             assert!(
                 run_cover(&fs, &ab, &pins).is_err(),
                 "a `-fs` squeeze limb {j} the absorb child did not produce must be UNSAT"
