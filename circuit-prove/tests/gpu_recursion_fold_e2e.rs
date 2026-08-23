@@ -159,7 +159,7 @@ fn real_fold_layer_byte_identical_on_gpu_and_measured() {
         "GPU fold-layer proof is NOT byte-identical to the real CPU fold proof"
     );
     assert_eq!(
-        format!("{:?}", gpu.cpu_lookups),
+        format!("{:?}", gpu.cpu_prover_data.common_data().lookups),
         format!("{:?}", cpu_library.0.stark_common.lookups),
         "GPU adapter did not retain the exact CPU lookup-expression ordering"
     );
