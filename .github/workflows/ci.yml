@@ -529,16 +529,19 @@ jobs:
           lfs: true
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
-      # Reclaim the ~25 GB of preinstalled toolchains we never use. The hosted
-      # ubuntu runner ships with only ~14 GB free on /, which the full debug-build
-      # `target/` of this workspace overruns — see the root-cause note on the test
-      # step below. Freed BEFORE the cache restore + build so they have headroom.
+      # Reclaim preinstalled toolchains we never use. Even with debuginfo disabled,
+      # the armed full-workspace lane has exceeded 114 GB while several large test
+      # binaries linked concurrently. Freed BEFORE the cache restore + build so
+      # the target directory and the linkers have real headroom.
       - if: runner.os == 'Linux'
         name: Reclaim runner disk
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
-            /usr/local/share/powershell /usr/share/swift
+            /usr/local/share/powershell /usr/share/swift \
+            /usr/local/share/vcpkg /usr/share/miniconda \
+            /opt/az /opt/microsoft /opt/pipx \
+            /usr/local/share/chromium
           sudo docker image prune --all --force || true
           df -h /
       - uses: dtolnay/rust-toolchain@master
@@ -741,10 +744,16 @@ jobs:
       - if: runner.os == 'Linux'
         name: Test workspace (nextest; debuginfo off; deos-zed + the two ELF-unlinkable cdylibs split out)
         env:
+          # Four unrelated rust-lld processes reached ENOSPC together on the
+          # hosted runner. Bound concurrent compiles/links so their peak output
+          # footprint cannot consume the remaining filesystem at once.
+          CARGO_BUILD_JOBS: "2"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
+        run: |
+          df -h /
+          cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
       # THE DOCTEST LEG — see the block above the macOS step. nextest structurally
       # cannot run doctests; this is the only step on this runner that does. It
       # carries the same excludes for the same ELF-link reason.
