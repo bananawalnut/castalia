@@ -136,7 +136,7 @@ pub fn approve_effects(cell: CellId, member_index: usize, running_count: u64) ->
     vec![
         Effect::SetField {
             cell,
-            index: FIRST_APPROVAL_SLOT as u64 + member_index,
+            index: FIRST_APPROVAL_SLOT as u64 + member_index as u64,
             value: field_from_u64(1),
         },
         Effect::EmitEvent {

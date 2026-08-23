@@ -13,6 +13,7 @@ on:
       - "circuit/**"
       - "scripts/bootstrap.sh"
       - "scripts/check-descriptor-drift.sh"
+      - "scripts/check-drift-taxonomy.sh"
       - "scripts/check-emit-gate-weld.py"
       - "scripts/build-descriptor-emitter-checkpoint.sh"
       - "scripts/build-descriptor-emitter-checkpoint-serial.sh"
@@ -270,6 +271,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           lfs: false
+          # The taxonomy gate compares the candidate against the exact base
+          # commit. A depth-one PR checkout contains only the synthetic merge
+          # commit and makes that safety check impossible.
+          fetch-depth: 2
 
       - name: Install native and Lean prerequisites
         run: |
@@ -334,7 +339,17 @@ jobs:
       - name: Re-derive canonical descriptors from Lean
         id: descriptor_drift
         continue-on-error: true
-        run: bash scripts/check-descriptor-drift.sh
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="${PR_BASE_SHA:-${PUSH_BASE_SHA:-}}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          DRIFT_TAXONOMY_BASE_REF="$BASE_SHA" bash scripts/check-descriptor-drift.sh
 
       - name: Materialize review-only descriptor drift diagnostics
         if: steps.descriptor_drift.outcome == 'failure'
@@ -344,7 +359,6 @@ jobs:
             scripts/emit-descriptors.sh
           git status --short > "${RUNNER_TEMP}/descriptor-drift.status"
           git diff --binary > "${RUNNER_TEMP}/descriptor-drift.patch"
-          test -s "${RUNNER_TEMP}/descriptor-drift.patch"
 
       - name: Upload descriptor drift diagnostics
         if: steps.descriptor_drift.outcome == 'failure'
@@ -360,7 +374,7 @@ jobs:
       - name: Enforce canonical descriptor agreement
         if: steps.descriptor_drift.outcome == 'failure'
         run: |
-          echo "::error::Lean-emitted canonical descriptors drifted; review canonical-descriptor-drift"
+          echo "::error::Canonical descriptor verification or taxonomy failed; review the job log and canonical-descriptor-drift diagnostics"
           exit 1
 
       - name: Seed and attest the verified Lean kernel

@@ -143,12 +143,10 @@ fi
 
 echo "check-drift-taxonomy: classifying $SUBPATH delta  ($BASE -> $NEW_LABEL)..."
 
-FLAGS=()
+set -- --old-ref "$BASE" --descriptors-subpath "$SUBPATH" --new "$NEW"
 if [ "${DREGG_ALLOW_REGENESIS:-}" = "1" ]; then
-  FLAGS+=(--allow-regenesis)
+  set -- "$@" --allow-regenesis
   echo "check-drift-taxonomy: DREGG_ALLOW_REGENESIS=1 — a GEOMETRY-WIDEN will be permitted (eyes-open)."
 fi
 
-exec python3 "$ROOT/scripts/classify_descriptor_drift.py" \
-  --old-ref "$BASE" --descriptors-subpath "$SUBPATH" \
-  --new "$NEW" "${FLAGS[@]}"
+exec python3 "$ROOT/scripts/classify_descriptor_drift.py" "$@"
