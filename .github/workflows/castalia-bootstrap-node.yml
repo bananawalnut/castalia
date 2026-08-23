@@ -496,13 +496,35 @@ jobs:
             --federation-mode solo >"$LOG" 2>&1 &
           NODE_PID=$!
           trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
-          for _ in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:18420/status >"$STATUS_JSON"; then
+          READY=0
+          # Verified full-byte PQ initialization is intentionally expensive: on the first
+          # protected Linux run, `init` took eight minutes and the daemon was still arming
+          # its verified startup path when the old 90-second loop killed it. Give the actual
+          # release binary a bounded 15-minute readiness budget, while detecting a crash
+          # immediately and surfacing progress instead of presenting a silent hang.
+          for attempt in $(seq 1 900); do
+            if curl -fsS http://127.0.0.1:18420/status >"$STATUS_JSON" 2>/dev/null; then
+              READY=1
               break
+            fi
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              NODE_RC=0
+              wait "$NODE_PID" || NODE_RC=$?
+              cat "$LOG"
+              echo "::error::verified node exited before readiness (status $NODE_RC)"
+              exit 1
+            fi
+            if (( attempt % 30 == 0 )); then
+              echo "waiting for verified node readiness (${attempt}s / 900s)"
+              tail -20 "$LOG" || true
             fi
             sleep 1
           done
-          test -s "$STATUS_JSON" || { cat "$LOG"; exit 1; }
+          if [ "$READY" -ne 1 ] || [ ! -s "$STATUS_JSON" ]; then
+            cat "$LOG"
+            echo "::error::verified node did not become ready within 900 seconds"
+            exit 1
+          fi
           jq -e '
             .state_producer == "lean" and
             .lean_producer == true and
@@ -514,7 +536,22 @@ jobs:
           fi
           cp "$STATUS_JSON" "${RUNNER_TEMP}/verified-status.json"
           kill "$NODE_PID"
-          wait "$NODE_PID" || true
+          STOPPED=0
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              wait "$NODE_PID" || true
+              STOPPED=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$STOPPED" -ne 1 ]; then
+            cat "$LOG"
+            kill -KILL "$NODE_PID" 2>/dev/null || true
+            wait "$NODE_PID" || true
+            echo "::error::verified node did not finish graceful shutdown within 120 seconds"
+            exit 1
+          fi
           trap - EXIT
 
       - name: Package checksum, provenance, and SPDX SBOM
