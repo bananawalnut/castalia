@@ -147,7 +147,26 @@ jobs:
       # The feature adds NO new dep to the graph (it only flips the test #[cfg]s; the
       # app-framework/turn/sdk it pulls are dev-deps already built by --workspace), so
       # this reuses the warm target dir above. Mirrors the dregg-chain matrix directly.
-      - run: cargo test -p starbridge-polis --features deos
+      # The seam tests construct real AgentCipherclerks, which in turn require the
+      # verified ML-DSA keygen core. Running them without the seed does not exercise
+      # a weaker path: dregg-pq correctly aborts the process. Fetch the exact
+      # content-keyed Linux seed and arm the build so this lane tests the real core.
+      - name: Fetch the verified Lean seed for Polis DEOS tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.elan/bin:$PATH"
+          bash scripts/fetch-lean-seed.sh
+      - run: cargo test --locked -p starbridge-polis --features deos
+        env:
+          DREGG_TEST_REQUIRE_LEAN: "1"
       # dregg-doc has NO `default` key in [features], so — exactly like dregg-chain
       # above — `cargo test --workspace` compiles it FEATURELESS: its 3 ungated test
       # files run, and the 35 tests behind `substrate` compile NOWHERE. That population

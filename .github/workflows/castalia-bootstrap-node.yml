@@ -24,6 +24,11 @@ on:
     branches: [main]
     tags: ["castalia-bootstrap-v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Immutable release tag (castalia-bootstrap-vX.Y.Z[-suffix])"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -566,7 +571,7 @@ jobs:
       - name: Publish immutable GitHub release assets
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
           if ! [[ "$RELEASE_TAG" =~ ^castalia-bootstrap-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
