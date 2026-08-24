@@ -1316,6 +1316,16 @@ pub async fn run(cli: Cli) {
         )
         .init();
 
+    // Install the verified PQ authorities once in the shared process preamble so
+    // every operational subcommand has them before it can mint or use key
+    // material. In particular, `init --solo-genesis` derives the committee's
+    // long-lived ML-DSA identity while writing genesis; keeping this only in
+    // `run_node` left a freshly built production binary unable to initialize its
+    // own data directory under the fail-closed PQ policy. The standalone
+    // `poa-verify-slot-reveal` path returns above and intentionally remains a
+    // document verifier with no node-startup dependency.
+    install_verified_pq_cores();
+
     match cli.command {
         Command::Run {
             port,
