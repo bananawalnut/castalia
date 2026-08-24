@@ -356,8 +356,18 @@ jobs:
 
       # THE GATE. The ~78 `#[test]`s (68 in src/, 10 in tests/) are ordinary
       # native tests — they are the ones the manifest bug hid, and they run here.
-      - name: cargo test (the ~78 native tests the manifest bug hid)
+      #
+      # This standalone workspace deliberately enables `no-lean-link`: the
+      # browser graph cannot link libdregg_lean.a. Two host tests exercise the
+      # hybrid-finality transcript with real ML-DSA keys, so they must explicitly
+      # accept the crate backend in THIS TEST PROCESS. Keep the declaration on
+      # this step, never at job/workflow scope: the production wasm32 bundle
+      # above must build with the fail-closed default, and the protected node
+      # release independently requires and runtime-asserts the verified cores.
+      - name: cargo test (native logic; explicit unverified PQ test backend)
         working-directory: wasm
+        env:
+          DREGG_ALLOW_UNAUDITED_PQ: "1"
         run: cargo test
 
       # The 8 `#[wasm_bindgen_test]`s are a different population: two files carry
