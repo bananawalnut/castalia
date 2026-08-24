@@ -7,67 +7,72 @@
 # advisory is not reachable in the way our usage exercises the crate. None is a
 # blanket suppression — every entry carries the chain + the reason, and the
 # entry is removed the moment the upstream bump lands (bump the dep, drop the
-# line). First-party code introduces no advisories; the seam is entirely the
-# Arkworks ZK stack, the Serenity Discord client, and the (excluded) pg-dregg
-# Postgres path captured in the shared lockfile.
+# line). First-party code introduces no advisories; the remaining seams are
+# named explicitly below and are transitive, optional, or outside the node
+# closure.
 
 [advisories]
 ignore = [
+    # ── Expiry: 2026-11-20. Non-node HTTP/2 client graphs. ──────────────────
+    # RUSTSEC-2026-0258 — old h2 is pulled by the AWS narrator and Servo
+    # WebDriver; dregg-node's production closure uses patched h2 0.4.18.
+    # Narrator talks only to AWS over authenticated TLS, and WebDriver is local
+    # development tooling. Remove when aws-smithy drops hyper/h2 0.3.
+    "RUSTSEC-2026-0258",
+
     # ── Arkworks ZK stack (ark-relations → ark-crypto-primitives / ark-poly-
     #    commit → dregg-hints) pins the pre-0.3 tracing-subscriber. ────────────
     # RUSTSEC-2025-0055 — tracing-subscriber 0.2.25: ANSI-escape sequences in a
-    # logged value can be injected into terminal output. Reachable only if
+    # logged value can be injected into terminal output. Expiry: 2026-11-20.
+    # Reachable only if
     # UNTRUSTED data is formatted through ark-relations' `tracing` spans; the
     # dregg crates feed ark-relations only their own constraint-system metadata,
     # never attacker-controlled strings. Patched in >=0.3.20, which Arkworks
-    # 0.5.x does not yet depend on. Remove when ark-relations bumps.
+    # 0.5.x does not yet depend on. Remove when ark-relations bumps or at expiry.
     "RUSTSEC-2025-0055",
 
-    # ── Serenity 0.12.5 (Discord bot) → tokio-tungstenite 0.21 → rustls 0.22 →
+    # ── Expiry: 2026-11-20. Serenity 0.12.5 → rustls 0.22. ──────────────────
     #    rustls-webpki 0.102.8. The discord-bot connects only to Discord's own
     #    TLS endpoint (a trusted, pinned-CA server), so the webpki cert-path
     #    advisories below — all DoS / path-building on ATTACKER-supplied cert
     #    chains — are not reachable: there is no untrusted-server leg. Patched in
     #    rustls-webpki >=0.103.x, which Serenity 0.12.x does not yet pull. Remove
-    #    when serenity bumps its rustls. ────────────────────────────────────────
+    #    when serenity bumps its rustls or at expiry. ──────────────────────────
     "RUSTSEC-2026-0104",  # rustls-webpki: DoS via crafted certificate chain
     "RUSTSEC-2026-0099",  # rustls-webpki: cert path-building advisory
     "RUSTSEC-2026-0098",  # rustls-webpki: cert path-building advisory
     "RUSTSEC-2026-0049",  # rustls-webpki: name-constraint check (priv-esc class)
 
-    # ── pg-dregg's Postgres client path, captured in the shared lockfile. ──────
-    # pg-dregg is EXCLUDED from the workspace (root Cargo.toml `exclude`), so
-    # these crates are LOCKED but NOT built by the audited workspace graph
-    # (`cargo tree -i` finds no active reverse path). All three advisories below
+    # ── Expiry: 2026-11-20. Optional Postgres client path. ───────────────────
+    # These crates are not in the default/bootstrap-node graph. All advisories
     # require a connection to an UNTRUSTED or MITM Postgres server; pg-dregg
     # connects only to its own managed, trusted local Postgres. Patched in
-    # postgres-protocol >=0.6.12 / tokio-postgres >=0.7.18, which the locked
-    # transitive graph does not yet permit. Remove on the next lock refresh that
-    # pulls the patched line.
+    # postgres-protocol >=0.6.12 / tokio-postgres >=0.7.18 currently conflicts
+    # with lockstitch's hmac 0.13 prerelease `reset` feature. Remove on the first
+    # compatible lockstitch release or at expiry.
     "RUSTSEC-2026-0179",  # postgres-protocol: unbounded SCRAM iteration DoS
     "RUSTSEC-2026-0180",  # postgres-protocol: SCRAM/auth DoS (companion)
     "RUSTSEC-2026-0178",  # tokio-postgres: DoS (companion to the above)
 
-    # ── rsa 0.9.10 — RUSTSEC-2023-0071 (Marvin timing side-channel in PKCS#1
+    # ── Expiry: 2026-11-20. rsa 0.9.10 — RUSTSEC-2023-0071. ─────────────────
     #    decryption). NO patched release exists upstream (`patched: []`), so it
     #    cannot be bumped away. rsa is lockfile-only here (no active reverse
     #    path) and the dregg crypto floor uses ed25519 / Pedersen / AEAD, not
     #    RSA decryption, so the timing oracle is not exercised. Tracked upstream;
-    #    remove when rsa ships a constant-time fix.
+    #    remove when rsa ships a constant-time fix or at expiry.
     "RUSTSEC-2023-0071",
 
-    # ── ml-dsa — RUSTSEC-2025-0144 (timing side-channel in ML-DSA decomposition).
-    #    ml-dsa is the post-quantum (Dilithium) signature crate. It is LOCKFILE-
-    #    ONLY here — `cargo tree -i ml-dsa` finds NO active reverse path in the
-    #    audited workspace graph, and no first-party dregg code references it
+    # ── Expiry: 2026-11-20. ml-dsa RUSTSEC-2025-0144. ───────────────────────
+    #    ml-dsa is used only by Servo's script graph, not the node, and no
+    #    first-party dregg code references it
     #    (grep-clean). The deployed crypto floor signs with ed25519 / Pedersen and
     #    commits with Poseidon2 — never ml-dsa's decomposition — so the timing
     #    oracle is not exercised. A patched >=0.1.0-rc.3 exists but the locked
     #    transitive graph does not yet pull it; remove on the next lock refresh
-    #    that does.
+    #    that does; replace or remove the Servo edge at expiry.
     "RUSTSEC-2025-0144",
 
-    # ── quick-xml — RUSTSEC-2026-0194 / -0195 (quadratic start-tag duplicate-
+    # ── Expiry: 2026-11-20. quick-xml — RUSTSEC-2026-0194 / -0195 (quadratic start-tag duplicate-
     #    attribute check / unbounded namespace-declaration allocation; both are
     #    memory/CPU DoS on MALFORMED XML). quick-xml is transitive via the
     #    desktop/GUI stack ONLY — wayland-scanner, xcb, zbus_xml (X11/Wayland
@@ -83,20 +88,16 @@ ignore = [
     "RUSTSEC-2026-0194",  # quick-xml: quadratic start-tag dup-attribute check
     "RUSTSEC-2026-0195",  # quick-xml: unbounded namespace-declaration allocation
 
-    # ── the alloy EVM stack (chain/ Ethereum settlement) — both lockfile-
-    #    transitive and NOT exercised by first-party code (grep-clean: no
-    #    `reciprocal_mg10` / `TypedData`-hash call site anywhere in dregg).
-    #    BUMP PATH EXHAUSTED (verified 2026-07-16): chain/Cargo.toml pins `alloy = "1"`,
+    # ── Expiry: 2026-11-20. the alloy EVM stack (chain/Ethereum settlement). ──
+    #    The remaining ignored advisory is not exercised by first-party code
+    #    (grep-clean: no `TypedData`-hash call site anywhere in dregg).
+    #    BUMP PATH EXHAUSTED for alloy-dyn-abi (verified 2026-07-16):
+    #    chain/Cargo.toml pins `alloy = "1"`,
     #    but `cargo update -p alloy` / `-p alloy-contract` fail version selection on
     #    `reqwest`, and `-p alloy-core|alloy-primitives|nybbles` move 0 packages — the
-    #    alloy 1.x line we can resolve pins alloy-dyn-abi 1.3.0 / ruint 1.16.0 below the
-    #    fixed versions. Remove when the alloy stack ships them (or when the reqwest
-    #    conflict clears and `alloy` can move to a line carrying >=1.4.1 / >=1.17.1).
-    # RUSTSEC-2025-0137 — ruint (via alloy-primitives / nybbles): unsoundness of
-    #    safe `reciprocal_mg10`. dregg never calls it; the alloy uint path we use
-    #    encodes our OWN settlement values, not that op. Patched >=1.17.1, which
-    #    alloy-primitives does not yet pin.
-    "RUSTSEC-2025-0137",
+    #    alloy line we can resolve pins alloy-dyn-abi 1.3.0 below the fixed
+    #    version. Remove when that stack ships it (or when the reqwest conflict
+    #    clears and `alloy` can move to a line carrying >=1.4.1).
     # RUSTSEC-2025-0073 — alloy-dyn-abi (via alloy-core / alloy-contract): DoS on
     #    `TypedData` (EIP-712) hashing of adversarial input. dregg hashes no
     #    untrusted TypedData; the settlement path encodes its own fixed statement.
@@ -111,13 +112,11 @@ ignore = [
     # out of hickory-proto into the new hickory-net, so proto has no patch while the fix ships
     # in a crate that did not exist at 0.25. Check upstream before ever suppressing.
     #
-    # ⚠ Their ids are written WITHOUT the `RUSTSEC-` prefix above on purpose: ci.yml builds the
-    # --ignore list with `grep -oE 'RUSTSEC-[0-9]{4}-[0-9]{4}' audit.toml`, which scans the WHOLE
-    # file — so an id merely MENTIONED in a comment silently becomes a suppression. Documenting a
-    # FIXED advisory here in full form would re-suppress it. (Root cause: cargo-audit only auto-
-    # reads `.cargo/audit.toml`, not this root file, hence the grep. Moving this file to
-    # `.cargo/audit.toml` would let `cargo audit` read the [advisories].ignore array natively and
-    # retire the footgun.)
+    # `scripts/audit_ignore_ids.py` parses only the TOML string entries in this
+    # array. Advisory ids mentioned in comments can never become suppressions.
+    #
+    # RUSTSEC-2025-0137 and RUSTSEC-2026-0220 are deliberately NOT ignored:
+    # ruint was upgraded from 1.16.0 to patched 1.20.0 in Cargo.lock.
 ]
 
 # Informational advisories (unmaintained / yanked / unsound) are surfaced as

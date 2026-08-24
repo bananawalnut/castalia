@@ -366,6 +366,15 @@ def fieldIdx : List (Nat × Nat) :=
 
 theorem fieldIdx_length : fieldIdx.length = 1216 := by rfl
 
+/-- Membership in `fieldIdx` carries the two construction bounds without reducing the concrete
+1 216-element list. -/
+theorem fieldIdx_bounds {f k : Nat} (h : (f, k) ∈ fieldIdx) : f < NFIELD ∧ k < SK := by
+  rw [fieldIdx] at h
+  rcases List.mem_flatMap.mp h with ⟨f', hf', hfk⟩
+  rcases List.mem_map.mp hfk with ⟨k', hk', hpair⟩
+  cases hpair
+  exact ⟨List.mem_range.mp hf', List.mem_range.mp hk'⟩
+
 /-- ⚑ **THE GATE IS THE `.limbs` LEG AND IT IS THE ONE THE MAIN RAIL ADMITS.** Decided on the leg,
 not described: 32 columns, 8 bits, the declared table, and `mainRailOk`. -/
 theorem the_field_gate_is_a_limbs_leg (f : Nat) :
@@ -392,20 +401,26 @@ larger than itself. This is `LightClientAnchorConnectivity.decorativeAnchors = [
 SOURCE, before any byte — and it is why the limb allocation is `⌈W_e/8⌉`. -/
 theorem no_published_limb_is_inert : ∀ p ∈ limbIdx, limbTerms p.1 p.2 ≠ [] := by decide
 
-/-- ⚑ **THE SOURCE.** 38 felt-level `.limbs` legs, 302 packed-limb legs, 2 381 booleanity legs, then
-the 1 216 + 302 pins.
-
-⚠ The ORDER is not cosmetic: `EffectAir.pinsTied` resolves each pin by scanning the leg list from
-the front, so putting the two DERIVING families first is what keeps the tie verdict a kernel
-`decide` instead of a scan behind 2 381 booleanity legs. -/
-def bodyBitsAir : EffectAir :=
+/-- ⚑ **THE MACHINE HALF OF THE SOURCE.** It publishes nothing: the 38 felt-level `.limbs` legs,
+302 packed-limb legs, and 2 381 booleanity legs all precede the public-input boundary. Naming this
+half lets `EffectAir.pinsTied_append` prove the assembled source structurally instead of reducing a
+quadratic search over every pin and every leg. -/
+def bodyBitsMachineAir : EffectAir :=
   { tables := [bodyLimbTable]
   , legs :=
       ((List.range NFIELD).map fieldLimbsLeg)
         ++ (limbIdx.map fun p => limbLeg p.1 p.2)
-        ++ ((List.range NBITS).map bitBoolLeg)
-        ++ (fieldIdx.map fun p => fieldPin p.1 p.2)
-        ++ (limbIdx.map fun p => limbPin p.1 p.2) }
+        ++ ((List.range NBITS).map bitBoolLeg) }
+
+/-- The 1 216 whole-field pins followed by the 302 packed-element pins. -/
+def bodyBitsBoundary : List AirLeg :=
+  (fieldIdx.map fun p => fieldPin p.1 p.2)
+    ++ (limbIdx.map fun p => limbPin p.1 p.2)
+
+/-- ⚑ **THE SOURCE.** The machine followed by its public-input boundary, in the same order and with
+the same bytes as the former flat construction. -/
+def bodyBitsAir : EffectAir :=
+  { bodyBitsMachineAir with legs := bodyBitsMachineAir.legs ++ bodyBitsBoundary }
 
 theorem bodyBitsAir_leg_count : bodyBitsAir.legs.length = 4239 := by rfl
 
@@ -427,26 +442,67 @@ theorem the_field_gates_are_the_whole_lookup_bill :
       ∧ bodyBitsAir.maxLimbedCapacityBits = SK * SB := by
   refine ⟨?_, ?_, ?_, rfl, rfl, ?_⟩ <;> rfl
 
+/-- The machine contains no public-input pin, so its own tie verdict is vacuous. This proof breaks
+if any pin is added to the machine half. -/
+theorem bodyBitsMachineAir_pinsTied : bodyBitsMachineAir.pinsTied = true := by
+  refine EffectAir.pinsTied_of_no_pins _ (fun p hp => ?_)
+  simp [bodyBitsMachineAir, fieldLimbsLeg, limbLeg, bitBoolLeg] at hp
+
+/-- Every whole-field pin names a column read by that field's `.limbs` leg. -/
+theorem bodyBitsMachineAir_reads_field {f k : Nat}
+    (hf : f < NFIELD) (hk : k < SK) :
+    bodyBitsMachineAir.readsCol (FLIMB f k) = true := by
+  apply List.any_eq_true.mpr
+  refine ⟨fieldLimbsLeg f, ?_, ?_⟩
+  · apply List.mem_append.mpr
+    left
+    apply List.mem_append.mpr
+    left
+    exact List.mem_map.mpr ⟨f, List.mem_range.mpr hf, rfl⟩
+  · simp [fieldLimbsLeg, fieldCols, AirLeg.readCols]
+    exact ⟨k, hk, rfl⟩
+
+/-- Every packed-element pin names the leading column of its own composition leg. -/
+theorem bodyBitsMachineAir_reads_limb {e k : Nat} (hek : (e, k) ∈ limbIdx) :
+    bodyBitsMachineAir.readsCol (PLIMB e k) = true := by
+  apply List.any_eq_true.mpr
+  refine ⟨limbLeg e k, ?_, ?_⟩
+  · apply List.mem_append.mpr
+    left
+    apply List.mem_append.mpr
+    right
+    exact List.mem_map.mpr ⟨(e, k), hek, rfl⟩
+  · simp [limbLeg, AirLeg.readCols, Dregg2.Circuit.EffectAirIR.windowCols]
+
+/-- Every boundary pin is tied by its construction-time reader in the machine. This is the exact
+side condition of `EffectAir.pinsTied_append`; unlike the old `decide`, it is linear in the boundary
+shape and cannot succeed by finding an unrelated accidental reader. -/
+theorem bodyBitsBoundary_is_read (p : PiPinLeg) (hp : AirLeg.pin p ∈ bodyBitsBoundary) :
+    bodyBitsMachineAir.readsCol p.col = true := by
+  rcases List.mem_append.mp hp with hp | hp
+  · rcases List.mem_map.mp hp with ⟨⟨f, k⟩, hfk, hpin⟩
+    have hcol : p.col = FLIMB f k := by
+      have h := congrArg (fun l => match l with | .pin q => q.col | _ => 0) hpin
+      simpa [fieldPin] using h.symm
+    have hbounds := fieldIdx_bounds hfk
+    rw [hcol]
+    exact bodyBitsMachineAir_reads_field hbounds.1 hbounds.2
+  · rcases List.mem_map.mp hp with ⟨⟨e, k⟩, hek, hpin⟩
+    have hcol : p.col = PLIMB e k := by
+      have h := congrArg (fun l => match l with | .pin q => q.col | _ => 0) hpin
+      simpa [limbPin] using h.symm
+    rw [hcol]
+    exact bodyBitsMachineAir_reads_limb hek
+
 /-- ⚑⚑ **THE TIE VERDICT, BY EXHIBITING THE READER — not by scanning for one.**
 
-`EffectAir.pinsTied` is `O(pins × legs)` in the kernel, and this is the widest block in the tree:
-**1 518 pins over 4 239 legs**. Deciding it means, for each pin, walking the leg list until a leg
-whose `readCols` contains the pinned column turns up — and `readCols` of a window leg walks that
-leg's expression. The `TiedAir` field below is an `autoParam` defaulting to `by decide`, so leaving
-it blank pays that scan inside the elaborator's `whnf`.
-
-⚑ Naming it is what stops the tree paying for it TWICE — once here and once in the `TiedAir`
-below — which is the whole of what this theorem buys, and it is worth saying that plainly rather
-than overselling it.
-
-⚠ **THE BETTER OBJECT IS NOT BUILT AND IS NAMED HERE.** The fact does not need a search: every
-pin's reader is known by construction. A field pin publishes `FLIMB f k`, and `fieldLimbsLeg f` —
-the `.limbs` leg whose `cols` IS `fieldCols f` — is the reader; a limb pin publishes `PLIMB e k`,
-and `limbLeg e k` reads it as the `loc` leaf of its own composition gate. A proof that EXHIBITS
-those two witnesses never scans the leg list at all, and would be strictly harder to satisfy than
-this `decide` (it cannot be closed by a pin read by nothing). It is the largest single elaboration
-win left in this cone and it is not done. -/
-theorem bodyBitsAir_pinsTied : bodyBitsAir.pinsTied = true := by decide
+`EffectAir.pinsTied` is `O(pins × legs)` when decided by reduction, and this is the widest block in
+the tree: **1 518 pins over 4 239 legs**. The structural proof above identifies each field pin's
+`.limbs` reader and each packed-element pin's composition reader, then composes the boundary onto a
+pin-free machine. It proves the same fail-closed verdict without the hosted-runner memory spike. -/
+theorem bodyBitsAir_pinsTied : bodyBitsAir.pinsTied = true := by
+  exact EffectAir.pinsTied_append bodyBitsMachineAir bodyBitsBoundary
+    bodyBitsMachineAir_pinsTied bodyBitsBoundary_is_read
 
 /-- ⚑ **THE TIED SOURCE** — every published column is derived by another leg, carried in the type.
 Both verdicts are SUPPLIED: `mainRailOk` by `rfl` fifteen lines above, `pinsTied` by the
@@ -582,7 +638,7 @@ theorem the_row_gates_force_boolean_bits {row pub : Nat → ℤ} (h : bodyBitsRo
   have := h.1 j hj
   rcases mul_eq_zero.mp this with h0 | h1
   · exact Or.inl h0
-  · exact Or.inr (by linarith)
+  · exact Or.inr (sub_eq_zero.mp h1)
 
 /-! ## §5 — ⚑ THE REAL BLOCK'S WITNESS, AND BOTH POLARITIES.
 
@@ -879,6 +935,7 @@ and their AGREEMENT, not their CONTENT.** The one object that would speak to con
 #assert_axioms bodyBitsAir_leg_count
 #assert_axioms bodyBitsAir_mainRailOk
 #assert_axioms bodyBitsAir_pinsFit
+#assert_axioms bodyBitsAir_pinsTied
 #assert_axioms the_field_gates_are_the_whole_lookup_bill
 #assert_axioms bodyBitsDesc_name
 #assert_axioms bodyBitsDesc_width

@@ -136,7 +136,8 @@ NOT worked around:
 - `scripts/build-image.sh` — provision → relink → cargo → loader → add-payload, end to end.
 - `build.rs` — the driver compile + the executor-archive link wiring.
 - `Cargo.toml` / `.cargo/config.toml` / `rust-toolchain.toml` — the standalone
-  `aarch64-sel4-roottask-musl` build (path-deps the vendored rust-sel4).
+  `aarch64-sel4-roottask-musl` build (using the manifest-pinned rust-sel4 revision,
+  optionally vendored by the SDK build scripts).
 - `sel4-prefix/`, `out/` — provisioned build outputs + `sel4-boot-evidence.log` (gitignored).
 
 ## Honest scope of the demo

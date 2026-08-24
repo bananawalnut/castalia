@@ -5681,14 +5681,22 @@ mod tests {
         let mut topics = Vec::new();
         let mut streams = Vec::new();
         for (i, node) in nodes.iter().enumerate() {
-            let g = GossipNetwork::new(node.endpoint().clone(), ids[i], sks[i].clone(), keys.clone());
+            let g = GossipNetwork::new(
+                node.endpoint().clone(),
+                ids[i],
+                sks[i].clone(),
+                keys.clone(),
+            );
             let peer_addrs: Vec<SocketAddr> = addrs
                 .iter()
                 .enumerate()
                 .filter(|(j, _)| *j != i)
                 .map(|(_, a)| *a)
                 .collect();
-            let topic = g.join_topic("dregg/direct-test", &peer_addrs).await.unwrap();
+            let topic = g
+                .join_topic("dregg/direct-test", &peer_addrs)
+                .await
+                .unwrap();
             let stream = g.subscribe(&topic).await.unwrap();
             gossips.push(g);
             topics.push(topic);

@@ -1,0 +1,626 @@
+name: Castalia bootstrap node
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/castalia-bootstrap-node.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "node/**"
+      - "dregg-lean-ffi/**"
+      - "exec-lean/**"
+      - "metatheory/**"
+      - "circuit/**"
+      - "scripts/bootstrap.sh"
+      - "scripts/check-descriptor-drift.sh"
+      - "scripts/check-drift-taxonomy.sh"
+      - "scripts/check-emit-gate-weld.py"
+      - "scripts/build-descriptor-emitter-checkpoint.sh"
+      - "scripts/build-descriptor-emitter-checkpoint-serial.sh"
+      - "scripts/emit_descriptors.py"
+      - "scripts/cargo_metadata_to_spdx.py"
+      - "scripts/write_bootstrap_provenance.py"
+  push:
+    branches: [main]
+    tags: ["castalia-bootstrap-v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Immutable release tag (castalia-bootstrap-vX.Y.Z[-suffix])"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: castalia-bootstrap-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verified-kernel-base:
+    name: Verified Lean kernel base checkpoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save the exact FFI graph checkpoint
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-ffi-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+
+      - name: Hydrate pinned mathlib and build the FFI checkpoint
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/ci-mathlib-cache.sh
+          ( cd metatheory && lake build Dregg2.FFI )
+
+  verified-emitter-foundation:
+    name: Verified Lean emitter-foundation checkpoint
+    needs: verified-kernel-base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save the emitter-foundation checkpoint
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-foundation-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+          restore-keys: |
+            castalia-lean-ffi-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+
+      - name: Require the FFI checkpoint on a cold emitter cache
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          test -s metatheory/.lake/build/lib/lean/Dregg2/FFI.olean
+
+      - name: Hydrate pinned mathlib and build the emitter foundation
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/ci-mathlib-cache.sh
+          ( cd metatheory && lake build Dregg2.Circuit.Emit.AutomataflCoord )
+
+  verified-emitter-checkpoint-a:
+    name: Verified Lean emitter checkpoint A
+    needs: verified-emitter-foundation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint A
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-a-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-foundation-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean') }}
+
+      - name: Require the emitter-foundation checkpoint
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AutomataflCoord.olean
+
+      - name: Build descriptor emitter checkpoint A
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 0 44
+
+  verified-emitter-checkpoint-b:
+    name: Verified Lean emitter checkpoint B
+    needs: verified-emitter-checkpoint-a
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint B
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-b-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-a-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+
+      - name: Require emitter checkpoint A
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AvailWireMembers.olean
+
+      - name: Build descriptor emitter checkpoint B
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint.sh 44 88
+
+  verified-emitter-checkpoint-c:
+    name: Verified Lean emitter checkpoint C
+    needs: verified-emitter-checkpoint-b
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint C
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-b-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint.sh') }}
+
+      - name: Require emitter checkpoint B
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/EffectVmEmitTurnChainBinding.olean
+
+      - name: Build descriptor emitter checkpoint C
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint-serial.sh 88 132
+
+  verified-emitter-checkpoint-d:
+    name: Verified Lean emitter checkpoint D
+    needs: verified-emitter-checkpoint-c
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential clang zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Restore or save emitter checkpoint D
+        id: lean_cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
+          restore-keys: |
+            castalia-lean-emitter-c-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
+
+      - name: Require emitter checkpoint C
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/LightClientSolanaAir.olean
+
+      - name: Build descriptor emitter checkpoint D
+        if: steps.lean_cache.outputs.cache-hit != 'true'
+        run: bash scripts/build-descriptor-emitter-checkpoint-serial.sh 132 173
+
+  verified-kernel:
+    name: Verified Lean kernel and canonical descriptors
+    needs: verified-emitter-checkpoint-d
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+          # The taxonomy gate compares the candidate against the exact base
+          # commit. A depth-one PR checkout contains only the synthetic merge
+          # commit and makes that safety check impossible.
+          fetch-depth: 2
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: nightly-2026-06-21
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: castalia-bootstrap-kernel-linux-x86-64
+
+      - name: Restore the complete verified emitter checkpoint
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
+          fail-on-cache-miss: true
+
+      - name: Verify the restored Lean checkpoints
+        run: |
+          set -euo pipefail
+          test -s metatheory/.lake/build/lib/lean/Dregg2/FFI.olean
+          test -s metatheory/.lake/build/lib/lean/Dregg2/Circuit/Emit/AutomataflCoord.olean
+          test -s metatheory/.lake/build/lib/lean/Market/CertFDescriptor.olean
+
+      - name: Verify checked-in canonical descriptor set
+        run: |
+          set -euo pipefail
+          python3 scripts/emit_descriptors.py --verify-provenance --rev HEAD
+          python3 scripts/emit_descriptors.py --verify-by-name-routing
+          python3 scripts/check-emit-gate-weld.py
+
+      - name: Build the executor and descriptor emitters in one Lean graph
+        run: |
+          set -euo pipefail
+          bash scripts/ci-mathlib-cache.sh
+          EMIT_MODULES=()
+          while IFS= read -r module; do
+            [ -n "$module" ] && EMIT_MODULES+=("$module")
+          done < <(python3 scripts/emit_descriptors.py --list-emitter-modules)
+          if [ "${#EMIT_MODULES[@]}" -eq 0 ]; then
+            echo "::error::descriptor emitter module set is empty"
+            exit 2
+          fi
+          echo "Building Dregg2.FFI and ${#EMIT_MODULES[@]} descriptor emitter modules together"
+          (
+            cd metatheory
+            lake build Dregg2.FFI "${EMIT_MODULES[@]}"
+          )
+
+      - name: Re-derive canonical descriptors from Lean
+        id: descriptor_drift
+        continue-on-error: true
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="${PR_BASE_SHA:-${PUSH_BASE_SHA:-}}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          DRIFT_TAXONOMY_BASE_REF="$BASE_SHA" bash scripts/check-descriptor-drift.sh
+
+      - name: Materialize review-only descriptor drift diagnostics
+        if: steps.descriptor_drift.outcome == 'failure'
+        run: |
+          set -euo pipefail
+          DREGG_VK_REGEN_ACK="$(git rev-parse HEAD:metatheory/Dregg2)" \
+            scripts/emit-descriptors.sh
+          git status --short > "${RUNNER_TEMP}/descriptor-drift.status"
+          git diff --binary > "${RUNNER_TEMP}/descriptor-drift.patch"
+
+      - name: Upload descriptor drift diagnostics
+        if: steps.descriptor_drift.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: canonical-descriptor-drift
+          path: |
+            ${{ runner.temp }}/descriptor-drift.status
+            ${{ runner.temp }}/descriptor-drift.patch
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce canonical descriptor agreement
+        if: steps.descriptor_drift.outcome == 'failure'
+        run: |
+          echo "::error::Canonical descriptor verification or taxonomy failed; review the job log and canonical-descriptor-drift diagnostics"
+          exit 1
+
+      - name: Seed and attest the verified Lean kernel
+        run: |
+          set -euo pipefail
+          ARCH="dregg-lean-ffi/libdregg_lean.a"
+          dregg-lean-ffi/scripts/seed-dregg2-closure.sh
+          test -s "$ARCH"
+          bash scripts/lean-seed-key.sh > "$ARCH.provenance"
+          SHA="$(sha256sum "$ARCH" | awk 'NR == 1 { print $1 }')"
+          {
+            echo "SHA256=$SHA"
+            echo "SOURCE_REVISION=$(git rev-parse HEAD)"
+            echo "GENERATED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$ARCH.provenance"
+          EXPECTED_KEY="$(bash scripts/lean-seed-key.sh --key)"
+          RECORDED_KEY="$(sed -n 's/^KEY=//p' "$ARCH.provenance" | head -1)"
+          RECORDED_SHA="$(sed -n 's/^SHA256=//p' "$ARCH.provenance" | head -1)"
+          test -n "$EXPECTED_KEY"
+          test "$RECORDED_KEY" = "$EXPECTED_KEY"
+          test "$RECORDED_SHA" = "$SHA"
+          BUNDLE="${RUNNER_TEMP}/verified-lean-seed"
+          mkdir -p "$BUNDLE"
+          zstd -q -3 -T0 "$ARCH" -o "$BUNDLE/libdregg_lean.a.zst"
+          cp "$ARCH.provenance" "$BUNDLE/libdregg_lean.a.provenance"
+
+      - name: Upload content-keyed Lean kernel seed
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: castalia-verified-lean-seed-linux-x86_64
+          path: ${{ runner.temp }}/verified-lean-seed
+          if-no-files-found: error
+          retention-days: 3
+
+  verified-artifact:
+    name: Verified Lean Linux x86-64 artifact
+    needs: verified-kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and pinned Lean runtime prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: castalia-bootstrap-node-linux-x86-64
+
+      - name: Download the verified Lean kernel seed
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: castalia-verified-lean-seed-linux-x86_64
+          path: ${{ runner.temp }}/verified-lean-seed
+
+      - name: Install the verified Lean kernel seed
+        run: |
+          set -euo pipefail
+          BUNDLE="${RUNNER_TEMP}/verified-lean-seed"
+          zstd -d -q "$BUNDLE/libdregg_lean.a.zst" \
+            -o dregg-lean-ffi/libdregg_lean.a
+          cp "$BUNDLE/libdregg_lean.a.provenance" \
+            dregg-lean-ffi/libdregg_lean.a.provenance
+
+      - name: Verify seed provenance against this checkout
+        run: |
+          set -euo pipefail
+          ARCH="dregg-lean-ffi/libdregg_lean.a"
+          PROVENANCE="$ARCH.provenance"
+          test -s "$ARCH"
+          test -s "$PROVENANCE"
+          EXPECTED_KEY="$(bash scripts/lean-seed-key.sh --key)"
+          RECORDED_KEY="$(sed -n 's/^KEY=//p' "$PROVENANCE" | head -1)"
+          RECORDED_SHA="$(sed -n 's/^SHA256=//p' "$PROVENANCE" | head -1)"
+          LIVE_SHA="$(sha256sum "$ARCH" | awk 'NR == 1 { print $1 }')"
+          test -n "$EXPECTED_KEY"
+          test "$RECORDED_KEY" = "$EXPECTED_KEY"
+          test "$RECORDED_SHA" = "$LIVE_SHA"
+
+      - name: Build the production node without marshal-only fallback
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+        run: cargo build --locked --release -p dregg-node
+
+      - name: Boot and assert the verified producer at runtime
+        run: |
+          set -euo pipefail
+          DATA_ROOT="$(mktemp -d "${RUNNER_TEMP}/castalia-node.XXXXXX")"
+          DATA_DIR="${DATA_ROOT}/data"
+          STATUS_JSON="${RUNNER_TEMP}/status.json"
+          LOG="${RUNNER_TEMP}/dregg-node.log"
+          target/release/dregg-node init --data-dir "$DATA_DIR"
+          target/release/dregg-node run \
+            --data-dir "$DATA_DIR" \
+            --port 18420 \
+            --bind 127.0.0.1 \
+            --gossip-port 19420 \
+            --federation-size 1 \
+            --federation-mode solo >"$LOG" 2>&1 &
+          NODE_PID=$!
+          trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
+          READY=0
+          # Verified full-byte PQ initialization is intentionally expensive: on the first
+          # protected Linux run, `init` took eight minutes and the daemon was still arming
+          # its verified startup path when the old 90-second loop killed it. Give the actual
+          # release binary a bounded 15-minute readiness budget, while detecting a crash
+          # immediately and surfacing progress instead of presenting a silent hang.
+          for attempt in $(seq 1 900); do
+            if curl -fsS http://127.0.0.1:18420/status >"$STATUS_JSON" 2>/dev/null; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              NODE_RC=0
+              wait "$NODE_PID" || NODE_RC=$?
+              cat "$LOG"
+              echo "::error::verified node exited before readiness (status $NODE_RC)"
+              exit 1
+            fi
+            if (( attempt % 30 == 0 )); then
+              echo "waiting for verified node readiness (${attempt}s / 900s)"
+              tail -20 "$LOG" || true
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ] || [ ! -s "$STATUS_JSON" ]; then
+            cat "$LOG"
+            echo "::error::verified node did not become ready within 900 seconds"
+            exit 1
+          fi
+          jq -e '
+            .state_producer == "lean" and
+            .lean_producer == true and
+            .federation_mode == "solo"
+          ' "$STATUS_JSON"
+          if grep -Eqi 'marshal-only|un-verified rust executor' "$LOG"; then
+            echo "::error::runtime log indicates an unverified producer"
+            exit 1
+          fi
+          cp "$STATUS_JSON" "${RUNNER_TEMP}/verified-status.json"
+          kill "$NODE_PID"
+          STOPPED=0
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              wait "$NODE_PID" || true
+              STOPPED=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$STOPPED" -ne 1 ]; then
+            cat "$LOG"
+            kill -KILL "$NODE_PID" 2>/dev/null || true
+            wait "$NODE_PID" || true
+            echo "::error::verified node did not finish graceful shutdown within 120 seconds"
+            exit 1
+          fi
+          trap - EXIT
+
+      - name: Package checksum, provenance, and SPDX SBOM
+        run: |
+          set -euo pipefail
+          OUT="${RUNNER_TEMP}/castalia-bootstrap-node-linux-x86_64"
+          mkdir -p "$OUT"
+          install -m 0755 target/release/dregg-node "$OUT/dregg-node"
+          ( cd "$OUT" && sha256sum dregg-node > dregg-node.sha256 )
+          cargo metadata --locked --format-version 1 > "${RUNNER_TEMP}/cargo-metadata.json"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+            python3 scripts/cargo_metadata_to_spdx.py \
+              --metadata "${RUNNER_TEMP}/cargo-metadata.json" \
+              --root-package dregg-node \
+              --output "$OUT/dregg-node.spdx.json"
+          python3 scripts/write_bootstrap_provenance.py \
+            --binary "$OUT/dregg-node" \
+            --status "${RUNNER_TEMP}/verified-status.json" \
+            --sbom "$OUT/dregg-node.spdx.json" \
+            --output "$OUT/provenance.json"
+          SHA="$(awk 'NR == 1 { print $1 }' "$OUT/dregg-node.sha256")"
+          jq -e --arg sha "$SHA" '
+            .binary.sha256 == $sha and
+            .stateProducer == "lean" and
+            .leanProducer == true and
+            (.revision | test("^[0-9a-f]{40}$"))
+          ' "$OUT/provenance.json"
+          jq -e '.spdxVersion == "SPDX-2.3" and (.packages | length) > 0' \
+            "$OUT/dregg-node.spdx.json"
+
+      - name: Upload verified deployment bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: castalia-bootstrap-node-linux-x86_64
+          path: ${{ runner.temp }}/castalia-bootstrap-node-linux-x86_64
+          if-no-files-found: error
+          retention-days: 30
+
+  publish-release:
+    name: Publish protected release
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/castalia-bootstrap-v')
+    needs: verified-artifact
+    runs-on: ubuntu-24.04
+    environment: castalia-bootstrap-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: castalia-bootstrap-node-linux-x86_64
+          path: artifact
+
+      - name: Publish immutable GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^castalia-bootstrap-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
+            echo "::error::invalid Castalia bootstrap release tag: $RELEASE_TAG"
+            exit 2
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $RELEASE_TAG already exists; verified assets are immutable"
+            exit 3
+          fi
+          gh release create "$RELEASE_TAG" artifact/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Castalia bootstrap node $RELEASE_TAG" \
+            --generate-notes

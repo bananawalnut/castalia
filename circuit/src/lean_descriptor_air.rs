@@ -7610,11 +7610,11 @@ mod tests {
 
     /// The EXACT bytes Lean's `Dregg2.Circuit.Emit.EffectVmEmit.emitVmJson
     /// transferVmDescriptor` prints (`#eval IO.println (emitVmJson
-    /// transferVmDescriptor)`). The concrete 186-column EffectVM transfer circuit:
+    /// transferVmDescriptor)`). The concrete 188-column EffectVM transfer circuit:
     /// 14 transfer-row gates + 14 transition-continuity + 7 boundary PI pins, the 4
     /// ordered GROUP-4 H4 state-commit hash sites, and the 2 balance-limb range checks.
     /// Copied verbatim from the Lean toolchain output.
-    const TRANSFER_VM_DESCRIPTOR_JSON: &str = r#"{"name":"dregg-effectvm-transfer-v1","trace_width":188,"public_input_count":42,"constraints":[{"t":"gate","body":{"t":"add","l":{"t":"add","l":{"t":"var","v":76},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":54}}},"r":{"t":"add","l":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":68}},"r":{"t":"mul","l":{"t":"const","v":2},"r":{"t":"mul","l":{"t":"var","v":69},"r":{"t":"var","v":68}}}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":77},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":55}}}},{"t":"gate","body":{"t":"mul","l":{"t":"var","v":69},"r":{"t":"add","l":{"t":"var","v":69},"r":{"t":"const","v":-1}}}},{"t":"gate","body":{"t":"add","l":{"t":"add","l":{"t":"var","v":78},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":56}}},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":0}}}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":87},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":65}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":89},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":67}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":79},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":57}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":80},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":58}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":81},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":59}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":82},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":60}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":83},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":61}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":84},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":62}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":85},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":63}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":86},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":64}}}},{"t":"transition","hi":0,"lo":0},{"t":"transition","hi":1,"lo":1},{"t":"transition","hi":2,"lo":2},{"t":"transition","hi":3,"lo":3},{"t":"transition","hi":4,"lo":4},{"t":"transition","hi":5,"lo":5},{"t":"transition","hi":6,"lo":6},{"t":"transition","hi":7,"lo":7},{"t":"transition","hi":8,"lo":8},{"t":"transition","hi":9,"lo":9},{"t":"transition","hi":10,"lo":10},{"t":"transition","hi":11,"lo":11},{"t":"transition","hi":12,"lo":12},{"t":"transition","hi":13,"lo":13},{"t":"pi_binding","row":"first","col":56,"pi_index":41},{"t":"pi_binding","row":"first","col":54,"pi_index":20},{"t":"pi_binding","row":"first","col":55,"pi_index":21},{"t":"pi_binding","row":"first","col":66,"pi_index":0},{"t":"pi_binding","row":"last","col":88,"pi_index":8},{"t":"pi_binding","row":"last","col":76,"pi_index":22},{"t":"pi_binding","row":"last","col":77,"pi_index":23},{"t":"gate","body":{"t":"mul","l":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":0}}},"r":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":1}}}}}],"hash_sites":[{"digest_col":98,"arity":4,"inputs":[{"t":"col","c":76},{"t":"col","c":77},{"t":"col","c":78},{"t":"col","c":79}]},{"digest_col":99,"arity":4,"inputs":[{"t":"col","c":80},{"t":"col","c":81},{"t":"col","c":82},{"t":"col","c":83}]},{"digest_col":100,"arity":4,"inputs":[{"t":"col","c":84},{"t":"col","c":85},{"t":"col","c":86},{"t":"col","c":87}]},{"digest_col":88,"arity":4,"inputs":[{"t":"digest","k":0},{"t":"digest","k":1},{"t":"digest","k":2},{"t":"col","c":186}]}],"ranges":[{"wire":76,"bits":30},{"wire":77,"bits":30}]}"#;
+    const TRANSFER_VM_DESCRIPTOR_JSON: &str = r#"{"name":"dregg-effectvm-transfer-v1","trace_width":188,"public_input_count":35,"constraints":[{"t":"gate","body":{"t":"add","l":{"t":"add","l":{"t":"var","v":76},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":54}}},"r":{"t":"add","l":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":68}},"r":{"t":"mul","l":{"t":"const","v":2},"r":{"t":"mul","l":{"t":"var","v":69},"r":{"t":"var","v":68}}}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":77},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":55}}}},{"t":"gate","body":{"t":"mul","l":{"t":"var","v":69},"r":{"t":"add","l":{"t":"var","v":69},"r":{"t":"const","v":-1}}}},{"t":"gate","body":{"t":"add","l":{"t":"add","l":{"t":"var","v":78},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":56}}},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":0}}}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":87},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":65}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":89},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":67}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":79},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":57}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":80},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":58}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":81},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":59}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":82},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":60}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":83},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":61}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":84},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":62}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":85},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":63}}}},{"t":"gate","body":{"t":"add","l":{"t":"var","v":86},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":64}}}},{"t":"transition","hi":0,"lo":0},{"t":"transition","hi":1,"lo":1},{"t":"transition","hi":2,"lo":2},{"t":"transition","hi":3,"lo":3},{"t":"transition","hi":4,"lo":4},{"t":"transition","hi":5,"lo":5},{"t":"transition","hi":6,"lo":6},{"t":"transition","hi":7,"lo":7},{"t":"transition","hi":8,"lo":8},{"t":"transition","hi":9,"lo":9},{"t":"transition","hi":10,"lo":10},{"t":"transition","hi":11,"lo":11},{"t":"transition","hi":12,"lo":12},{"t":"transition","hi":13,"lo":13},{"t":"pi_binding","row":"first","col":56,"pi_index":34},{"t":"pi_binding","row":"first","col":54,"pi_index":20},{"t":"pi_binding","row":"first","col":55,"pi_index":21},{"t":"pi_binding","row":"first","col":66,"pi_index":0},{"t":"pi_binding","row":"last","col":88,"pi_index":8},{"t":"pi_binding","row":"last","col":76,"pi_index":22},{"t":"pi_binding","row":"last","col":77,"pi_index":23},{"t":"gate","body":{"t":"mul","l":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":0}}},"r":{"t":"add","l":{"t":"const","v":1},"r":{"t":"mul","l":{"t":"const","v":-1},"r":{"t":"var","v":1}}}}}],"hash_sites":[{"digest_col":98,"arity":4,"inputs":[{"t":"col","c":76},{"t":"col","c":77},{"t":"col","c":78},{"t":"col","c":79}]},{"digest_col":99,"arity":4,"inputs":[{"t":"col","c":80},{"t":"col","c":81},{"t":"col","c":82},{"t":"col","c":83}]},{"digest_col":100,"arity":4,"inputs":[{"t":"col","c":84},{"t":"col","c":85},{"t":"col","c":86},{"t":"col","c":87}]},{"digest_col":88,"arity":4,"inputs":[{"t":"digest","k":0},{"t":"digest","k":1},{"t":"digest","k":2},{"t":"col","c":186}]}],"ranges":[{"wire":76,"bits":30},{"wire":77,"bits":30}]}"#;
 
     /// The parser faithfully decodes the EffectVM grammar: the 35 constraints split
     /// 14 gates / 14 transitions / 7 pi-bindings, the 4 ordered hash sites (site 3
@@ -7625,15 +7625,9 @@ mod tests {
             .expect("Lean-emitted EffectVM transfer descriptor must parse");
         assert_eq!(d.name, "dregg-effectvm-transfer-v1");
         assert_eq!(d.trace_width, 188);
-        // ⚑ 42, NOT `V1_PI_COUNT`. `TRANSFER_VM_DESCRIPTOR_JSON` above is a FROZEN IR-v1 string
-        // literal — the object under test is the PARSER, and this asserts that it reads the field
-        // the fixture declares. The fixture says 42 and is internally consistent with it (its own
-        // `pi_binding` names `pi_index: 41`, the pre-compaction `ACTOR_NONCE`). The 2026-08-07
-        // seven-slot compaction commit `9bdab9b5b` rewrote this line 42 → 35 alongside the LIVE
-        // layout pins, leaving the assertion contradicting the very literal three lines above it —
-        // a blind −7 landing on the one number in this file the compaction cannot reach. Nothing
-        // re-emits this fixture; if it is ever regenerated, the `pi_index` inside it moves too.
-        assert_eq!(d.public_input_count, 42);
+        // The canonical v1 artifact reflects the seven-slot public-input compaction:
+        // ACTOR_NONCE is the final slot at index 34 in a 35-element public-input vector.
+        assert_eq!(d.public_input_count, 35);
         // 14 per-row gates + 14 transitions + 7 boundary PI pins + 1 selector-binding gate.
         assert_eq!(d.constraints.len(), 14 + 14 + 7 + 1);
         assert_eq!(d.hash_sites.len(), 4);
@@ -7658,11 +7652,11 @@ mod tests {
         assert_eq!((gates, transitions, pis), (15, 14, 7));
 
         // The actor-nonce pin (the #49 anti-ghost tooth): state_before.nonce (col 56)
-        // == PI[ACTOR_NONCE] (index 41 post-Phase-C, the v1 prefix's last pin), first row.
+        // == PI[ACTOR_NONCE] (index 34, the v1 prefix's last pin), first row.
         assert!(d.constraints.contains(&VmConstraint::PiBinding {
             row: VmRow::First,
             col: 56,
-            pi_index: 41,
+            pi_index: 34,
         }));
         // The published-commitment pin: state_after.state_commit (col 88) == PI[NEW_COMMIT]
         // (index 8 post-Phase-C — OLD_COMMIT widened to 8 felts), on the last row.
@@ -7707,9 +7701,8 @@ mod tests {
         // ---- Honest transfer: cell with balance 100, nonce 5, outgoing transfer of 30. ----
         // `generate_effect_vm_trace` builds the genuine 186-col base trace (transfer row 0,
         // NoOp pad rows) and the full ACTIVE_BASE_COUNT PI vector. We truncate the PI vector to
-        // the descriptor's `public_input_count` (42 — the v1 prefix through `ACTOR_NONCE` at
-        // index 41; indices 0..41 are unchanged by truncation, so the row-0 nonce boundary pin
-        // at PI 41 stays in range).
+        // the descriptor's `public_input_count` (35 — the compacted v1 prefix through
+        // `ACTOR_NONCE` at index 34, so the row-0 nonce boundary pin stays in range).
         let initial = CellState::new(100, 5);
         let effects = vec![Effect::Transfer {
             amount: 30,

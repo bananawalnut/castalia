@@ -68,7 +68,8 @@ open Dregg2.Circuit.Emit.Seam
 open Dregg2.Circuit.Emit.PastaFieldSound (SK SB limbAt)
 open Dregg2.Circuit.Emit.MinaBodyPreimageBitsAir
   (NFIELD NELEM NLIMB NFLIMB BODY_BITS_PI_COUNT PI_FLIMB PI_PLIMB PI_ABSORBED absorbedLimbCount
-   FLIMB PLIMB limbCount limbBase bodyBitsAir fieldIdx limbIdx fieldPin limbPin)
+   FLIMB PLIMB limbCount limbBase bodyBitsAir bodyBitsMachineAir bodyBitsBoundary fieldIdx limbIdx
+   fieldPin limbPin)
 
 set_option autoImplicit false
 set_option maxRecDepth 100000
@@ -228,9 +229,11 @@ theorem preimage_field_slot_is_published (f k : Nat) (hf : f < NFIELD) (hk : k <
   have hin : AirLeg.pin ⟨VmRow.first, FLIMB f k, PI_FLIMB f k⟩
       ∈ (fieldIdx.map fun p => fieldPin p.1 p.2) :=
     List.mem_map.mpr ⟨(f, k), hmem, rfl⟩
-  show _ ∈ ((((List.range NFIELD).map _ ++ _) ++ _) ++ (fieldIdx.map fun p => fieldPin p.1 p.2))
+  change _ ∈ bodyBitsMachineAir.legs ++ bodyBitsBoundary
+  apply List.mem_append_right
+  change _ ∈ (fieldIdx.map fun p => fieldPin p.1 p.2)
     ++ (limbIdx.map fun p => limbPin p.1 p.2)
-  exact List.mem_append_left _ (List.mem_append_right _ hin)
+  exact List.mem_append_left _ hin
 
 /-- …and packed element `e`'s limb `k` at claim slot `PI_PLIMB e k`. -/
 theorem preimage_packed_slot_is_published (e k : Nat) (he : e < NELEM) (hk : k < limbCount e) :
@@ -241,7 +244,9 @@ theorem preimage_packed_slot_is_published (e k : Nat) (he : e < NELEM) (hk : k <
   have hin : AirLeg.pin ⟨VmRow.first, PLIMB e k, PI_PLIMB e k⟩
       ∈ (limbIdx.map fun p => limbPin p.1 p.2) :=
     List.mem_map.mpr ⟨(e, k), hmem, rfl⟩
-  show _ ∈ ((((List.range NFIELD).map _ ++ _) ++ _) ++ _)
+  change _ ∈ bodyBitsMachineAir.legs ++ bodyBitsBoundary
+  apply List.mem_append_right
+  change _ ∈ (fieldIdx.map fun p => fieldPin p.1 p.2)
     ++ (limbIdx.map fun p => limbPin p.1 p.2)
   exact List.mem_append_right _ hin
 

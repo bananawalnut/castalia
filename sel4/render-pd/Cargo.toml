@@ -27,15 +27,14 @@ name = "dregg-render-pd"
 path = "src/main.rs"
 
 [dependencies]
-# Path-depend on the VENDORED rust-sel4 checkout (the same crates + revs the
-# executor-rootserver PD pins). sel4-musl routes the in-PD musl syscall surface;
-# sel4-root-task-with-std pulls std (malloc/TLS/unwind) — the profile lavapipe's
-# LLVM JIT needs.
-sel4 = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/sel4", default-features = false }
-sel4-musl = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/experimental/sel4-musl" }
-sel4-linux-syscall-types = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/experimental/sel4-linux-syscall-types" }
-sel4-root-task-with-std = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/private/support/sel4-root-task-with-std" }
-sel4-dlmalloc = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/sel4-dlmalloc" }
+# Resolve the raw-root-task crates from the same immutable rust-sel4 revision as
+# the dregg executor. The SDK may vendor it for builds, but manifest resolution
+# must not depend on one operator's absolute path.
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608", default-features = false }
+sel4-musl = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-linux-syscall-types = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-root-task-with-std = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
 one-shot-mutex = "0.2.1"
 
 [profile.release]

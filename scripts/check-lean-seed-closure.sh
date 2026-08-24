@@ -50,7 +50,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
 
 # ── SCOPE ─ this printf is the ONLY copy; it prints on every run, pass or fail. ───────
 printf 'ANSWERS:         %s\nDOES NOT ANSWER: %s\n' \
-  'for the archive file named on the command line (default dregg-lean-ffi/libdregg_lean.a), does `ar t` list a member called Dregg2_FFI.o, does every IN-TREE module (Dregg2/Metatheory/Polis) of the Dregg2.FFI closure that scripts/lean-ffi-closure.py computes have a member of the matching NAME, and does `nm` show zero referenced-but-undefined initialize_* symbols outside the Init/Std/Lean/Lake toolchain?' \
+  'for the archive file named on the command line (default dregg-lean-ffi/libdregg_lean.a), does the dialect-aware archive reader list a member called Dregg2_FFI.o, does every IN-TREE module (Dregg2/Metatheory/Polis) of the Dregg2.FFI closure that scripts/lean-ffi-closure.py computes have a member of the matching NAME, and does `nm` show zero referenced-but-undefined initialize_* symbols outside the Init/Std/Lean/Lake toolchain?' \
   'whether any member is CURRENT. Membership is by NAME only, so an object compiled from a .lean that has changed since passes all three legs — that gap cost a week (deployed_constraint_probe printed `8 passed` from 07-30 to 08-06 with SIX assertions false against a 2026-07-25 Dregg2_Exec_DeployedConstraint.o, and this gate saw a member and said PRESENT). The per-member age question is scripts/check-lean-seed-member-freshness.py and dregg-lean-ffi/tests/linked_archive_freshness.rs, not this gate. It also says nothing about whether this file is the archive any build actually LINKS, nor whether a member computes the right thing.'
 
 ARCH="${1:-dregg-lean-ffi/libdregg_lean.a}"
@@ -59,9 +59,7 @@ META="${DREGG_METATHEORY_DIR:-metatheory}"
 [ -f "$ARCH" ] || { echo "check-lean-seed-closure: no archive at $ARCH — nothing to measure. A gate whose input is absent is a FAULT, not a pass." >&2; exit 2; }
 [ -f "$META/Dregg2/FFI.lean" ] || { echo "check-lean-seed-closure: no boundary module at $META/Dregg2/FFI.lean — cannot compute the closure." >&2; exit 2; }
 
-AR="ar";  command -v ar  >/dev/null 2>&1 || AR="llvm-ar"
 NM="nm";  command -v nm  >/dev/null 2>&1 || NM="llvm-nm"
-command -v "$AR" >/dev/null 2>&1 || { echo "check-lean-seed-closure: no ar/llvm-ar on PATH." >&2; exit 2; }
 command -v "$NM" >/dev/null 2>&1 || { echo "check-lean-seed-closure: no nm/llvm-nm on PATH." >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "check-lean-seed-closure: python3 is required (it runs scripts/lean-ffi-closure.py)." >&2; exit 2; }
 
@@ -75,7 +73,32 @@ python3 scripts/lean-ffi-closure.py "$META" > "$TMP/closure.txt" || {
   echo "check-lean-seed-closure: scripts/lean-ffi-closure.py failed — cannot measure." >&2; exit 2; }
 [ -s "$TMP/closure.txt" ] || { echo "check-lean-seed-closure: the closure came back EMPTY — the walk is broken, and passing on an empty expectation is worse than not checking." >&2; exit 2; }
 
-"$AR" t "$ARCH" > "$TMP/members.txt" 2>/dev/null || { echo "check-lean-seed-closure: '$AR t $ARCH' failed — not an archive?" >&2; exit 2; }
+# Do not parse `ar t` output here. BSD/Darwin `ar` prints GNU long-name members as raw
+# `/1234` string-table offsets and adds `/` to short names, so a valid Linux archive appears to
+# contain none of its long Dregg2 objects when verified on macOS. Reuse the byte-level reader
+# whose self-test covers both GNU `/<offset>` and BSD `#1/<len>` dialects.
+if ! python3 - "$ARCH" > "$TMP/members.txt" <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+reader_path = pathlib.Path("scripts/check-lean-seed-member-freshness.py")
+spec = importlib.util.spec_from_file_location("dregg_archive_reader", reader_path)
+if spec is None or spec.loader is None:
+    raise SystemExit(f"cannot load dialect-aware archive reader at {reader_path}")
+reader = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(reader)
+try:
+    members = reader.read_members(pathlib.Path(sys.argv[1]))
+except reader.ArchiveError as exc:
+    raise SystemExit(str(exc)) from exc
+for name, _mtime in members:
+    print(name)
+PY
+then
+  echo "check-lean-seed-closure: dialect-aware archive reader failed — not a readable archive?" >&2
+  exit 2
+fi
 "$NM" "$ARCH" > "$TMP/nm.txt" 2>/dev/null || true
 
 python3 - "$TMP/closure.txt" "$TMP/members.txt" "$TMP/nm.txt" "$ARCH" <<'PY'

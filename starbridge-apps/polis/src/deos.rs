@@ -279,7 +279,7 @@ pub fn fire_council_approve(
         vec![
             Effect::SetField {
                 cell,
-                index: slot,
+                index: slot as u64,
                 value: field_from_u64(1),
             },
             Effect::EmitEvent {
@@ -310,7 +310,7 @@ pub fn fire_council_unapprove_attempt(
     fire_gated(app, "approve", held, cipherclerk, executor, move |_state| {
         vec![Effect::SetField {
             cell,
-            index: slot,
+            index: slot as u64,
             value: field_from_u64(0),
         }]
     })
@@ -1112,7 +1112,6 @@ pub fn register_all_deos(
 mod tests {
     use super::*;
     use dregg_app_framework::AgentCipherclerk;
-    use dregg_cell::is_attenuation;
 
     fn cclerk(seed: u8) -> AppCipherclerk {
         AppCipherclerk::new(AgentCipherclerk::new(), [seed; 32])
@@ -1120,22 +1119,18 @@ mod tests {
 
     #[test]
     fn the_rights_ladder_is_observer_subset_participant_subset_authority() {
-        assert!(
-            is_attenuation(&PARTICIPANT_RIGHTS, &OBSERVER_RIGHTS),
-            "observer ⊑ participant"
-        );
-        assert!(
-            is_attenuation(&AUTHORITY_RIGHTS, &PARTICIPANT_RIGHTS),
-            "participant ⊑ authority"
-        );
-        assert!(
-            is_attenuation(&AUTHORITY_RIGHTS, &OBSERVER_RIGHTS),
-            "observer ⊑ authority"
-        );
-        assert!(
-            !is_attenuation(&PARTICIPANT_RIGHTS, &AUTHORITY_RIGHTS),
-            "authority ⊄ participant"
-        );
+        let signature = AuthRequired::Signature;
+        let participant = AuthRequired::Either;
+        let authority = AuthRequired::None;
+
+        assert!(OBSERVER_RIGHTS.satisfied_by(&signature));
+        assert!(OBSERVER_RIGHTS.satisfied_by(&participant));
+        assert!(OBSERVER_RIGHTS.satisfied_by(&authority));
+        assert!(!PARTICIPANT_RIGHTS.satisfied_by(&signature));
+        assert!(PARTICIPANT_RIGHTS.satisfied_by(&participant));
+        assert!(PARTICIPANT_RIGHTS.satisfied_by(&authority));
+        assert!(!AUTHORITY_RIGHTS.satisfied_by(&participant));
+        assert!(AUTHORITY_RIGHTS.satisfied_by(&authority));
     }
 
     #[test]

@@ -91,6 +91,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import difflib
 import getpass
 import hashlib
 import io
@@ -2098,6 +2099,13 @@ def _wf_norm(p: str) -> str:
     return p
 
 
+def _wf_local_action_targets(source: str, value: str, is_composite: bool) -> tuple[str, str]:
+    """Resolve `uses: ./x` with GitHub's workflow-vs-composite base-directory rule."""
+    use_base = Path(source).parent if is_composite else Path()
+    action_dir = (use_base / value).as_posix().rstrip("/")
+    return tuple(_wf_norm(f"{action_dir}/action.{ext}") for ext in ("yml", "yaml"))
+
+
 def _wf_head(tokens: list[str]) -> list[str]:
     """Drop leading `FOO=bar` env assignments and transparent prefixes (`sudo`, `time`, ...)."""
     t = list(tokens)
@@ -2286,7 +2294,7 @@ def _wf_parse(path: Path, rel: str) -> list[tuple[int, str, str, list[tuple[int,
 
 
 def verify_workflow_refs() -> list[str]:
-    """Every repo path a tracked `.github/workflows/*.yml` INVOKES must exist and be tracked.
+    """Every repo path a tracked workflow or local composite action invokes must be tracked.
 
     Returns finding lines (empty == clean); prints a one-line summary with the checked and
     NOT-CHECKABLE counts. Skipped with a stated reason where there is no git index."""
@@ -2308,15 +2316,9 @@ def verify_workflow_refs() -> list[str]:
         ["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True, text=True
     ).stdout.split("\0") if p}
 
-    # THE SCOPE, made a TOOTH instead of a footnote. This leg reads `.github/workflows/*` and
-    # nothing else. A LOCAL COMPOSITE ACTION (`.github/**/action.yml`) also carries `run:` steps
-    # that invoke repo paths — the identical wound in the identical medium — but its relative-path
-    # resolution is NOT the same (a composite action's `uses:` is relative to the ACTION dir while
-    # its `run:` cwd is the workspace root), so scanning one with this file's resolution model
-    # would report on a semantics it does not implement. There are ZERO composite actions in the
-    # tree, which is what makes the scope claim above exhaustive TODAY. The moment that stops
-    # being true this must fail, because the alternative is a checker that silently stops covering
-    # a medium it never announced it had dropped — the exact way a gate becomes decoration.
+    # Local composite actions carry the same `run:` wound as workflows. Their `run:` paths and
+    # `working-directory:` values resolve from the workspace root, while `uses: ./x` resolves
+    # from the directory containing action.yml. Keep that one semantic difference explicit.
     composite = sorted(p for p in tracked
                        if p.startswith(".github/") and not p.startswith(".github/workflows/")
                        and p.rsplit("/", 1)[-1] in ("action.yml", "action.yaml"))
@@ -2325,35 +2327,6 @@ def verify_workflow_refs() -> list[str]:
     # and a reason-tagged bucket for every site that does not.
     findings: list[str] = []
 
-    # ── ⚑ A COVERAGE GAP IS A FINDING, NOT AN ABORT (changed 2026-08-08) ────────────────────
-    # This was `sys.exit(...)`, and `.github/actions/lean-seed/action.yml` landed on 2026-08-07 —
-    # so from that day `--verify-provenance` STOPPED REACHING ITS OWN SUBJECT. It is called from
-    # `verify_provenance` before the sha256-of-every-descriptor-against-PROVENANCE.json
-    # comparison, so the whole stamp check died here: the 2026-08-08 nightly's output is SIX
-    # LINES, four leg counters and this message, with no `verify-provenance: PASS/FAIL` line at
-    # all. A gate about descriptor bytes was reporting only on how well one of its side-legs
-    # covers the CI medium.
-    #
-    # This is the identical mask `scripts/check-descriptor-drift.sh:159-171` names and fixed two
-    # days earlier — "a 45-file descriptor drift went unreported because an unstamped-artifact
-    # preflight failure exited first; one gate's cheap leg hid the other leg's verdict, and the
-    # cheap leg is not the one the gate is named after." Same shape, one file over.
-    #
-    # NOTHING IS WEAKENED: this is still a FAILURE — `verify_workflow_refs`'s findings are
-    # `failures.extend`ed by `verify_provenance`, which exits nonzero on any. It simply no longer
-    # gets to be the ONLY thing you learn. The scope claim below is correspondingly narrowed to
-    # what this leg actually implements, out loud, rather than being asserted and then aborted on.
-    if composite:
-        findings.append(
-            "COVERAGE GAP (this leg, not the tree): a LOCAL COMPOSITE ACTION is tracked ("
-            + ", ".join(composite)
-            + ") and verify_workflow_refs does not scan it. Its `run:` steps invoke repo paths "
-            "exactly like a workflow's, so this leg's coverage claim is NOT exhaustive: an "
-            "uncommitted script invoked from a composite action is invisible here. EXTEND the "
-            "leg to composite actions (mind the resolution difference: `uses:` is relative to "
-            "the action directory, `run:` cwd is the workspace root) — do not silence this by "
-            "deleting the check."
-        )
     inflight: list[str] = []
     notcheckable: dict[str, list[str]] = {}
     unlexable: list[str] = []
@@ -2363,7 +2336,8 @@ def verify_workflow_refs() -> list[str]:
     def defer(reason: str, where: str) -> None:
         notcheckable.setdefault(reason, []).append(where)
 
-    for wf in wfs:
+    sources = [(wf, False) for wf in wfs] + [(action, True) for action in composite]
+    for wf, is_composite in sources:
         p = ROOT / wf
         if not p.exists():   # tracked but deleted in the working tree
             continue
@@ -2378,13 +2352,18 @@ def verify_workflow_refs() -> list[str]:
             if kind == "uses":
                 v = _wf_unquote(body[0][1])
                 if v.startswith("./"):
-                    # A LOCAL composite action: `uses: ./x` resolves `x/action.yml` OR
-                    # `x/action.yaml` — either spelling satisfies it, so a site is raised only
-                    # when NEITHER is tracked, and it names the `.yml` one. No instance in the
-                    # tree today; the class arrives the first time someone factors a step out.
-                    stem = v.rstrip("/") + "/action."
-                    if not any(_wf_norm(stem + e) in tracked for e in ("yml", "yaml")):
-                        raw_sites.append((lineno, "uses (local action)", stem + "yml", True))
+                    # Workflow-local actions resolve from the workspace root. An action used by
+                    # another composite resolves from the directory containing that action.
+                    targets = _wf_local_action_targets(wf, v, is_composite)
+                    n_sites += 1
+                    n_checked += 1
+                    if not any(target in tracked for target in targets):
+                        findings.append(
+                            f"WORKFLOW-GHOST: {wf}:{lineno} (uses local action `{v}`) resolves "
+                            f"to neither {targets[0]} nor {targets[1]}. "
+                            "Commit the action manifest, or drop the step."
+                        )
+                continue
             else:
                 logical = _wf_logical_lines(body, wf)
                 block_ok = True
@@ -2499,6 +2478,7 @@ def verify_workflow_refs() -> list[str]:
     nc_total = sum(len(v) for v in notcheckable.values())
     print(
         f"verify-workflow-refs: {n_sites} invocation site(s) over {len(wfs)} tracked workflow(s) "
+        f"+ {len(composite)} local composite action(s) "
         f"· {n_checked} checked exists+tracked · {nc_total} NOT-CHECKABLE"
         + ("".join(f"\n  NOT-CHECKABLE ({len(v)}) — {r}: {', '.join(sorted(v))}"
                    for r, v in sorted(notcheckable.items())) if notcheckable else "")
@@ -3173,6 +3153,21 @@ def install_and_stamp(written: dict[str, str]) -> None:
         )
         return
 
+    # Generated Rust modules are small, public source artifacts. Show their
+    # exact textual drift before either installing a generated-only update or
+    # refusing a descriptor-changing regeneration, so CI reports an actionable
+    # difference instead of only a path. Descriptor JSON remains hash/path-only
+    # because those files can be large.
+    for path, new_text in sorted(changed_gen.items()):
+        old_text = path.read_text() if path.exists() else ""
+        diff = difflib.unified_diff(
+            old_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{path.relative_to(ROOT)}",
+            tofile=f"b/{path.relative_to(ROOT)} (Lean emission)",
+        )
+        sys.stderr.write("".join(diff))
+
     # A Lean-authored Rust projection is not a VK regeneration. Requiring the federation-rekey ACK
     # for a generated-module-only change made the safe half of a layout refactor impossible to run
     # through the canonical emitter. Geometry changes remain protected: because the Lean descriptor
@@ -3191,7 +3186,6 @@ def install_and_stamp(written: dict[str, str]) -> None:
             "module(s); descriptor bytes and FP constants are unchanged (no VK regen)."
         )
         return
-
     auth = require_regen_ack(reasons, "this emission")
 
     for name in changed_desc:
@@ -3360,6 +3354,24 @@ def self_test_workflow_scope() -> int:
                 bad += 1
             else:
                 print(f"  [ok ] {name}")
+    action_cases = (
+        (
+            "workflow-local action resolves from the workspace root",
+            _wf_local_action_targets(".github/workflows/ci.yml", "./.github/actions/outer", False),
+            (".github/actions/outer/action.yml", ".github/actions/outer/action.yaml"),
+        ),
+        (
+            "composite-local action resolves from the containing action directory",
+            _wf_local_action_targets(".github/actions/outer/action.yml", "./nested", True),
+            (".github/actions/outer/nested/action.yml", ".github/actions/outer/nested/action.yaml"),
+        ),
+    )
+    for name, got, want in action_cases:
+        if got != want:
+            print(f"  [BAD] {name}: got {got!r}, want {want!r}")
+            bad += 1
+        else:
+            print(f"  [ok ] {name}")
     print(f"emit_descriptors --self-test-workflow-scope: "
           f"{'OK' if bad == 0 else str(bad) + ' CASE(S) WRONG'}")
     return 1 if bad else 0
@@ -3578,12 +3590,15 @@ SCOPE_ANSWERS_SELFTEST_WF = (
     "workflow YAML fixtures written into a temp dir (a shallower `- ` must not clear the scope, "
     "a key after `run:` in the same item, a job-level defaults.run reaching every run step and "
     "stopping at the next job, `uses:` inheriting no cwd, a nested sequence inside a step), and "
-    "did it harvest at least as many steps as each fixture expects?"
+    "did it harvest at least as many steps as each fixture expects; plus, does local-action path "
+    "resolution use the workspace root for workflows and the containing action directory for "
+    "composite actions?"
 )
 SCOPE_DOES_NOT_ANSWER_SELFTEST_WF = (
     "anything about THIS repository. It opens no tracked file and not one of "
-    ".github/workflows/*.yml, so it says nothing about whether any workflow-invoked path exists "
-    "or is tracked — that is verify_workflow_refs, which runs inside --verify-provenance."
+    ".github/workflows/*.yml or .github/**/action.yml, so it says nothing about whether any "
+    "workflow/action-invoked path exists or is tracked — that is verify_workflow_refs, which "
+    "runs inside --verify-provenance."
 )
 
 

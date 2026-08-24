@@ -38,16 +38,14 @@ name = "dregg-executor-rootserver"
 path = "src/main.rs"
 
 [dependencies]
-# Path-depend on the VENDORED rust-sel4 checkout (HEAD = efef73cc, the exact rev
-# the working dregg Microkit PDs pin), which carries sel4-musl +
-# sel4-root-task-with-std + the syscall-types. These are NOT published to
-# crates.io, so a path dep on the local SDK checkout is the supported route (the
-# upstream tests-root-task-musl crate path-deps them the same way).
-sel4 = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/sel4", default-features = false }
-sel4-musl = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/experimental/sel4-musl" }
-sel4-linux-syscall-types = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/experimental/sel4-linux-syscall-types" }
-sel4-root-task-with-std = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/private/support/sel4-root-task-with-std" }
-sel4-dlmalloc = { path = "/Users/ember/sel4-sdk/rust-sel4/crates/sel4-dlmalloc" }
+# Resolve every rust-sel4 crate from the same immutable revision used by the
+# working Microkit PDs. SDK scripts may still vendor this revision for builds,
+# but a bare clone must resolve the manifest without machine-local paths.
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608", default-features = false }
+sel4-musl = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-linux-syscall-types = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-root-task-with-std = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "efef73cc0bbebc8dd477dde5073d10b1fcfbc608" }
 one-shot-mutex = "0.2.1"
 
 [profile.release]

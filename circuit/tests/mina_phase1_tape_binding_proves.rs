@@ -518,7 +518,10 @@ fn the_53_split_by_unconditional_versus_p10_conditional() {
     // unconditional closures. It is 3.
     let unconditional = statement_bound + vk_digest;
     let conditional_on_p10 = aggregate_bound + t_comm;
-    assert_eq!(unconditional, 3, "kernel-built or fixture-derived, no floor under them");
+    assert_eq!(
+        unconditional, 3,
+        "kernel-built or fixture-derived, no floor under them"
+    );
     assert_eq!(
         conditional_on_p10, 50,
         "closed only via `opening_relation_holds`, which inherits the IPA `msm == 0` floor (P10)"

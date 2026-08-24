@@ -18,9 +18,10 @@ See also `docs/BUILD-LEAN-LINKED-NODE.md` (the build-time story + the `DREGG_REQ
 | File | Role |
 |------|------|
 | `scripts/lean-seed-key.sh` | Computes the seed **provenance + content key** (platform · Lean toolchain · mathlib rev · **Dregg2.FFI boundary-closure** hash) and the canonical asset name. Shared by fetch + publish. |
-| `dregg-lean-ffi/lean-seed.pin` | The committed **pointer**: which release `TAG` holds the current seed, and the provenance it was cut from. Rewritten by the publish workflow. |
+| `dregg-lean-ffi/lean-seed.pin` | The committed **pointer**: the stable release `TAG` plus a reference provenance snapshot used by the drift gate. Assets, not tags, are content-keyed. |
 | `scripts/fetch-lean-seed.sh` | Downloads the platform-native seed asset from the pinned release, **verifies the sha256 + the `dregg_*` exports**, and installs it at `dregg-lean-ffi/libdregg_lean.a`. |
-| `.github/workflows/lean-seed.yml` | The **publish** workflow: build the seed on a beefy host, compress, upload the asset + `.sha256` to a release, and bump the pin. |
+| `.github/workflows/lean-seed.yml` | The self-hosted **publish** workflow: build the seed, verify the live kernel, and upload the content-keyed asset + `.sha256` to the stable release. It never rewrites a human branch. |
+| `.github/workflows/castalia-bootstrap-node.yml` | The protected hosted-runner fallback: rebuild the complete Lean graph from pinned source, re-emit descriptors, attest the seed, then build and boot a `DREGG_REQUIRE_LEAN=1` Linux node. |
 | `scripts/run-node-10min.sh` | The end-to-end "clone → seed → build → run → verify" convenience path. |
 
 ## The seed key (why an asset is HEAD-matching)
@@ -82,13 +83,15 @@ local `./scripts/bootstrap.sh` (the slow, hours-long path) or cutting a release 
 build panics with the exact cause instead. (Confirmed wired: `dregg-lean-ffi/build.rs`
 `degrade_guard`, and a `--release` native build defaults the gate ON.)
 
-## Cutting a seed release — CI builds it, CI publishes it
+## Cutting a seed release — CI builds and verifies the bytes
 
 Seeding compiles thousands of leanc objects. `metatheory/lakefile.toml` pins mathlib as a
 **portable `git`+`rev` dependency**, so `lake` fetches it on any host with no clone-location
-assumption — but a stock GitHub-hosted runner is too weak for the corpus compile (and starts
-with a cold `.lake`). So the **build** runs on a self-hosted host; the **publish** is CI, and
-nobody hand-uploads a file.
+assumption. The preferred recurring path uses the labeled self-hosted runner. The protected
+Castalia bootstrap workflow is the cold hosted-runner fallback: it checkpoints the graph across
+jobs, builds the archive from pinned source, attests it, and uses those exact bytes to build and
+boot the release node. An operator may promote that workflow artifact to the stable seed release
+only after the protected job succeeds and the archive key and checksums are re-verified locally.
 
 ### Automatic (the model)
 
@@ -98,10 +101,11 @@ safety net, plus manual dispatch). It computes the content **key** for the check
 `lean-seed` release — it re-splices the Dregg2 slice at HEAD
 (`dregg-lean-ffi/scripts/rebuild-dregg2-closure.sh`), verifies the archive links and the kernel
 round-trips, compresses, and uploads `<asset>.a.zst` + `.sha256` to the release with
-`GITHUB_TOKEN`. A follow-up `pin` job writes `TAG=lean-seed` into `dregg-lean-ffi/lean-seed.pin`
-on the **first** publish and never needs to touch it again — assets are **content-keyed**, so one
-stable tag accumulates every platform × every revision and `fetch-lean-seed.sh` always resolves
-the asset for *its* checkout.
+`GITHUB_TOKEN`. The committed pin already carries `TAG=lean-seed`; the workflow deliberately does
+not commit or rebase the caller's branch. Assets are **content-keyed**, so one stable tag
+accumulates every platform × every revision and `fetch-lean-seed.sh` always resolves the asset for
+*its* checkout. A maintainer updates only the reference provenance snapshot when the drift gate
+needs to record a newly published closure.
 
 **One-time human prerequisite:** a self-hosted runner must be **registered** on `emberian/dregg`
 (Settings → Actions → Runners) with the labels `self-hosted`, `lean-seed`, and its platform
@@ -151,20 +155,15 @@ asset="$(scripts/lean-seed-key.sh --asset)"                             # libdre
 zstd -q -19 --long=27 -T0 dregg-lean-ffi/libdregg_lean.a -o "$asset"    # ~180 MB → ~20 MB
 sha256sum "$asset" > "$asset.sha256"
 
-# 4. Publish to a release (create the tag if absent), then upload the asset + its checksum.
-tag=lean-seed-$(date -u +%Y-%m-%d)
-gh release create "$tag" --title "Lean seed $tag" --notes "seed for $(git rev-parse --short HEAD)" || true
+# 4. Publish to the stable release (create it if absent), then upload the content-keyed asset.
+tag=lean-seed
+gh release create "$tag" --title "Lean seed archives" --notes "Content-keyed verified Lean seed archives." || true
 gh release upload  "$tag" "$asset" "$asset.sha256" --clobber
 
-# 5. Bump the committed pointer so fetch-lean-seed.sh serves it, then commit + push.
-{ sed -n '1,/^$/p' dregg-lean-ffi/lean-seed.pin | sed '/^$/d'; echo;
-  echo "TAG=$tag";
-  scripts/lean-seed-key.sh | grep -E '^(LEAN_TOOLCHAIN|MATHLIB_REV|DREGG_TREE_HASH)=';
-  echo "GENERATED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)";
-  echo "NOTE=published by hand on lassie";
-} > dregg-lean-ffi/lean-seed.pin.new && mv dregg-lean-ffi/lean-seed.pin.new dregg-lean-ffi/lean-seed.pin
+# 5. Record the live DREGG_CLOSURE_HASH + GENERATED_UTC in lean-seed.pin for the drift gate.
+#    TAG remains lean-seed; fetch computes the content-keyed asset name from the checkout.
 git add dregg-lean-ffi/lean-seed.pin
-git -c commit.gpgsign=false commit -m "chore(seed): publish Lean seed $tag + bump pin"
+git -c commit.gpgsign=false commit -m "chore(seed): record published Lean closure"
 git push
 ```
 

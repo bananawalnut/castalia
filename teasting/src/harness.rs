@@ -470,8 +470,11 @@ fn build_ordering_blocklace(finality_lace: &Blocklace) -> dregg_blocklace::Block
     // pinned incomparable PAIR, and seeding the BFS from only the first half would
     // silently shrink the reachable set — the equivocation evidence this harness
     // exists to carry is exactly what would go missing.
-    let mut frontier: Vec<dregg_blocklace::finality::BlockId> =
-        finality_lace.tips().values().flat_map(|t| t.iter()).collect();
+    let mut frontier: Vec<dregg_blocklace::finality::BlockId> = finality_lace
+        .tips()
+        .values()
+        .flat_map(|t| t.iter())
+        .collect();
     let mut seen = HashSet::new();
 
     while let Some(id) = frontier.pop() {

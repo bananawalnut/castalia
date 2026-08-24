@@ -10,14 +10,12 @@ publish = false
 # leak into the breadstuffs lockfile.
 [workspace]
 
-# `mina-rust` is expected as a SIBLING checkout of this repo:
-#   <parent>/breadstuffs/metatheory/fixtures/pickles-extractors  (this crate)
-#   <parent>/mina-rust                                            (openmina)
-# Pinned rev is recorded in README.md and re-printed by the binary at run time.
+# OpenMina is resolved from the documented immutable revision. The fixture must
+# remain reproducible in a bare clone; no sibling checkout is part of its input.
 [dependencies]
-ledger = { path = "../../../../mina-rust/crates/ledger", package = "mina-tree" }
-mina-p2p-messages = { path = "../../../../mina-rust/crates/p2p-messages" }
-mina-core = { path = "../../../../mina-rust/crates/core" }
+ledger = { git = "https://github.com/openmina/openmina", rev = "82480cd468f1963b73dc0b700161036411449e4c", package = "mina-tree" }
+mina-p2p-messages = { git = "https://github.com/openmina/openmina", rev = "82480cd468f1963b73dc0b700161036411449e4c" }
+mina-core = { git = "https://github.com/openmina/openmina", rev = "82480cd468f1963b73dc0b700161036411449e4c" }
 
 ark-ec = { version = "0.5.0", features = ["std"] }
 ark-ff = { version = "0.5.0", features = ["parallel", "asm", "std"] }

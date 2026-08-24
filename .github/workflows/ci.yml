@@ -147,7 +147,26 @@ jobs:
       # The feature adds NO new dep to the graph (it only flips the test #[cfg]s; the
       # app-framework/turn/sdk it pulls are dev-deps already built by --workspace), so
       # this reuses the warm target dir above. Mirrors the dregg-chain matrix directly.
-      - run: cargo test -p starbridge-polis --features deos
+      # The seam tests construct real AgentCipherclerks, which in turn require the
+      # verified ML-DSA keygen core. Running them without the seed does not exercise
+      # a weaker path: dregg-pq correctly aborts the process. Fetch the exact
+      # content-keyed Linux seed and arm the build so this lane tests the real core.
+      - name: Fetch the verified Lean seed for Polis DEOS tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y zstd
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.elan/bin:$PATH"
+          bash scripts/fetch-lean-seed.sh
+      - run: cargo test --locked -p starbridge-polis --features deos
+        env:
+          DREGG_TEST_REQUIRE_LEAN: "1"
       # dregg-doc has NO `default` key in [features], so — exactly like dregg-chain
       # above — `cargo test --workspace` compiles it FEATURELESS: its 3 ungated test
       # files run, and the 35 tests behind `substrate` compile NOWHERE. That population
@@ -510,16 +529,19 @@ jobs:
           lfs: true
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
-      # Reclaim the ~25 GB of preinstalled toolchains we never use. The hosted
-      # ubuntu runner ships with only ~14 GB free on /, which the full debug-build
-      # `target/` of this workspace overruns — see the root-cause note on the test
-      # step below. Freed BEFORE the cache restore + build so they have headroom.
+      # Reclaim preinstalled toolchains we never use. Even with debuginfo disabled,
+      # the armed full-workspace lane has exceeded 114 GB while several large test
+      # binaries linked concurrently. Freed BEFORE the cache restore + build so
+      # the target directory and the linkers have real headroom.
       - if: runner.os == 'Linux'
         name: Reclaim runner disk
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
             /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
-            /usr/local/share/powershell /usr/share/swift
+            /usr/local/share/powershell /usr/share/swift \
+            /usr/local/share/vcpkg /usr/share/miniconda \
+            /opt/az /opt/microsoft /opt/pipx \
+            /usr/local/share/chromium
           sudo docker image prune --all --force || true
           df -h /
       - uses: dtolnay/rust-toolchain@master
@@ -722,10 +744,17 @@ jobs:
       - if: runner.os == 'Linux'
         name: Test workspace (nextest; debuginfo off; deos-zed + the two ELF-unlinkable cdylibs split out)
         env:
+          # Four unrelated rust-lld processes reached ENOSPC together on the
+          # hosted runner. Two concurrent links then made ld.lld die with SIGBUS
+          # while linking the large deos-view test graph. Serialize links so the
+          # full suite stays within both the runner's disk and memory-map limits.
+          CARGO_BUILD_JOBS: "1"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
+        run: |
+          df -h /
+          cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
       # THE DOCTEST LEG — see the block above the macOS step. nextest structurally
       # cannot run doctests; this is the only step on this runner that does. It
       # carries the same excludes for the same ELF-link reason.
@@ -1194,14 +1223,9 @@ jobs:
       - name: cargo audit (ignores sourced from /audit.toml)
         run: |
           set -euo pipefail
-          # Extract the RUSTSEC ids from the [advisories].ignore array in
-          # audit.toml and turn each into a `--ignore <id>` flag. Match ONLY the
-          # QUOTED array elements ("RUSTSEC-…"), never a bare mention in a comment
-          # — otherwise a RUSTSEC id typed into a comment silently suppresses a
-          # live advisory (the grep-scanned-the-whole-file footgun; audit.toml's
-          # own per-entry comments name the ids, and fixed advisories are written
-          # prefix-stripped to dodge the old grep — both now moot).
-          mapfile -t IDS < <(grep -oE '"RUSTSEC-[0-9]{4}-[0-9]{4}"' audit.toml | tr -d '"' | sort -u)
+          # Read only the explicit [advisories].ignore array. Scraping comments
+          # would silently turn a documented, non-exempt advisory into an ignore.
+          mapfile -t IDS < <(python3 scripts/audit_ignore_ids.py)
           IGNORE_ARGS=()
           for id in "${IDS[@]}"; do IGNORE_ARGS+=(--ignore "$id"); done
           echo "Ignoring ${#IDS[@]} assessed advisories: ${IDS[*]}"
@@ -1398,6 +1422,23 @@ jobs:
             exit 1
           fi
           exit "$status"
+
+      # The lifecycle test drives the production supervisor through a full
+      # committee start, successful clearing, short-roster refusal, and
+      # dishonest-dealer refusal. Its target is feature-gated because it links
+      # the verified PQ runtime, so a plain workspace test silently omits it.
+      # This job already owns the content-keyed Lean archive; run the test here
+      # and demand that neither the build nor spawned processes can fall back.
+      - name: Distributed committee lifecycle with verified PQ runtime
+        if: steps.pin.outputs.armed == '1'
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
+        run: |
+          cargo test -p fhegg-fhe \
+            --features verified-pq-runtime-tests \
+            --test distributed_committee_lifecycle \
+            -- --nocapture
 
   mina-attestation:
     name: Mina↔dregg Poseidon attestation zkApp (runs it, and proves the gate can go red)

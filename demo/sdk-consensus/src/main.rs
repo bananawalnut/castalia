@@ -121,8 +121,11 @@ fn build_ordering_blocklace(
     // ⚑ `CreatorTips::iter`, NOT `primary()`: a flagged creator's tips entry is a
     // pinned incomparable PAIR, and seeding from only the first half would silently
     // drop one fork's blocks from the walk below.
-    let mut frontier: Vec<dregg_blocklace::finality::BlockId> =
-        finality_lace.tips().values().flat_map(|t| t.iter()).collect();
+    let mut frontier: Vec<dregg_blocklace::finality::BlockId> = finality_lace
+        .tips()
+        .values()
+        .flat_map(|t| t.iter())
+        .collect();
     let mut seen = std::collections::HashSet::new();
     while let Some(id) = frontier.pop() {
         if !seen.insert(id) {

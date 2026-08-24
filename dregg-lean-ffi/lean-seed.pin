@@ -3,8 +3,9 @@
 # This is the ONE committed record that binds "the Lean source at this commit" to "the seed
 # release artifact that links a VERIFIED node against it in minutes" (instead of an hours-long
 # cold `lake` bootstrap of mathlib). scripts/fetch-lean-seed.sh reads TAG here to know which
-# GitHub release to pull the platform-native seed asset from; the .github/workflows/lean-seed.yml
-# publish job REWRITES this file (bumping TAG + the provenance below) each time it cuts a seed.
+# GitHub release to pull the platform-native seed asset from. TAG is stable; the
+# .github/workflows/lean-seed.yml publisher deliberately never rewrites or rebases a human branch.
+# A maintainer records the reference provenance below after publishing a new closure.
 #
 # The provenance triple (LEAN_TOOLCHAIN / MATHLIB_REV / DREGG_CLOSURE_HASH) is what fetch compares
 # against the local checkout: if they match, the published seed is HEAD-compatible for THIS
@@ -22,12 +23,12 @@
 # loud and the only verified-node path is a local ./scripts/bootstrap.sh (the hours-long bootstrap).
 #
 # The provenance below is a REFERENCE snapshot of the current HEAD (recompute live with
-# scripts/lean-seed-key.sh). The publish workflow OVERWRITES it (setting TAG + GENERATED_UTC) when
-# it cuts the first seed — that is the moment this file becomes a live pointer instead of a note.
+# scripts/lean-seed-key.sh). Fetch resolves the asset from the checkout's live content key; the
+# snapshot makes drift visible and is maintained explicitly after a verified asset is published.
 
 TAG=lean-seed
 LEAN_TOOLCHAIN=leanprover/lean4:v4.30.0
 MATHLIB_REV=1c2b90b13009c65b090d95a83c98e248deafb6f1
-DREGG_CLOSURE_HASH=
-GENERATED_UTC=2026-07-17T08:26:26Z
-NOTE=Published by .github/workflows/lean-seed.yml. Assets under this tag are CONTENT-KEYED (see scripts/lean-seed-key.sh), so TAG is stable and this provenance is a reference snapshot for the drift warning only — fetch-lean-seed.sh always resolves the asset from YOUR checkout's key, not from these values.
+DREGG_CLOSURE_HASH=42469985f260e27ce26eb04a30c2dc73aa048054
+GENERATED_UTC=2026-08-23T07:00:09Z
+NOTE=Linux x86-64 seed published from protected Castalia bootstrap workflow run 32618400655. Assets under this tag are CONTENT-KEYED (see scripts/lean-seed-key.sh), so TAG is stable and this provenance is a reference snapshot for the drift warning only — fetch-lean-seed.sh always resolves the asset from YOUR checkout's key, not from these values.
