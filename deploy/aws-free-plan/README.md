@@ -67,7 +67,10 @@ The installer independently checks the binary checksum, Lean-producer
 provenance, revision, and SPDX document before placing the binary in a
 content-addressed release directory. Upgrades refuse to proceed until
 `CASTALIA_ENCRYPTED_BACKUP_CONFIRMED=YES` records that an off-machine backup was
-decrypted and inspected.
+decrypted and inspected. First boot and every managed restart use a bounded
+15-minute readiness budget because verified full-byte PQ initialization takes
+minutes; readiness still fails immediately if the service exits and accepts
+only a healthy solo node reporting the Lean producer.
 
 On first install the verified binary creates a production committee-of-one
 genesis bound to its new node key. That genesis contains only the issuer well,

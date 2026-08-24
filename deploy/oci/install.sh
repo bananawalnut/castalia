@@ -67,14 +67,31 @@ systemctl enable --now dregg-solo.service
 systemctl enable caddy.service
 systemctl restart caddy.service
 
-for _ in $(seq 1 30); do
-  if curl -fsS "https://${DREGG_HOSTNAME}/status" >/dev/null; then
+for attempt in $(seq 1 900); do
+  if STATUS="$(curl -fsS "https://${DREGG_HOSTNAME}/status" 2>/dev/null)" \
+    && jq -e '
+      .federation_mode == "solo" and
+      .state_producer == "lean" and
+      .lean_producer == true and
+      .healthy == true and
+      .consensus_live == true
+    ' <<<"$STATUS" >/dev/null; then
     echo "Castalia Dregg is live at https://${DREGG_HOSTNAME}"
     exit 0
   fi
-  sleep 2
+  if ! systemctl is-active --quiet dregg-solo.service; then
+    systemctl --no-pager --full status dregg-solo.service || true
+    journalctl --no-pager -u dregg-solo.service -n 80 || true
+    echo "verified Dregg service exited before readiness" >&2
+    exit 1
+  fi
+  if (( attempt % 30 == 0 )); then
+    echo "waiting for verified node readiness (${attempt}s / 900s)"
+    journalctl --no-pager -u dregg-solo.service -n 20 || true
+  fi
+  sleep 1
 done
 
-echo "services were installed, but the public health check did not become ready" >&2
+echo "services were installed, but the verified public health check did not become ready within 900 seconds" >&2
 echo "inspect: systemctl status dregg-solo caddy" >&2
 exit 1

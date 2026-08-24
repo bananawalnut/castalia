@@ -137,13 +137,35 @@ while (( $(date +%s) < DEADLINE )); do
   NOW="$(date +%s)"
   if (( RESTARTED == 0 && NOW >= RESTART_AT )); then
     systemctl restart dregg-solo.service
-    for _ in $(seq 1 45); do
-      if curl --fail --silent --show-error "${API_ROOT}/status" >/dev/null; then
+    RESTART_READY=0
+    for attempt in $(seq 1 900); do
+      if STATUS="$(curl --fail --silent --show-error "${API_ROOT}/status" 2>/dev/null)" \
+        && jq -e '
+          .federation_mode == "solo" and
+          .state_producer == "lean" and
+          .lean_producer == true and
+          .healthy == true and
+          .consensus_live == true
+        ' <<<"$STATUS" >/dev/null; then
+        RESTART_READY=1
         break
       fi
-      sleep 2
+      if ! systemctl is-active --quiet dregg-solo.service; then
+        systemctl --no-pager --full status dregg-solo.service || true
+        journalctl --no-pager -u dregg-solo.service -n 80 || true
+        echo "verified Dregg service exited during the soak restart" >&2
+        exit 1
+      fi
+      if (( attempt % 30 == 0 )); then
+        echo "waiting for verified soak-restart readiness (${attempt}s / 900s)"
+        journalctl --no-pager -u dregg-solo.service -n 20 || true
+      fi
+      sleep 1
     done
-    systemctl is-active --quiet dregg-solo.service
+    if [[ "$RESTART_READY" -ne 1 ]]; then
+      echo "verified Dregg service did not become ready within 900 seconds after restart" >&2
+      exit 1
+    fi
     RESTARTED=1
   fi
 

@@ -25,13 +25,29 @@ systemctl stop dregg-solo.service
 ln -sfn "$TARGET" /opt/dregg/bin/dregg-node.rollback
 mv -Tf /opt/dregg/bin/dregg-node.rollback /opt/dregg/bin/dregg-node
 systemctl start dregg-solo.service
-for _ in $(seq 1 45); do
-  if STATUS="$(curl -fsS http://127.0.0.1:8420/status)" \
-    && jq -e '.healthy == true and .state_producer == "lean"' <<<"$STATUS" >/dev/null; then
+for attempt in $(seq 1 900); do
+  if STATUS="$(curl -fsS http://127.0.0.1:8420/status 2>/dev/null)" \
+    && jq -e '
+      .federation_mode == "solo" and
+      .state_producer == "lean" and
+      .lean_producer == true and
+      .healthy == true and
+      .consensus_live == true
+    ' <<<"$STATUS" >/dev/null; then
     echo "activated previous verified release $SHA without modifying the ledger"
     exit 0
   fi
-  sleep 2
+  if ! systemctl is-active --quiet dregg-solo.service; then
+    systemctl --no-pager --full status dregg-solo.service || true
+    journalctl --no-pager -u dregg-solo.service -n 80 || true
+    echo "rollback target exited before readiness" >&2
+    break
+  fi
+  if (( attempt % 30 == 0 )); then
+    echo "waiting for verified rollback readiness (${attempt}s / 900s)"
+    journalctl --no-pager -u dregg-solo.service -n 20 || true
+  fi
+  sleep 1
 done
 
 systemctl stop dregg-solo.service
