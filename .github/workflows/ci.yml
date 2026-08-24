@@ -518,7 +518,10 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    # Linux runs the full package set in three bounded target trees. Rebuilding
+    # shared dependencies costs time, but prevents linked artifacts from
+    # exhausting the hosted runner before the test harness can start.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -637,7 +640,7 @@ jobs:
       # a headless runner does not have, a starbridge-tussle spin loop). That first
       # workspace run needed an external watchdog to complete at all. `.config/
       # nextest.toml` now gives every profile a `terminate-after`, so a hang is a
-      # named TIMEOUT failure instead of a job that burns its 150 minutes and tells
+      # named TIMEOUT failure instead of a job that burns its wall-clock budget and tells
       # you nothing. ⚠ Those root causes are owned work and a timeout is NOT their
       # fix — see THE TIMEOUT DOCTRINE in that file.
       #
@@ -673,19 +676,16 @@ jobs:
         env:
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
         run: cargo test --workspace --doc
-      # Linux SIGBUS root cause: it is NOT one heavy crate. The full debug-build
-      # `target/` of the WHOLE workspace overruns the hosted runner's small disk,
-      # and whichever link steps are running when / hits zero ALL die at once as
-      # `collect2: ld terminated with signal 7 [Bus error]` — a write into GNU ld's
-      # mmap'd output faults when the file can't be extended (disk full). The proof:
-      # the crash hits SIMULTANEOUSLY across unrelated, LIGHT protocol crates
-      # (starbridge-agent-orchestration / starbridge-tool-access-delegation — no
-      # gpui/servo in their graph), and a sibling run surfaces the identical root
-      # cause as a plain `No space left on device (os error 28)`. Fixed at the root
-      # WITHOUT dropping any crate: (1) the disk-reclaim step above, and (2) build
-      # the tests with debuginfo OFF (CARGO_PROFILE_*_DEBUG=0), which slashes both
-      # the on-disk object footprint AND GNU ld's link-time memory so the link fits.
-      # Every crate — incl. all starbridge-apps — still LINKS and TESTS here.
+      # Linux SIGBUS root cause: it is NOT one heavy crate. Even serialized links
+      # with debuginfo disabled eventually retain too many artifacts in one full
+      # workspace target tree; rust-lld then faults while mmap-writing an ordinary
+      # protocol test binary. The hosted runner started with 116 GB free, so runner
+      # cleanup alone is not a durable fix. Build the exact same package roots in
+      # three deterministic shards and `cargo clean` between them. This bounds the
+      # target tree while preserving every generic package exactly once, every
+      # doctest, nextest's process-per-test attribution, and the full all() profile.
+      # `scripts/ci-nextest-shard.py` fails closed if the three documented split
+      # targets drift, and its unit test proves the generic package union is exact.
       #
       # deos-zed alone stays off this gate (the vendored full Zed/IDE fork: its
       # windowed gpui screenshot targets link the entire desktop/accessibility
@@ -742,29 +742,58 @@ jobs:
       # (check does not link), and all four are still LINKED AND RUN by the whole macOS
       # `cargo test --workspace` above.
       - if: runner.os == 'Linux'
-        name: Test workspace (nextest; debuginfo off; deos-zed + the two ELF-unlinkable cdylibs split out)
+        name: Test workspace in bounded shards (nextest + doctests; exact package union)
         env:
-          # Four unrelated rust-lld processes reached ENOSPC together on the
-          # hosted runner. Two concurrent links then made ld.lld die with SIGBUS
-          # while linking the large deos-view test graph. Serialize links so the
-          # full suite stays within both the runner's disk and memory-map limits.
+          # Serialize links inside each bounded target tree as a second guard
+          # against transient linker memory and mmap pressure.
           CARGO_BUILD_JOBS: "1"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
         run: |
+          set -euo pipefail
           df -h /
-          cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
-      # THE DOCTEST LEG — see the block above the macOS step. nextest structurally
-      # cannot run doctests; this is the only step on this runner that does. It
-      # carries the same excludes for the same ELF-link reason.
-      - if: runner.os == 'Linux'
-        name: Doctests (the 210 targets nextest structurally cannot run)
-        env:
-          CARGO_PROFILE_DEV_DEBUG: "0"
-          CARGO_PROFILE_TEST_DEBUG: "0"
-          DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo test --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --doc
+          metadata="$RUNNER_TEMP/cargo-metadata.json"
+          cargo metadata --locked --no-deps --format-version 1 > "$metadata"
+          status=0
+          for shard in 0 1 2; do
+            package_file="$RUNNER_TEMP/nextest-packages-$shard.txt"
+            config_file="$RUNNER_TEMP/nextest-$shard.toml"
+            python3 scripts/ci-nextest-shard.py \
+              --metadata "$metadata" \
+              --shard-index "$shard" \
+              --shard-count 3 \
+              --packages-output "$package_file" \
+              --config-output "$config_file"
+
+            mapfile -t package_names < "$package_file"
+            package_args=()
+            for package in "${package_names[@]}"; do
+              package_args+=(--package "$package")
+            done
+
+            if ! cargo nextest run --locked \
+              --config-file "$config_file" \
+              --profile full \
+              "${package_args[@]}" \
+              --no-fail-fast; then
+              status=1
+            fi
+            # nextest structurally cannot run doctests, so each shard recovers
+            # its own doc targets before its bounded target tree is removed.
+            if ! cargo test --locked "${package_args[@]}" --doc; then
+              status=1
+            fi
+
+            # Clean only between shards. Keeping the final bounded tree lets
+            # the two explicit recovery legs below reuse shared dependencies
+            # without rebuilding the entire node/circuit spine a fourth time.
+            if [ "$shard" -lt 2 ]; then
+              cargo clean
+            fi
+            df -h /
+          done
+          exit "$status"
       # THE RECOVERY STEP — this is what makes the exclusion above cost zero tests rather
       # than nine. It must stay adjacent to it: an exclusion whose recovery drifts away is
       # the silent narrowing this repo keeps paying for.

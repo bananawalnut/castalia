@@ -25,6 +25,26 @@ const NODE_BIN: &str = env!("CARGO_BIN_EXE_dregg-node");
 const PASSPHRASE: &str = "castalia-process-restart-test";
 const WAIT: Duration = Duration::from_secs(90);
 
+fn require_verified_lean() -> bool {
+    std::env::var("CASTALIA_TEST_REQUIRE_LEAN").as_deref() == Ok("1")
+}
+
+fn node_command() -> Command {
+    let mut command = Command::new(NODE_BIN);
+    // Archive-less developer runs are an explicitly unverified test mode. Keep
+    // every node subprocess consistent: `init` also performs ML-DSA keygen now,
+    // so declaring the bypass only on `run` makes the harness abort before boot.
+    // The protected release lane sets CASTALIA_TEST_REQUIRE_LEAN=1 and therefore
+    // receives none of these escape hatches.
+    if !require_verified_lean() {
+        command
+            .env("DREGG_LEAN_PRODUCER", "0")
+            .env("DREGG_ALLOW_UNVERIFIED_CONSENSUS", "1")
+            .env("DREGG_ALLOW_UNAUDITED_PQ", "1");
+    }
+    command
+}
+
 struct NodeProc {
     child: Option<Child>,
     log: std::path::PathBuf,
@@ -112,14 +132,30 @@ fn response_json(response: &str) -> serde_json::Value {
         .unwrap_or_else(|error| panic!("response body is not JSON ({error}): {response}"))
 }
 
-fn wait_ready(port: u16) -> bool {
-    let deadline = Instant::now() + Duration::from_secs(45);
+fn wait_ready(port: u16, node: &mut NodeProc) -> bool {
+    // A verified release process evaluates and installs the full Lean-backed
+    // startup authority before opening HTTP. Protected Linux measurements put
+    // that cold path well beyond the 45-second marshal-only developer budget;
+    // use the same bounded 15-minute allowance as the release workflow.
+    let timeout = if require_verified_lean() {
+        Duration::from_secs(900)
+    } else {
+        Duration::from_secs(45)
+    };
+    let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
         if http_get(port, "/status")
             .as_deref()
             .is_some_and(|response| response.contains("200 OK"))
         {
             return true;
+        }
+        if node
+            .child
+            .as_mut()
+            .is_some_and(|child| child.try_wait().ok().flatten().is_some())
+        {
+            return false;
         }
         thread::sleep(Duration::from_millis(250));
     }
@@ -135,7 +171,8 @@ fn launch(
 ) -> NodeProc {
     let log = data_dir.join(log_name);
     let log_file = std::fs::File::create(&log).unwrap();
-    let mut command = Command::new(NODE_BIN);
+    let stdout_log = log_file.try_clone().unwrap();
+    let mut command = node_command();
     command
         .arg("run")
         .arg("--data-dir")
@@ -153,17 +190,17 @@ fn launch(
     if enable_faucet {
         command.arg("--enable-faucet");
     }
-    // Local developer tests may use a marshal-only artifact. The protected
-    // release workflow sets CASTALIA_TEST_REQUIRE_LEAN=1, in which case the
-    // subprocess must boot with the verified producer and no escape hatch.
-    if std::env::var("CASTALIA_TEST_REQUIRE_LEAN").as_deref() != Ok("1") {
-        command
-            .env("DREGG_LEAN_PRODUCER", "0")
-            .env("DREGG_ALLOW_UNVERIFIED_CONSENSUS", "1");
-    }
+    // Preserve startup progress in the protected log. Local developer runs
+    // stay quieter; their explicit bypasses were already applied by
+    // `node_command`, never here on the protected path.
+    let rust_log = if require_verified_lean() {
+        "dregg_node=info"
+    } else {
+        "warn"
+    };
     let child = command
-        .env("RUST_LOG", "warn")
-        .stdout(Stdio::null())
+        .env("RUST_LOG", rust_log)
+        .stdout(Stdio::from(stdout_log))
         .stderr(Stdio::from(log_file))
         .spawn()
         .expect("spawn dregg-node process");
@@ -463,7 +500,7 @@ fn permissionless_v2_join_is_idempotent_and_survives_production_solo_restart() {
     let temp = tempfile::tempdir().unwrap();
     let node_dir = temp.path().join("node");
     assert!(
-        Command::new(NODE_BIN)
+        node_command()
             .args(["init", "--data-dir"])
             .arg(&node_dir)
             .arg("--solo-genesis")
@@ -483,9 +520,13 @@ fn permissionless_v2_join_is_idempotent_and_survives_production_solo_restart() {
     let http = free_port();
     let gossip = free_port();
 
-    let first = launch(&node_dir, http, gossip, "v2-first-boot.log", false);
-    assert!(wait_ready(http), "first boot failed: {}", first.log_text());
-    if std::env::var("CASTALIA_TEST_REQUIRE_LEAN").as_deref() == Ok("1") {
+    let mut first = launch(&node_dir, http, gossip, "v2-first-boot.log", false);
+    assert!(
+        wait_ready(http, &mut first),
+        "first boot failed: {}",
+        first.log_text()
+    );
+    if require_verified_lean() {
         let status = response_json(&http_get(http, "/status").expect("status response"));
         assert_eq!(status["state_producer"], "lean");
         assert_eq!(status["lean_producer"], true);
@@ -537,8 +578,12 @@ fn permissionless_v2_join_is_idempotent_and_survives_production_solo_restart() {
 
     first.stop();
     assert!(node_dir.join("dregg.redb").is_file());
-    let second = launch(&node_dir, http, gossip, "v2-second-boot.log", false);
-    assert!(wait_ready(http), "restart failed: {}", second.log_text());
+    let mut second = launch(&node_dir, http, gossip, "v2-second-boot.log", false);
+    assert!(
+        wait_ready(http, &mut second),
+        "restart failed: {}",
+        second.log_text()
+    );
     assert!(cell_detail(http, membership_id).is_some());
     let (post_restart_wire, post_restart) = join_membership(http, &join_body);
     assert!(
@@ -560,7 +605,7 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
     let genesis_dir = temp.path().join("genesis");
     std::fs::create_dir_all(&genesis_dir).unwrap();
     assert!(
-        Command::new(NODE_BIN)
+        node_command()
             .args(["genesis", "--validators", "1", "--output"])
             .arg(&genesis_dir)
             .status()
@@ -591,8 +636,12 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
 
     let http = free_port();
     let gossip = free_port();
-    let first = launch(&node_dir, http, gossip, "first-boot.log", true);
-    assert!(wait_ready(http), "first boot failed: {}", first.log_text());
+    let mut first = launch(&node_dir, http, gossip, "first-boot.log", true);
+    assert!(
+        wait_ready(http, &mut first),
+        "first boot failed: {}",
+        first.log_text()
+    );
     let bearer = unlock(http);
 
     let actor = clerk.cell_id("default");
@@ -739,9 +788,9 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
     let first_boot_log = first.log_text();
     first.stop();
     let cells_before_restart = durable_cell_diagnostics(&node_dir);
-    let second = launch(&node_dir, http, gossip, "second-boot.log", true);
+    let mut second = launch(&node_dir, http, gossip, "second-boot.log", true);
     assert!(
-        wait_ready(http),
+        wait_ready(http, &mut second),
         "restart failed: first_boot_log={first_boot_log}; second_boot_log={}",
         second.log_text()
     );
@@ -763,9 +812,9 @@ fn castalia_registration_survives_real_node_restart_and_lifecycle_continues() {
         "exact durable cells drifted across process restart; diagnostics are sorted \
          (cell_id, postcard_byte_length, blake3(postcard(Cell)))"
     );
-    let third = launch(&node_dir, http, gossip, "third-boot.log", true);
+    let mut third = launch(&node_dir, http, gossip, "third-boot.log", true);
     assert!(
-        wait_ready(http),
+        wait_ready(http, &mut third),
         "lifecycle-continuation boot failed: {}",
         third.log_text()
     );
