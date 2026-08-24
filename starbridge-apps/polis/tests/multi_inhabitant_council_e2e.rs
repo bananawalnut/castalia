@@ -117,11 +117,24 @@ fn join(into: &AgentRuntime, name: &'static str, balance: i64) -> Inhabitant {
         name,
         into.ledger().clone(),
     );
+    // `token_id` is the cell's name salt, not its currency. Every inhabitant
+    // needs a distinct salt/CellId, but this is one shared economic world, so
+    // the joined cell must explicitly inherit the existing runtime's asset.
+    // Otherwise the exit proof below attempts a cross-asset Transfer and the
+    // kernel correctly rejects it instead of proving anything about exit.
+    let shared_asset = into
+        .ledger()
+        .lock()
+        .unwrap()
+        .get(&into.cell_id())
+        .expect("existing inhabitant cell")
+        .asset();
     let cell = Cell::with_balance(
         agent_pubkey(&rt),
         *blake3::hash(name.as_bytes()).as_bytes(),
         balance,
-    );
+    )
+    .in_asset(shared_asset);
     assert_eq!(
         cell.id(),
         rt.cell_id(),
