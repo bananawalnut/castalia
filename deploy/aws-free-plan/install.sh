@@ -143,30 +143,10 @@ if [[ "$START_OK" -eq 1 ]]; then
   # Full-byte verified PQ initialization is deliberately expensive. The
   # protected release lane measures first readiness in minutes, not seconds,
   # so production installation must use the same bounded 15-minute budget.
-  for attempt in $(seq 1 900); do
-    if STATUS="$(curl -fsS "https://${DREGG_HOSTNAME}/status" 2>/dev/null)" \
-      && jq -e '
-        .federation_mode == "solo" and
-        .state_producer == "lean" and
-        .lean_producer == true and
-        .healthy == true and
-        .consensus_live == true
-      ' <<<"$STATUS" >/dev/null; then
-      READY=1
-      break
-    fi
-    if ! systemctl is-active --quiet dregg-solo.service; then
-      systemctl --no-pager --full status dregg-solo.service || true
-      journalctl --no-pager -u dregg-solo.service -n 80 || true
-      echo "verified Dregg service exited before readiness" >&2
-      break
-    fi
-    if (( attempt % 30 == 0 )); then
-      echo "waiting for verified node readiness (${attempt}s / 900s)"
-      journalctl --no-pager -u dregg-solo.service -n 20 || true
-    fi
-    sleep 1
-  done
+  if "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    "https://${DREGG_HOSTNAME}/status" 900 >/dev/null; then
+    READY=1
+  fi
 fi
 if [[ "$READY" -eq 1 ]] && "$SCRIPT_DIR/preflight.sh" "$DREGG_HOSTNAME"; then
   echo "Castalia Dregg release $EXPECTED_SHA is live at https://${DREGG_HOSTNAME}"
@@ -178,6 +158,11 @@ if [[ -n "$PREVIOUS_TARGET" && -x "$PREVIOUS_TARGET" ]]; then
   ln -sfn "$PREVIOUS_TARGET" /opt/dregg/bin/dregg-node.previous
   mv -Tf /opt/dregg/bin/dregg-node.previous /opt/dregg/bin/dregg-node
   systemctl restart dregg-solo.service
-  echo "rolled back to $PREVIOUS_TARGET" >&2
+  if "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    http://127.0.0.1:8420/status 900 >/dev/null; then
+    echo "rolled back to healthy verified release $PREVIOUS_TARGET" >&2
+  else
+    echo "rollback release also failed verified readiness: $PREVIOUS_TARGET" >&2
+  fi
 fi
 exit 1

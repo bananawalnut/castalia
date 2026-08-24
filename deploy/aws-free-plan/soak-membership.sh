@@ -14,6 +14,7 @@ DREGG_HOSTNAME="$1"
 JOIN_REQUEST="$2"
 DURATION_SECONDS="${3:-1800}"
 EXPECT_FIRST_CREATED="${CASTALIA_SOAK_EXPECT_FIRST_CREATED:-either}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! "$DREGG_HOSTNAME" =~ ^[A-Za-z0-9.-]+$ ]]; then
   echo "invalid public hostname: $DREGG_HOSTNAME" >&2
@@ -137,35 +138,7 @@ while (( $(date +%s) < DEADLINE )); do
   NOW="$(date +%s)"
   if (( RESTARTED == 0 && NOW >= RESTART_AT )); then
     systemctl restart dregg-solo.service
-    RESTART_READY=0
-    for attempt in $(seq 1 900); do
-      if STATUS="$(curl --fail --silent --show-error "${API_ROOT}/status" 2>/dev/null)" \
-        && jq -e '
-          .federation_mode == "solo" and
-          .state_producer == "lean" and
-          .lean_producer == true and
-          .healthy == true and
-          .consensus_live == true
-        ' <<<"$STATUS" >/dev/null; then
-        RESTART_READY=1
-        break
-      fi
-      if ! systemctl is-active --quiet dregg-solo.service; then
-        systemctl --no-pager --full status dregg-solo.service || true
-        journalctl --no-pager -u dregg-solo.service -n 80 || true
-        echo "verified Dregg service exited during the soak restart" >&2
-        exit 1
-      fi
-      if (( attempt % 30 == 0 )); then
-        echo "waiting for verified soak-restart readiness (${attempt}s / 900s)"
-        journalctl --no-pager -u dregg-solo.service -n 20 || true
-      fi
-      sleep 1
-    done
-    if [[ "$RESTART_READY" -ne 1 ]]; then
-      echo "verified Dregg service did not become ready within 900 seconds after restart" >&2
-      exit 1
-    fi
+    "$SCRIPT_DIR/wait-for-verified-node.sh" "${API_ROOT}/status" 900 >/dev/null
     RESTARTED=1
   fi
 
@@ -202,7 +175,7 @@ jq -e \
     .state == "active"
   ' "$WORK_DIR/final-retry.json" >/dev/null
 assert_cell "$WORK_DIR/cell-after-restart.json"
-"$(dirname -- "$0")/preflight.sh" "$DREGG_HOSTNAME" >/dev/null
+"$SCRIPT_DIR/preflight.sh" "$DREGG_HOSTNAME" >/dev/null
 
 COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -n \

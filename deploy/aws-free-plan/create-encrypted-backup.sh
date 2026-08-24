@@ -14,6 +14,7 @@ WORK_DIR="$(mktemp -d /tmp/castalia-dregg-backup.XXXXXX)"
 ARCHIVE="$WORK_DIR/castalia-dregg-${STAMP}.tar.gz"
 OUTPUT_PATH="$OUTPUT_DIR/castalia-dregg-${STAMP}.tar.gz.age"
 NODE_WAS_ACTIVE=0
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 cleanup() {
   rm -rf -- "$WORK_DIR"
@@ -30,6 +31,8 @@ fi
 tar --acls --xattrs -C /opt -czf "$ARCHIVE" dregg-data
 if [[ "$NODE_WAS_ACTIVE" -eq 1 ]]; then
   systemctl start dregg-solo.service
+  "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    http://127.0.0.1:8420/status 900 >/dev/null
 fi
 
 install -d -m 0700 -o "$CALLING_USER" -g "$CALLING_USER" "$OUTPUT_DIR"

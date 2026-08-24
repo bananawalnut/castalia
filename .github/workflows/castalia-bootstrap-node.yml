@@ -20,6 +20,9 @@ on:
       - "scripts/emit_descriptors.py"
       - "scripts/cargo_metadata_to_spdx.py"
       - "scripts/write_bootstrap_provenance.py"
+      - "scripts/tests/test_deploy_wait_verified_node.py"
+      - "deploy/aws-free-plan/**"
+      - "deploy/oci/**"
   push:
     branches: [main]
     tags: ["castalia-bootstrap-v*"]
@@ -38,6 +41,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  deployment-package:
+    name: Validate bootstrap deployment package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Validate lifecycle scripts and verified-readiness behavior
+        run: |
+          set -euo pipefail
+          bash -n deploy/aws-free-plan/*.sh deploy/oci/*.sh
+          shellcheck deploy/aws-free-plan/*.sh deploy/oci/*.sh
+          python3 -m unittest scripts.tests.test_deploy_wait_verified_node
+
   verified-kernel-base:
     name: Verified Lean kernel base checkpoint
     runs-on: ubuntu-24.04
@@ -416,7 +435,7 @@ jobs:
 
   verified-artifact:
     name: Verified Lean Linux x86-64 artifact
-    needs: verified-kernel
+    needs: [verified-kernel, deployment-package]
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:

@@ -6,6 +6,7 @@ if [[ "${EUID}" -ne 0 || "$#" -ne 1 ]]; then
   exit 2
 fi
 ARCHIVE="$1"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 if [[ ! -f "$ARCHIVE" ]]; then
   echo "backup archive not found: $ARCHIVE" >&2
   exit 2
@@ -62,16 +63,28 @@ chmod 0600 \
   /opt/dregg-data/node.key \
   /opt/dregg-data/issuer-well.key \
   /opt/dregg-data/fee-well.key
-if systemctl start dregg-solo.service; then
+if systemctl start dregg-solo.service \
+  && "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    http://127.0.0.1:8420/status 900 >/dev/null; then
   echo "restored backup; previous data remains at ${PREVIOUS_DATA:-none}"
   exit 0
 fi
 
+systemctl stop dregg-solo.service
 FAILED_DATA="/opt/dregg-data.failed-restore-${STAMP}"
 mv /opt/dregg-data "$FAILED_DATA"
+ROLLBACK_RESULT="no previous data was available"
 if [[ -n "$PREVIOUS_DATA" && -d "$PREVIOUS_DATA" ]]; then
   mv "$PREVIOUS_DATA" /opt/dregg-data
   systemctl start dregg-solo.service
+  if "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    http://127.0.0.1:8420/status 900 >/dev/null; then
+    echo "previous verified data was reactivated after restore failure" >&2
+    ROLLBACK_RESULT="previous verified data was reactivated"
+  else
+    echo "previous data also failed verified readiness after restore rollback" >&2
+    ROLLBACK_RESULT="previous data also failed verified readiness"
+  fi
 fi
-echo "restored data failed to start and was moved to $FAILED_DATA; previous data was reactivated" >&2
+echo "restored data failed verified readiness and was moved to $FAILED_DATA; $ROLLBACK_RESULT" >&2
 exit 1
