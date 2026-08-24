@@ -15,7 +15,7 @@ fi
 WORK_DIR="$(mktemp -d /opt/castalia-restore.XXXXXX)"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 # Invoked by the EXIT trap below.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() { rm -rf -- "$WORK_DIR"; }
 trap cleanup EXIT
 
