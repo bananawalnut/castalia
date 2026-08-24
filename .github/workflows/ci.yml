@@ -745,9 +745,10 @@ jobs:
         name: Test workspace (nextest; debuginfo off; deos-zed + the two ELF-unlinkable cdylibs split out)
         env:
           # Four unrelated rust-lld processes reached ENOSPC together on the
-          # hosted runner. Bound concurrent compiles/links so their peak output
-          # footprint cannot consume the remaining filesystem at once.
-          CARGO_BUILD_JOBS: "2"
+          # hosted runner. Two concurrent links then made ld.lld die with SIGBUS
+          # while linking the large deos-view test graph. Serialize links so the
+          # full suite stays within both the runner's disk and memory-map limits.
+          CARGO_BUILD_JOBS: "1"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
