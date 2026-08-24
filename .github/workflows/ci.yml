@@ -841,20 +841,21 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo test -p deos-zed --no-default-features --features firmament
 
-  # The complete generic Linux suite is deliberately separate from the verified-
-  # Lean lanes. The previous three-shard job armed DREGG_TEST_REQUIRE_LEAN for the
-  # entire workspace: its first shard selected 76 package roots, expanded to 6,224
-  # nextest processes, and was cancelled at GitHub's six-hour wall after only 336
-  # verdicts. That was not a failing suite; it was a CI topology that could not
-  # answer.
+  # The complete Linux suite is fanned out, but it is still a verified-Lean suite.
+  # The previous three-shard job armed DREGG_TEST_REQUIRE_LEAN for the entire
+  # workspace: its first shard selected 76 package roots, expanded to 6,224 nextest
+  # processes, and was cancelled at GitHub's six-hour wall after only 336 verdicts.
+  # That was not a reason to disarm the suite: ordinary package tests include real
+  # admission-oracle and verified-PQ assertions which correctly fail closed without
+  # the archive. Sixteen shards bound the target/test population while each shard
+  # downloads the same content-keyed, provenance-checked seed used by the dedicated
+  # verified lanes.
   #
-  # These jobs still run the exact `full` profile (`all()`), every generic package
-  # exactly once, and the corresponding doctests. They exercise the ordinary
-  # marshal producer intentionally. Verified execution remains fail-closed in the
-  # independent `lean-marshal-gate`, its 53-assertion runtime-probe floor, the PQ
-  # committee lifecycle, and the protected bootstrap workflow's production
-  # issuance/retry/restart smoke with DREGG_REQUIRE_LEAN=1. Keeping those concerns
-  # separate makes both claims observable instead of timing both out together.
+  # These jobs run the exact `full` profile (`all()`), every generic package exactly
+  # once, and the corresponding doctests with DREGG_REQUIRE_LEAN=1. The independent
+  # `lean-marshal-gate`, its 53-assertion runtime-probe floor, the PQ committee
+  # lifecycle, and the protected bootstrap workflow's production
+  # issuance/retry/restart smoke remain separate defense-in-depth gates.
   linux-nextest-shard:
     name: Linux full-suite shard ${{ matrix.label }}/16
     runs-on: ubuntu-latest
@@ -881,11 +882,17 @@ jobs:
           - { shard: 15, label: "16" }
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Generic package shards compile crates whose include_str! inputs are
+          # the staged descriptor registries tracked through Git LFS.
+          lfs: true
 
       - name: Install native test prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev
+          sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev zstd
+          curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
 
       - name: Reclaim runner disk
         run: |
@@ -913,6 +920,15 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
+      - name: Fetch and require the pinned verified Lean seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-lean-seed.sh
+          test -s dregg-lean-ffi/libdregg_lean.a
+          test -s dregg-lean-ffi/libdregg_lean.a.provenance
+
       - name: Materialize the exact package shard
         env:
           SHARD_INDEX: ${{ matrix.shard }}
@@ -933,10 +949,8 @@ jobs:
           CARGO_BUILD_JOBS: "1"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
-          # The verified producer is covered by the named fail-closed lanes in
-          # the comment above. This is an explicit mode choice, never a missing
-          # archive silently shrinking an allegedly armed run.
-          DREGG_TEST_REQUIRE_LEAN: "0"
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
         run: |
           set -euo pipefail
           mapfile -t package_names < "$RUNNER_TEMP/nextest-packages.txt"
