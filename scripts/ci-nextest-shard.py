@@ -4,8 +4,9 @@
 The hosted Linux runner cannot retain linked test artifacts for all workspace
 packages at once: rust-lld eventually faults when its mmap-backed output can no
 longer grow.  This helper partitions *workspace roots*, not tests, so Cargo can
-build and execute one bounded target tree at a time.  The caller removes the
-target tree between shards.
+build and execute one bounded target tree per shard.  CI gives every shard an
+isolated hosted runner; a sequential local caller can instead remove the target
+tree between shards.
 
 The three packages in ``SPLIT_TARGET_PACKAGES`` are deliberately covered by
 the adjacent CI recovery legs instead.  They are the same explicit exclusions

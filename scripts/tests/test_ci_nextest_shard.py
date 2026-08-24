@@ -35,6 +35,15 @@ class CiNextestShardTests(unittest.TestCase):
         self.assertEqual(len(flattened), len(set(flattened)))
         self.assertTrue(shards.SPLIT_TARGET_PACKAGES.isdisjoint(flattened))
 
+    def test_sixteen_way_ci_partition_is_exact(self):
+        names = [f"package-{index:03}" for index in range(227)]
+        partitions = [shards.package_shard(names, index, 16) for index in range(16)]
+        flattened = [name for partition in partitions for name in partition]
+
+        self.assertEqual(sorted(flattened), names)
+        self.assertEqual(len(flattened), len(set(flattened)))
+        self.assertEqual(sorted(map(len, partitions)), [14] * 13 + [15] * 3)
+
     def test_config_only_names_tight_timeout_packages_in_scope(self):
         config = shards.render_nextest_config(["alpha", "dregg-zkoracle-live"])
 
