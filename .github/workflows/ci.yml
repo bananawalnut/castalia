@@ -104,7 +104,13 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The workspace/all-targets check plus its explicitly recovered feature
+    # surfaces already consumes ~24 minutes on a cold hosted runner. The
+    # verified-PQ Polis leg then builds for another ~15 minutes before running
+    # its seam tests. A 45-minute job timeout killed that test process and
+    # skipped the two feature legs below without producing a verdict. Keep a
+    # hard bound, but give the complete documented surface enough room to run.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,7 +170,12 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.elan/bin:$PATH"
           bash scripts/fetch-lean-seed.sh
-      - run: cargo test --locked -p starbridge-polis --features deos
+      # The DEOS seam tests share the process-global verified-PQ authority.
+      # Running several libtest workers against it concurrently stalled four
+      # named tests until the old job timeout cancelled the lane. Serial
+      # libtest execution preserves every target and assertion while making
+      # ownership of the verified core deterministic and the verdict bounded.
+      - run: cargo test --locked -p starbridge-polis --features deos -- --test-threads=1
         env:
           DREGG_TEST_REQUIRE_LEAN: "1"
       # dregg-doc has NO `default` key in [features], so — exactly like dregg-chain
