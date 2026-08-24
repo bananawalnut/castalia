@@ -7,12 +7,15 @@ RIGHT diagnosis.
 """
 import os, shutil, subprocess, sys, tempfile
 
-REPO = "/Users/ember/dev/breadstuffs"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = [
     "scripts/check-p3-rev.sh",
     "scripts/p3-rev.env",
     "Cargo.toml",
     "Cargo.lock",
+    "wasm/Cargo.lock",
+    "forge-ci-runner/Cargo.lock",
+    "forge-ci-runner/Cargo.toml",
     ".github/workflows/extension.yml",
     ".github/workflows/publish-sdk-ts.yml",
     ".github/workflows/pages-wasm.yml",
@@ -128,6 +131,18 @@ arm("R11 feature-surface.yml shard clone REV= drifts",
 arm("R12 ci.yml loses its REV= pin entirely (unguarded again)",
     lambda d: edit(d, ".github/workflows/ci.yml", lambda s: s.replace("REV=" + NEW, "REV=$(git rev-parse HEAD)")),
     must_contain="has no `REV=<hex>` sibling-clone pin")
+
+arm("R13 wasm lock resolves a different fork revision",
+    lambda d: edit(d, "wasm/Cargo.lock",
+                   lambda s: s.replace(f"plonky3-recursion?rev=fc3c6df#{NEW}",
+                                       f"plonky3-recursion?rev=fc3c6df#{OLD}")),
+    must_contain="wasm/Cargo.lock must resolve exactly")
+
+arm("R14 a sibling path patch is reintroduced",
+    lambda d: edit(d, "forge-ci-runner/Cargo.toml",
+                   lambda s: s + '\n[patch."https://github.com/emberian/plonky3-recursion"]\n'
+                                 'p3-circuit = { path = "../../plonky3-recursion/circuit" }\n'),
+    must_contain="contains a sibling path patch")
 
 # ⚑ THE ANTI-FALSE-POSITIVE ANCHOR. ci.yml also pins MATHLIB_REV at a 40-hex sha. A blind
 # 40-hex grep — the shape every other mirror uses — would report it as fork drift. This arm

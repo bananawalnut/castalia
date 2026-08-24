@@ -23,16 +23,9 @@
 # materialize.rs before it can join the root workspace.
 [workspace]
 
-# THE FORK SEAM — replicated from `sel4/dregg-firmament/Cargo.toml`. Because this
-# crate is its own workspace root, the repo-root `[patch]` does NOT apply, so the
-# transitive `dregg-circuit`/`dregg-hints` (via `dregg-doc` → `dregg-turn`) must be
-# pointed at the SAME local forks the root + firmament use. Relative depth here is
-# `../../` (forge-ci-runner → breadstuffs → dev). Keep in sync with firmament.
-[patch."https://github.com/emberian/plonky3-recursion"]
-p3-recursion = { path = "../../plonky3-recursion/recursion" }
-p3-circuit = { path = "../../plonky3-recursion/circuit" }
-p3-circuit-prover = { path = "../../plonky3-recursion/circuit-prover" }
-p3-poseidon2-circuit-air = { path = "../../plonky3-recursion/poseidon2-circuit-air" }
+# The transitive dregg crates resolve Plonky3 recursion from the root workspace's
+# immutable Git revision. This standalone workspace intentionally carries no
+# sibling-checkout patch.
 
 [patch.crates-io]
 ark-serialize = { git = "https://github.com/emberian/algebra", branch = "serde-integration" }

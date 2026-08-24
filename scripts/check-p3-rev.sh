@@ -217,8 +217,11 @@ elif [[ ! -f "$lock" ]]; then
 else
   # (1) What cargo ACTUALLY resolved. Must be unique: two different resolved shas for the
   # same fork would mean the workspace compiles two verifiers at once.
-  mapfile -t lock_revs < <(grep -oE 'plonky3-recursion\?rev=[0-9a-f]{7,40}#[0-9a-f]{40}' "$lock" \
-                           | sed 's/.*#//' | sort -u)
+  lock_revs=()
+  while IFS= read -r lock_rev; do
+    [[ -z "$lock_rev" ]] || lock_revs+=("$lock_rev")
+  done < <(grep -oE 'plonky3-recursion\?rev=[0-9a-f]{7,40}#[0-9a-f]{40}' "$lock" \
+           | sed 's/.*#//' | sort -u)
   if [[ "${#lock_revs[@]}" -eq 0 ]]; then
     echo "FAIL: Cargo.lock records NO plonky3-recursion source — the resolver the gate" >&2
     echo "      anchors on has vanished (dep renamed/removed, or the lock is stale)." >&2
@@ -273,6 +276,45 @@ else
     fi
   fi
 fi
+
+# The excluded wasm and Forge workspaces used to replace this Git source with a
+# sibling path checkout. Their committed locks are now independent evidence that
+# a clean clone resolves the same immutable verifier revision as the root graph.
+for rel in wasm/Cargo.lock forge-ci-runner/Cargo.lock; do
+  lock="$repo_root/$rel"
+  if [[ ! -f "$lock" ]]; then
+    echo "FAIL: standalone lock missing: $rel" >&2
+    status=1
+    continue
+  fi
+  lock_revs=()
+  while IFS= read -r lock_rev; do
+    [[ -z "$lock_rev" ]] || lock_revs+=("$lock_rev")
+  done < <(grep -oE 'plonky3-recursion\?rev=[0-9a-f]{7,40}#[0-9a-f]{40}' "$lock" \
+           | sed 's/.*#//' | sort -u)
+  if [[ "${#lock_revs[@]}" -ne 1 || "${lock_revs[0]:-}" != "$P3_REV" ]]; then
+    echo "FAIL: $rel must resolve exactly P3_REV=$P3_REV; found:" >&2
+    if [[ "${#lock_revs[@]}" -eq 0 ]]; then
+      echo "        <none>" >&2
+    else
+      printf '        %s\n' "${lock_revs[@]}" >&2
+    fi
+    status=1
+  fi
+done
+
+# No manifest may reintroduce the old local-fork escape. The Git source above is
+# the only allowed source for this fork, including in excluded workspaces.
+while IFS= read -r manifest; do
+  [[ -z "$manifest" ]] && continue
+  if grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*plonky3-recursion' "$manifest" >/dev/null; then
+    echo "FAIL: ${manifest#"$repo_root/"} contains a sibling path patch for plonky3-recursion" >&2
+    grep -nE 'path[[:space:]]*=[[:space:]]*"[^"]*plonky3-recursion' "$manifest" >&2
+    status=1
+  fi
+done < <(find "$repo_root" \
+  \( -name target -o -name .git -o -name .lake -o -name node_modules \) -prune -o \
+  -name Cargo.toml -print)
 
 # --- ENFORCED: the VK-hash constant. This is the MOST load-bearing consumer, not
 # the least: RECURSION_P3_REV is folded into compute_recursive_vk_hash(), the value
