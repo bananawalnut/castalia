@@ -2315,6 +2315,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+          # The taxonomy tail classifies this candidate against its real base.
+          # A depth-one PR checkout contains only the synthetic merge commit and
+          # cannot resolve github.event.pull_request.base.sha.
+          fetch-depth: 2
 
       # ══════════════════════════════════════════════════════════════════════════════════════
       # ⚑ THE TWO STATIC GATES RUN FIRST, AND THEY NEED NO LEAN (2026-08-08).
@@ -2427,7 +2431,17 @@ jobs:
       # taken over) — so a green from either absence would be a lie in a different direction.
       - name: Descriptor drift gate
         if: ${{ !cancelled() && steps.mathlib.outcome == 'success' && steps.rustfmt.outcome == 'success' }}
-        run: bash scripts/check-descriptor-drift.sh
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="${PR_BASE_SHA:-${PUSH_BASE_SHA:-}}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          DRIFT_TAXONOMY_BASE_REF="$BASE_SHA" bash scripts/check-descriptor-drift.sh
 
   # ══════════════════════════════════════════════════════════════════════════════════════════
   # ⚑ THE ABSENCE OF A VERDICT IS NOT A PASS (2026-08-08).
