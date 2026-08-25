@@ -532,6 +532,36 @@ run_preamble()  { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-fri
 run_consume()   { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-consume-differential ); }
 run_consume_rows() { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-consume-rows ); }
 
+# The tier-0 readers consume two current-head instances under `.fullchain/`, which is
+# intentionally gitignored. A clean checkout therefore has to derive them before the first
+# reader runs; relying on a developer's previous full-chain run made this gate impossible to
+# pass in CI. These are p3-authenticated inputs, not cached verdicts: each dumper verifies the
+# committed root proof and emits the exact object the TypeScript twins inspect.
+hydrate_real_root_instances() {
+  local work="$APP/.fullchain"
+  local air="$work/real-root-air.json"
+  local fri="$work/real-root-fri.json"
+  [ -f "$air" ] && [ -f "$fri" ] && return 0
+
+  mkdir -p "$work"
+  ( cd "$ROOT" && cargo build --locked -p dregg-circuit-prove --release \
+      --bin root_air_instance --bin root_fri_instance ) \
+    || die "the current-head root-instance dumpers did not build"
+
+  if [ ! -f "$air" ]; then
+    "$ROOT/target/release/root_air_instance" > "$air.tmp" \
+      || die "the AIR root-instance dumper failed"
+    mv "$air.tmp" "$air"
+  fi
+  if [ ! -f "$fri" ]; then
+    "$ROOT/target/release/root_fri_instance" "$fri.tmp" \
+      || die "the FRI root-instance dumper failed"
+    mv "$fri.tmp" "$fri"
+  fi
+  [ -s "$air" ] && [ -s "$fri" ] \
+    || die "the current-head root-instance hydration produced an empty artifact"
+}
+
 # ── the headline run ──────────────────────────────────────────────────────────
 if [ "$MODE" = "headline" ]; then
   [ -d "$APP" ] || die "$APP does not exist"
@@ -613,6 +643,8 @@ if [ "$MODE" = "headline" ]; then
   [ "$n_pin" -ge 20 ] || die "only $n_pin recorded figures pinned; expected >= 20 (the reader is broken)"
   echo "  ✓ all $n_pin recorded figures are as recorded, and every RECORDED_* in the tree is pinned"
   n_t0=$((n_t0+1))
+
+  hydrate_real_root_instances
 
   echo
   echo "── tier 0: the out-of-circuit differentials ───────────────────────────"
