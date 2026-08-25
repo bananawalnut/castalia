@@ -440,6 +440,34 @@ fn skip_ws(b: &[u8], mut i: usize) -> usize {
     i
 }
 
+/// Does the source immediately after `from` finish a match-arm pattern?
+fn is_match_arm_tail(b: &[u8], from: usize) -> bool {
+    let n = b.len();
+    let j = skip_ws(b, from);
+    if j + 1 < n && b[j] == b'=' && b[j + 1] == b'>' {
+        return true;
+    }
+    if j < n && b[j] == b'|' && !(j + 1 < n && b[j + 1] == b'|') {
+        return true;
+    }
+    // `Variant { .. } if guard => ..`
+    if j + 3 <= n && &b[j..j + 3] == b"if " {
+        let end = (j + 300).min(n);
+        let seg = &b[j..end];
+        if let Some(p) = find(seg, 0, b"=>") {
+            if !seg[..p].contains(&b';') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_binding_tail(b: &[u8], from: usize) -> bool {
+    let j = skip_ws(b, from);
+    j < b.len() && b[j] == b'=' && !(j + 1 < b.len() && matches!(b[j + 1], b'=' | b'>'))
+}
+
 /// `name_end` points just past the `Type::Variant` path. Decide what it is.
 fn classify_site(b: &[u8], path_start: usize, name_end: usize) -> Site {
     let n = b.len();
@@ -464,35 +492,53 @@ fn classify_site(b: &[u8], path_start: usize, name_end: usize) -> Site {
     } else {
         j
     };
-    // Patterns nest inside other patterns: `Some(LeanExpr::Const(v)) => ..`. Step out of
-    // the enclosing pattern's parens/brackets before looking for the arm arrow. `}` is NOT
-    // skipped — that would step out of a block and read the NEXT match arm's arrow.
-    let mut j = skip_ws(b, after);
-    while j < n && matches!(b[j], b')' | b']') {
-        j = skip_ws(b, j + 1);
-    }
-    if j + 1 < n && b[j] == b'=' && b[j + 1] == b'>' {
-        return Site::Pattern; // match arm
-    }
-    if j < n && b[j] == b'|' && !(j + 1 < n && b[j + 1] == b'|') {
-        return Site::Pattern; // or-pattern
-    }
-    // `Variant { .. } if guard => ..`
-    if j + 3 <= n && &b[j..j + 3] == b"if " {
-        let end = (j + 300).min(n);
-        let seg = &b[j..end];
-        if let Some(p) = find(seg, 0, b"=>") {
-            if !seg[..p].contains(&b';') {
-                return Site::Pattern;
-            }
-        }
-    }
-    // Binding-position patterns: look back to the start of the statement.
+    // Patterns nest inside other patterns: `Some(LeanExpr::Const(v)) => ..`. They also nest
+    // inside tuple patterns, where a comma and a sibling pattern sit between this constructor and
+    // the arm arrow:
+    // `(LeanExpr::Var(c), LeanExpr::Const(k)) if guard => ..`.
+    //
+    // The old implementation stepped over closing parens that happened to follow the site, but it
+    // stopped at the tuple comma. That made real interpreter/destructuring arms look like NEW
+    // Rust-authored algebra. Walk the delimiter ancestors that were already open at `path_start`
+    // and test the tail after each one. A constructor in a match SCRUTINEE remains authored: after
+    // its enclosing tuple comes the match body's `{`, not `=>`.
+    // Binding-position patterns: record this before climbing delimiter ancestors so nested
+    // constructors such as `if let Base(PiBinding { .. }) = c` can use the same tail test as the
+    // outer constructor.
     let stmt_start = b[..path_start]
         .iter()
         .rposition(|&c| c == b';' || c == b'{' || c == b'}')
         .map_or(0, |p| p + 1);
     let pre = &b[stmt_start..path_start];
+    let binder = find(pre, 0, b"if let ").is_some()
+        || find(pre, 0, b"while let ").is_some()
+        || find(pre, 0, b"let ").is_some();
+    if is_match_arm_tail(b, after) || (binder && is_binding_tail(b, after)) {
+        return Site::Pattern;
+    }
+    let mut opens = Vec::new();
+    for (i, &c) in b[..path_start].iter().enumerate() {
+        match c {
+            b'(' | b'[' | b'{' => opens.push((i, c)),
+            b')' | b']' | b'}' => {
+                opens.pop();
+            }
+            _ => {}
+        }
+    }
+    for &(open, delimiter) in opens.iter().rev() {
+        // A brace is a surrounding block or match body. The site's own struct-pattern brace was
+        // opened after `path_start` and was already consumed by `after` above.
+        if delimiter == b'{' {
+            continue;
+        }
+        let ancestor_end = matching(b, open);
+        if ancestor_end >= after {
+            if is_match_arm_tail(b, ancestor_end) || (binder && is_binding_tail(b, ancestor_end)) {
+                return Site::Pattern;
+            }
+        }
+    }
     // `matches!(expr, PATTERN)` — only when the site is genuinely INSIDE the macro's
     // parens. A bare "there was a matches! earlier in this statement" test would
     // misclassify `matches!(a, X::Y{..}) && v.contains(&LeanExpr::Var(3))` as lowering.
@@ -508,12 +554,6 @@ fn classify_site(b: &[u8], path_start: usize, name_end: usize) -> Site {
             }
             m = p + 1;
         }
-    }
-    let binder = find(pre, 0, b"if let ").is_some()
-        || find(pre, 0, b"while let ").is_some()
-        || find(pre, 0, b"let ").is_some();
-    if binder && j < n && b[j] == b'=' && !(j + 1 < n && b[j + 1] == b'=') {
-        return Site::Pattern; // `if let X::Y { .. } = expr` / `let X::Y(v) = expr else`
     }
     Site::Construct
 }
@@ -1679,6 +1719,84 @@ mod teeth {
         let c = count_sites(lowering);
         assert_eq!(c.ir_constructed, 0, "a lowering authored nothing: {c:?}");
         assert_eq!(c.ir_lowered, 7, "all seven sites are destructuring: {c:?}");
+    }
+
+    #[test]
+    fn tuple_match_destructuring_is_not_authoring() {
+        let lowering = r#"
+            fn lower(k: &VmConstraint2, ck: &CompiledK) {
+                match (k, ck) {
+                    (VmConstraint2::Base(VmConstraint::Gate(_)), CompiledK::Body(_)) => zero(),
+                    (LeanExpr::Var(c), LeanExpr::Const(k)) if c == k => zero(),
+                    (VmConstraint2::Base(VmConstraint::PiBinding { row, col, pi_index }), _) => zero(),
+                    _ => zero(),
+                }
+            }
+        "#;
+        let c = count_sites(lowering);
+        assert_eq!(
+            c.ir_constructed, 0,
+            "tuple-pattern lowering authored nothing: {c:?}"
+        );
+        assert_eq!(
+            c.ir_lowered, 6,
+            "all six nested sites are destructuring: {c:?}"
+        );
+    }
+
+    #[test]
+    fn tuple_match_scrutinee_construction_is_still_authoring() {
+        let authored = r#"
+            fn inspect(v: LeanExpr) {
+                match (VmConstraint2::Base(VmConstraint::Gate(v)), other) {
+                    _ => zero(),
+                }
+            }
+        "#;
+        let c = count_sites(authored);
+        assert_eq!(
+            c.ir_constructed, 2,
+            "the scrutinee constructs two IR nodes: {c:?}"
+        );
+        assert_eq!(c.ir_lowered, 0, "the scrutinee is not a pattern: {c:?}");
+    }
+
+    #[test]
+    fn nested_binding_destructuring_is_not_authoring() {
+        let lowering = r#"
+            fn lower(c: &VmConstraint2) {
+                if let VmConstraint2::Base(VmConstraint::PiBinding { row, col, pi_index }) = c {
+                    use_pin(row, col, pi_index);
+                }
+                let VmConstraint2::Base(VmConstraint::Gate(body)) = c else { return };
+                use_gate(body);
+            }
+        "#;
+        let c = count_sites(lowering);
+        assert_eq!(
+            c.ir_constructed, 0,
+            "nested bindings authored nothing: {c:?}"
+        );
+        assert_eq!(
+            c.ir_lowered, 4,
+            "all four nested sites are destructuring: {c:?}"
+        );
+
+        let authored = r#"
+            fn build(body: LeanExpr) {
+                let c = VmConstraint2::Base(VmConstraint::Gate(body));
+                use_gate(c);
+            }
+        "#;
+        let c = count_sites(authored);
+        assert_eq!(
+            c.ir_constructed, 2,
+            "a let initializer still constructs two IR nodes: {c:?}"
+        );
+        assert_eq!(
+            c.ir_lowered, 0,
+            "the initializer is not a binding pattern: {c:?}"
+        );
     }
 
     #[test]

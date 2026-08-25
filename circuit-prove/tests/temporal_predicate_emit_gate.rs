@@ -31,8 +31,6 @@
 //! bindings are exactly the audit-`ce1e2def #3` anti-forge surface — no more (the interior
 //! state-root gap is preserved, not laundered).
 
-use std::panic::AssertUnwindSafe;
-
 use dregg_circuit::descriptor_ir2::{
     EffectVmDescriptor2, MemBoundaryWitness, VmConstraint2, WindowExpr, WindowGateSpec,
     parse_vm_descriptor2, prove_vm_descriptor2, verify_vm_descriptor2,
@@ -115,12 +113,16 @@ fn hand_built_desc() -> EffectVmDescriptor2 {
             LeanExpr::Var(THRESHOLD),
         ),
     )));
-    // C2[i]: bit · (bit − 1), i in 0..30.
+    // C2[i]: bit · (bit − 1), i in 0..30, in the canonical Lean normal form
+    // `1 * (bit * bit) + (-1) * bit`.
     for i in 0..NUM_DIFF_BITS {
         let b = DIFF_BITS_START + i;
-        constraints.push(gate(LeanExpr::mul(
-            LeanExpr::Var(b),
-            LeanExpr::add(LeanExpr::Var(b), LeanExpr::Const(-1)),
+        constraints.push(gate(LeanExpr::add(
+            LeanExpr::mul(
+                LeanExpr::Const(1),
+                LeanExpr::mul(LeanExpr::Var(b), LeanExpr::Var(b)),
+            ),
+            LeanExpr::mul(LeanExpr::Const(-1), LeanExpr::Var(b)),
         )));
     }
     // C3: Σ 2^i·bit_i − diff.

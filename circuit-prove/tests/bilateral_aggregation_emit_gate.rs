@@ -28,8 +28,6 @@
 //! are DELETED (both sides were prover-filled — they pinned nothing), and 13 identity-carry gates
 //! now force every row onto the published turn identity (`compact_identity_every_row`).
 
-use std::panic::AssertUnwindSafe;
-
 use dregg_circuit::descriptor_ir2::{
     EffectVmDescriptor2, MemBoundaryWitness, VmConstraint2, WindowExpr, WindowGateSpec,
     parse_vm_descriptor2, prove_vm_descriptor2, verify_vm_descriptor2,
@@ -84,11 +82,15 @@ fn pi_bind(row: VmRow, col: usize, pi_index: usize) -> VmConstraint2 {
     VmConstraint2::Base(VmConstraint::PiBinding { row, col, pi_index })
 }
 
-/// `boolGate c` — `gate (var c * (var c - 1))`.
+/// `boolGate c` after the canonical Lean normalizer expands `x * (x - 1)` into
+/// `1 * (x * x) + (-1) * x`.
 fn bool_gate(c: usize) -> VmConstraint2 {
-    VmConstraint2::Base(VmConstraint::Gate(LeanExpr::mul(
-        LeanExpr::Var(c),
-        LeanExpr::add(LeanExpr::Var(c), LeanExpr::Const(-1)),
+    VmConstraint2::Base(VmConstraint::Gate(LeanExpr::add(
+        LeanExpr::mul(
+            LeanExpr::Const(1),
+            LeanExpr::mul(LeanExpr::Var(c), LeanExpr::Var(c)),
+        ),
+        LeanExpr::mul(LeanExpr::Const(-1), LeanExpr::Var(c)),
     )))
 }
 

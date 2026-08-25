@@ -48,7 +48,8 @@ use dregg_circuit::descriptor_ir2::{
 use dregg_circuit::field::BabyBear;
 use dregg_circuit::membership_descriptor_4ary::{
     DIGEST_W, Digest8, MEMBERSHIP_4ARY_PI_COUNT, PI_LEAF, PI_ROOT,
-    membership_descriptor_of_depth_4ary, membership_witness_4ary,
+    membership_4ary_dispatch_name, membership_descriptor_of_depth_4ary,
+    membership_witness_4ary,
 };
 use dregg_multiway_tug::hidden_hand::{HandTree, card_leaf};
 
@@ -128,7 +129,10 @@ pub(crate) fn prove_tug_play_core(hand_json: &str, card_id: u64) -> Result<TugPl
     let proof_postcard = postcard::to_allocvec(&proof).map_err(|e| e.to_string())?;
     let proof_size_bytes = proof_postcard.len();
     let envelope = Ir2ProofEnvelope {
-        descriptor_name: desc.name.clone(),
+        // The Lean artifact's display name is deliberately not its wire-routing
+        // identity. Emit the shared dispatch key or every consumer fails closed
+        // on an otherwise honest proof.
+        descriptor_name: membership_4ary_dispatch_name(depth),
         public_inputs: pis.iter().map(|f| f.as_u32()).collect(),
         proof_postcard,
     };
