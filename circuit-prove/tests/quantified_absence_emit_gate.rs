@@ -2,7 +2,7 @@
 //!
 //! The descriptor is AUTHORED in Lean (`metatheory/Dregg2/Circuit/Emit/QuantifiedAbsenceEmit.lean`,
 //! `quantifiedAbsenceDesc`) and its wire string is byte-pinned there (`emitVmJson2` `#guard`). This
-//! test READS those EXACT bytes ([`GOLDEN_JSON`]) and:
+//! test READS those EXACT bytes ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust builder — a byte drift on either side
@@ -47,7 +47,8 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/quantified-absence.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/quantified-absence.json");
 
 // --- Trace column layout (must match `QuantifiedAbsenceEmit.lean` §1). ---
 const E0: usize = 0; // ELEMENT   0..3
@@ -256,7 +257,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pv: &[BabyBear])
 /// semantics), with the expected shape.
 #[test]
 fn quantified_absence_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -283,7 +285,7 @@ fn quantified_absence_emit_decodes_to_hand_built() {
 /// descriptor, and the proof re-verifies against the public `(Acc_all, α)`.
 #[test]
 fn honest_witness_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let trace = trace_of(&row);
@@ -299,7 +301,7 @@ fn honest_witness_proves_and_verifies() {
 /// this bites C1 alone.
 #[test]
 fn tampered_elem_refuses_on_diff_gate() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let pv = pis(acc_all, alpha);
@@ -320,7 +322,7 @@ fn tampered_elem_refuses_on_diff_gate() {
 /// bites C2 alone.
 #[test]
 fn tampered_quotient_refuses_on_prod_gate() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let pv = pis(acc_all, alpha);
@@ -340,7 +342,7 @@ fn tampered_quotient_refuses_on_prod_gate() {
 /// not the naive one.
 #[test]
 fn forged_product_without_reduction_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let diff = alpha.sub(elem);
     let prod_real = w.mul(diff);
@@ -388,7 +390,7 @@ fn forged_product_without_reduction_refuses() {
 /// bites C3 alone.
 #[test]
 fn tampered_remainder_refuses_on_sum_gate() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let pv = pis(acc_all, alpha);
@@ -405,7 +407,7 @@ fn tampered_remainder_refuses_on_sum_gate() {
 /// `SUM == Acc_all` is violated → UNSAT. The public accumulator is bound to the witness sum.
 #[test]
 fn forged_acc_all_refuses_on_boundary() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let trace = trace_of(&row);
@@ -422,7 +424,7 @@ fn forged_acc_all_refuses_on_boundary() {
 /// `ALPHA == α` is violated → UNSAT. The challenge C1 reads is bound to the public α.
 #[test]
 fn forged_alpha_refuses_on_alpha_pin() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let trace = trace_of(&row);

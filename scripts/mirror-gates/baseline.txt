@@ -16,18 +16,7 @@
 #
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-A1:accumulator_nonrev_emit_gate.rs:GOLDEN_JSON:dregg-accumulator-nonrev-emit-v2  # A/A1-second-author
-A1:bilateral_aggregation_emit_gate.rs:GOLDEN_JSON:dregg-bilateral-aggregation-v3  # A/A1-second-author  [re-keyed v2->v3 by the b15b30972 descriptor cutover; same file, same const, same unwelded literal]
-A1:dfa_routing_audit_extra.rs:GOLDEN_JSON:dfa-routing-toggle-2state::poseidon2-v1  # A/A1-second-author
-A1:dfa_routing_emit_gate.rs:GOLDEN_JSON:dfa-routing-toggle-2state::poseidon2-v1  # A/A1-second-author
 A1:lean_descriptor_air.rs:TRANSFER_VM_DESCRIPTOR_JSON:dregg-effectvm-transfer-v1  # A/A1-second-author
-A1:merkle_membership_emit_gate.rs:GOLDEN_JSON:merkle-membership-depth2-4ary::poseidon2-v1  # A/A1-second-author
-A1:note_spending_emit_gate.rs:GOLDEN_JSON:note-spend-leaf::dregg-note-spending-dsl-v3  # A/A1-second-author
-A1:poseidon2_hash_emit_audit_extra.rs:GOLDEN_JSON:poseidon2-hash-arity2::poseidon2-v1  # A/A1-second-author
-A1:presentation_emit_gate.rs:GOLDEN_JSON:dregg-presentation-freshness::summary-v1  # A/A1-second-author
-A1:quantified_absence_emit_gate.rs:GOLDEN_JSON:quantified-absence-quotient-accumulator::babybear4-v1  # A/A1-second-author
-A1:temporal_predicate_audit_extra.rs:GOLDEN_JSON:dregg-temporal-predicate-gte::dsl-v1  # A/A1-second-author
-A1:temporal_predicate_emit_gate.rs:GOLDEN_JSON:dregg-temporal-predicate-gte::dsl-v1  # A/A1-second-author
 A2:bilateral_aggregation_adversarial_audit.rs:GOLDEN_JSON:circuit/descriptors/dregg-bilateral-aggregation-v3.json  # A/A2-golden-is-the-artifact  [re-keyed v2->v3 by the b15b30972 descriptor cutover; same file, same const, same self-include]
 A2:blinded_membership_witness.rs:GOLDEN_JSON:circuit/descriptors/by-name/blinded-membership.json  # A/A2-golden-is-the-artifact
 A2:bound_presentation_witness.rs:GOLDEN_JSON:circuit/descriptors/by-name/bound-presentation.json  # A/A2-golden-is-the-artifact
@@ -51,6 +40,4 @@ D3:starbridge-agent-orchestration:CellProgram:board_service_program|coordinator_
 D3:starbridge-domains:DomainRegistry:with_authority|new  # D3/D3-tested-twin-is-not-the-deployed-one
 D3:starbridge-subscription:CellProgram:subscription_program|feed_invariants_program  # D3/D3-tested-twin-is-not-the-deployed-one
 D3:starbridge-swarm-orchestration:CellProgram:board_service_program|coordinator_program  # D3/D3-tested-twin-is-not-the-deployed-one
-G1:accumulator_nonrev_golden.json:GOLDEN_JSON  # G1/G1-unpinned-test-golden  [sweep-two §5.1 blind spot — 1 of the 4 tests-local goldens; matches deployed 48==48 today, but single-author so free to drift]
 G1:committed_threshold_golden.json:GOLDEN_JSON  # G1/G1-unpinned-test-golden  [sweep-two §5.1 blind spot — no by-name twin (name dregg-committed-threshold::poseidon2-v2); single-author, needs a Lean #guard]
-G1:quantified_absence_golden.json:GOLDEN_JSON  # G1/G1-unpinned-test-golden  [sweep-two §5.1 blind spot — matches deployed 20==20 today, but single-author so free to drift]

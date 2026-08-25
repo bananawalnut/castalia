@@ -19,7 +19,8 @@ use dregg_circuit::poseidon2::{hash_2_to_1, hash_4_to_1};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/dfa-routing.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/dfa-routing.json");
 
 const CURRENT: usize = 0;
 const SYMBOL: usize = 1;
@@ -75,7 +76,7 @@ fn honest_witness(start: u32, sym0: u32, seed: BabyBear) -> (Vec<Vec<BabyBear>>,
 /// Forge the `initial_state` PI: the honest proof must fail the B1 first-row PiBinding.
 #[test]
 fn forged_initial_state_refuses() {
-    let desc: EffectVmDescriptor2 = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc: EffectVmDescriptor2 = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_witness(0, 1, BabyBear::new(0x51D5));
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("honest proves");

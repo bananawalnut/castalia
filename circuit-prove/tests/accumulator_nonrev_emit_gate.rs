@@ -3,7 +3,7 @@
 //! The descriptor is AUTHORED in Lean
 //! (`metatheory/Dregg2/Circuit/Emit/AccumulatorNonRevocationEmit.lean`, `accumulatorNonRevDesc`)
 //! and its wire string is byte-pinned there (`emitVmJson2` `#guard`). This test READS those EXACT
-//! bytes ([`GOLDEN_JSON`]) and:
+//! bytes ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust semantics — a byte drift on either side
@@ -52,7 +52,8 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/accumulator-nonrev.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/accumulator-nonrev.json");
 
 // --- Trace column layout (must match `AccumulatorNonRevocationEmit.lean` §1 == `accumulator_types::col`). ---
 const HASH: usize = 0;
@@ -342,7 +343,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 
 #[test]
 fn accumulator_nonrev_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -402,7 +404,7 @@ fn accumulator_nonrev_emit_decodes_to_hand_built() {
 
 #[test]
 fn honest_non_revocation_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("the honest non-revocation witness must prove");
@@ -418,7 +420,7 @@ fn honest_non_revocation_proves_and_verifies() {
 /// `PiBinding{First}` (`acc_aux[0] == pi[Acc]`) no longer holds → REJECTED.
 #[test]
 fn forged_accumulator_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     assert!(
         !rejects(&desc, &trace, &pis),
@@ -436,7 +438,7 @@ fn forged_accumulator_pi_refuses() {
 /// `PiBinding{First}` no longer holds → REJECTED.
 #[test]
 fn forged_alpha_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     assert!(
         !rejects(&desc, &trace, &pis),
@@ -459,7 +461,7 @@ fn forged_alpha_pi_refuses() {
 /// (no drift) is ACCEPTED, so the drift is precisely what the constancy tooth catches.
 #[test]
 fn tampered_alpha_aux_drift_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (base_trace, pis, acc, alpha) = honest_fixture();
 
     let h_pick = BabyBear::new(0x9E3779B9);
@@ -489,7 +491,7 @@ fn tampered_alpha_aux_drift_refuses() {
 /// computed with `v ≠ 0`) → REJECTED. A "member" (`v = 0`) cannot be laundered as a non-member.
 #[test]
 fn zero_remainder_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     assert!(
         !rejects(&desc, &trace, &pis),
@@ -510,7 +512,7 @@ fn zero_remainder_refuses() {
 /// committed accumulator.
 #[test]
 fn tampered_sum_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     assert!(
         !rejects(&desc, &trace, &pis),
@@ -530,7 +532,7 @@ fn tampered_sum_refuses() {
 /// last-row boundaries close).
 #[test]
 fn tampered_last_row_check_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis, _acc, _alpha) = honest_fixture();
     assert!(
         !rejects(&desc, &trace, &pis),

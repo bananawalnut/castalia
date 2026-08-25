@@ -385,10 +385,14 @@ jobs:
       # `wasm_bindgen_test_configure!(run_in_browser)`, so they need a real
       # browser, not node. ubuntu-latest ships Chrome; wasm-pack drives it
       # headless. This is the only place the in-browser surface (the card-in-the-
-      # tab loop, the light-client-in-the-tab) is exercised at all.
-      - name: wasm-pack test (the in-browser wasm_bindgen_test surface)
+      # tab loop, the light-client-in-the-tab) is exercised at all. A browser has
+      # no process environment, so the native step's DREGG_ALLOW_UNAUDITED_PQ
+      # cannot reach it. The named feature below is test-only in mechanism, not
+      # convention: dregg-pq also requires wasm32 + debug_assertions. The release
+      # bundle built above cannot take the bypass even if the feature is forwarded.
+      - name: wasm-pack test (explicit archive-less PQ test backend)
         working-directory: wasm
-        run: wasm-pack test --headless --chrome
+        run: wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq
 
 
   # EXCLUDED-WORKSPACES GATE (2026-07-17, CI-meaningfulness audit Track A2).

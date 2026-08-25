@@ -129,8 +129,9 @@ pub(crate) fn require_verified_lean_gate() -> bool {
 }
 
 /// Whether the unaudited crate fallback is ACCEPTED in this process — the operator's
-/// [`ALLOW_UNAUDITED_PQ_ENV`] opt-in, or this crate's own declared `#[cfg(test)]` override
-/// (see [`TEST_OVERRIDE`]; it is `false` in every non-test build).
+/// [`ALLOW_UNAUDITED_PQ_ENV`] opt-in, this crate's own declared `#[cfg(test)]` override, or the
+/// downstream wasm integration-test input (see [`TEST_OVERRIDE`]). The latter requires wasm32,
+/// its named feature, AND debug assertions, so it is `false` in every release build.
 ///
 /// ONE EXPRESSION with ONE body for every cfg, deliberately: the `#[cfg(test)]` arm used to
 /// be a second `return` inside [`guard_unaudited_fallback`], which made the test binary's
@@ -592,9 +593,12 @@ fn warn_once_permitted() {
 /// fallback — that is the honest description of this test binary, not a hole.
 ///
 /// ★ THIS DOES NOT WEAKEN THE SHIPPED GATE. It is `#[cfg(test)]`, so it exists
-/// only inside `dregg-pq`'s own unit-test binary — not in the shipped `rlib`,
-/// not for integration tests, not for any downstream crate. And the gate's real
-/// SHIPPING behaviour is not left untested by it: `tests/unaudited_refusal.rs`
+/// inside `dregg-pq`'s own unit-test binary. The one downstream form requires all three of
+/// wasm32, the explicit `wasm-test-unaudited-pq` feature, and debug assertions; it exists because
+/// a browser integration test cannot read the process environment and cannot link the Lean
+/// archive. It is false in every release build, including a release that accidentally forwards
+/// the feature. The gate's real SHIPPING behaviour is not left untested by either form:
+/// `tests/unaudited_refusal.rs`
 /// spawns a genuine subprocess with no core installed and no opt-in, and asserts
 /// the abort actually happens with the naming message. The override lets the
 /// tests that are about KEM/DSA BEHAVIOUR run; the subprocess test covers the
@@ -613,10 +617,24 @@ fn warn_once_permitted() {
 /// the archive, so there is no verified core for the demand to be satisfied by. The
 /// subprocess tests in `tests/unaudited_refusal.rs` set their own env explicitly and are
 /// unaffected.
-#[cfg(test)]
+#[cfg(any(
+    test,
+    all(
+        target_arch = "wasm32",
+        feature = "wasm-test-unaudited-pq",
+        debug_assertions
+    )
+))]
 static TEST_OVERRIDE: AtomicBool = AtomicBool::new(true);
 
-#[cfg(test)]
+#[cfg(any(
+    test,
+    all(
+        target_arch = "wasm32",
+        feature = "wasm-test-unaudited-pq",
+        debug_assertions
+    )
+))]
 fn test_override_active() -> bool {
     TEST_OVERRIDE.load(Ordering::Relaxed)
 }
@@ -624,7 +642,14 @@ fn test_override_active() -> bool {
 /// The NON-TEST body of the declared test override: there is no override in any shipped
 /// build. Same signature, same call site, so [`unaudited_pq_accepted`] has ONE body for
 /// every cfg.
-#[cfg(not(test))]
+#[cfg(not(any(
+    test,
+    all(
+        target_arch = "wasm32",
+        feature = "wasm-test-unaudited-pq",
+        debug_assertions
+    )
+)))]
 #[inline]
 fn test_override_active() -> bool {
     false

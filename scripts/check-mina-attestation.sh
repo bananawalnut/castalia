@@ -544,7 +544,14 @@ hydrate_real_root_instances() {
   [ -f "$air" ] && [ -f "$fri" ] && return 0
 
   mkdir -p "$work"
-  ( cd "$ROOT" && cargo build --locked -p dregg-circuit-prove --release \
+  # These two dumpers verify and replay the committed p3 proof using only Rust/P3 code; neither
+  # calls a Lean export. `dregg-circuit-prove` nevertheless has a production Lean dependency for
+  # other entrypoints, and native release builds correctly fail closed by default. Opt out for this
+  # one package build only, or a clean CI runner would need a 190 MB verified-executor archive to
+  # produce two non-Lean JSON inputs. The protected bootstrap-node workflow never takes this path
+  # and still builds with DREGG_REQUIRE_LEAN=1.
+  ( cd "$ROOT" && DREGG_REQUIRE_LEAN=0 \
+      cargo build --locked -p dregg-circuit-prove --release \
       --bin root_air_instance --bin root_fri_instance ) \
     || die "the current-head root-instance dumpers did not build"
 

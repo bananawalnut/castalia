@@ -38,7 +38,7 @@ const ALPHA_AUX: usize = 32;
 const ACC_AUX: usize = 36;
 const WIDTH: usize = 40;
 
-// The exact golden the Lean file byte-pins (copied from the shipped gate).
+// The checked-in Lean-emitted descriptor exercised by this adversarial test.
 /// ⚑ **THE EMITTED ARTIFACT ITSELF, NOT A COPY OF IT (2026-08-06).** This was an inline
 /// `r#"…"#` transcription of the Lean `#guard` bytes, and the `challenges` flag day
 /// (2026-08-05) broke it along with 27 siblings: the artifact under
@@ -48,7 +48,8 @@ const WIDTH: usize = 40;
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/accumulator-nonrev.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/accumulator-nonrev.json");
 
 fn make_hash(seed: u32) -> BabyBear {
     hash_many(&[BabyBear::new(seed), BabyBear::new(0xCAFE)])
@@ -128,7 +129,7 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// the drift is the `acc_aux` constancy window gate. REJECTED.
 #[test]
 fn tampered_acc_aux_drift_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (base_trace, pis, acc, alpha) = honest_fixture();
 
     let h_pick = BabyBear::new(0x1234_5678);

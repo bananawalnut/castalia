@@ -3,7 +3,7 @@
 //! Validates the `emit-from-Lean` pattern end-to-end on the DFA-routing family: the descriptor is
 //! AUTHORED in Lean (`metatheory/Dregg2/Circuit/Emit/DfaRoutingEmit.lean`, `dfaRoutingDesc`) and
 //! its wire string is byte-pinned there (`emitVmJson2` `#guard`). This test READS those EXACT
-//! bytes ([`GOLDEN_JSON`]) and:
+//! bytes ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust builder — a byte drift on either side
@@ -55,7 +55,8 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/dfa-routing.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/dfa-routing.json");
 
 // --- Trace column layout (must match `DfaRoutingEmit.lean` §1). ---
 const CURRENT: usize = 0;
@@ -317,7 +318,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// STEP 1 — the emitted descriptor decodes and equals the hand-built twin, with the expected shape.
 #[test]
 fn dfa_routing_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -392,7 +394,7 @@ fn dfa_chip_lookups_are_the_named_hashes() {
 /// the proof re-verifies against the public `[initial, final, seed, route_commitment]`.
 #[test]
 fn honest_route_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = fixture();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("the honest routing witness must prove");
@@ -411,7 +413,7 @@ fn honest_route_proves_and_verifies() {
 /// PI, is refused by the B2 last-row `PiBinding`. Can't claim a classification you didn't reach.
 #[test]
 fn forged_final_state_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = fixture();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("honest proves");
@@ -433,7 +435,7 @@ fn forged_final_state_refuses() {
 /// B3 last-row `PiBinding` — the commitment binds the routed trace.
 #[test]
 fn forged_route_commitment_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = fixture();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("honest proves");
@@ -452,7 +454,7 @@ fn forged_route_commitment_refuses() {
 /// different table commitment.
 #[test]
 fn forged_table_commitment_seed_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = fixture();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("honest proves");
@@ -472,7 +474,7 @@ fn forged_table_commitment_seed_refuses() {
 /// the boundaries) is satisfied, so the transition tooth bites in isolation.
 #[test]
 fn forbidden_edge_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     // Non-vacuity: the honest (table-following) route is accepted.
     let (honest_trace, honest_pis) = fixture();
     assert!(
@@ -524,7 +526,7 @@ fn transition_gate_is_load_bearing() {
 /// `Lookup` — a fabricated commitment step names a chip row no genuine permutation serves.
 #[test]
 fn forged_running_hash_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (mut trace, pis) = fixture();
     let last = trace.len() - 1;
     // sanity: the honest trace is accepted (non-vacuity).
@@ -551,14 +553,16 @@ fn perf_prove_verify_breakdown() {
     use std::time::Instant;
     let (trace, pis) = honest_witness(0, 1, BabyBear::new(7));
 
-    // decode (cold parse of the golden — what the cache eliminates on the hot path)
+    // decode (cold parse of the emitted descriptor — what the cache eliminates on the hot path)
     let t = Instant::now();
     for _ in 0..1000 {
-        std::hint::black_box(parse_vm_descriptor2(std::hint::black_box(GOLDEN_JSON)).unwrap());
+        std::hint::black_box(
+            parse_vm_descriptor2(std::hint::black_box(EMITTED_DESCRIPTOR_JSON)).unwrap(),
+        );
     }
     let decode_us = t.elapsed().as_secs_f64() * 1e6 / 1000.0;
 
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).unwrap();
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).unwrap();
 
     // prove
     let n = 30u32;

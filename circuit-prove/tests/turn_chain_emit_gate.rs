@@ -30,7 +30,8 @@ use dregg_circuit::turn_chain_witness::{
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/turn-chain-binding.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/turn-chain-binding.json");
 
 fn honest_fixture() -> (Vec<Vec<BabyBear>>, Vec<BabyBear>) {
     turn_chain_binding_witness(&[
@@ -53,15 +54,15 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 
 #[test]
 fn lean_bytes_parse_dispatch_and_shape() {
-    // ⚑ THE `GOLDEN_JSON == checked_in.strip_suffix('\n')` ASSERTION THAT USED TO OPEN THIS TEST IS
-    // DELETED (2026-08-06), and deleting it is the point. `GOLDEN_JSON` IS that file now
+    // ⚑ THE `EMITTED_DESCRIPTOR_JSON == checked_in.strip_suffix('\n')` ASSERTION THAT USED TO OPEN THIS TEST IS
+    // DELETED (2026-08-06), and deleting it is the point. `EMITTED_DESCRIPTOR_JSON` IS that file now
     // (`include_str!`), so the comparison would have been a check reading its own input — the shape
     // that reads as coverage and certifies nothing. What it was actually protecting has two owners
     // and neither is here: the artifact-vs-Lean weld is `scripts/check-emit-gate-weld.py` (this
     // artifact is one of its authoritative pins) plus `scripts/check-descriptor-drift.sh`, which
     // re-derives the file from `EmitByName.lean`. What remains below is the half that still bites:
     // the bytes DECODE, and the production registry DISPATCHES that same object.
-    let parsed = parse_vm_descriptor2(GOLDEN_JSON).expect("Lean bytes parse as IR-v2");
+    let parsed = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("Lean bytes parse as IR-v2");
     let dispatched = descriptor_by_name(TURN_CHAIN_BINDING_NAME)
         .expect("the production descriptor registry dispatches the turn-chain artifact");
     assert_eq!(

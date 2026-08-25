@@ -1,6 +1,6 @@
 //! ADVERSARIAL AUDIT — additional isolating tampers for the temporal-predicate emit gate.
 //! Additive-only companion to `temporal_predicate_emit_gate.rs`. Re-uses the SAME byte-pinned
-//! Lean-emitted golden JSON and drives the SAME real `prove_vm_descriptor2` / `verify_vm_descriptor2`.
+//! Lean-emitted descriptor and drives the SAME real `prove_vm_descriptor2` / `verify_vm_descriptor2`.
 //!
 //! These target constraints the shipped 6 canaries did NOT isolate:
 //!   * pi[2] = initial_state_root  → row-0 STATE_ROOT PiBinding (First,col37,pi2). The shipped
@@ -25,7 +25,8 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/temporal-predicate.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/temporal-predicate.json");
 
 const VALUE: usize = 0;
 const THRESHOLD: usize = 1;
@@ -112,7 +113,7 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// (First, col37, pi2) — a distinct constraint NONE of the shipped 6 canaries exercise.
 #[test]
 fn audit_forged_initial_state_root_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, mut pis) = honest_trace();
     assert!(
         !rejects(&desc, &trace, &pis),
@@ -131,7 +132,7 @@ fn audit_forged_initial_state_root_pi_refuses() {
 /// canary (which hits C5/T1).
 #[test]
 fn audit_broken_step_index_counter_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     let mut bad = trace.clone();
