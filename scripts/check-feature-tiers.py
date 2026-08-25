@@ -196,6 +196,13 @@ PUSH_TRIGGERED_EXPLICIT: dict[tuple[str, str], str] = {
     ("dregg-agent", "live-brain"): "ci.yml:602 cargo test -p dregg-agent --features live-brain",
     ("dregg-lean-ffi", "lean-lib"): "ci.yml:984 cargo test -p dregg-lean-ffi --features lean-lib",
     ("durable-workflow", "deploy"): "ci.yml:305 excluded-workspace matrix, testflags: --features deploy",
+    ("dregg-wasm", "wasm-test-unaudited-pq"): (
+        "ci.yml:395 wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq"
+    ),
+    ("dregg-pq", "wasm-test-unaudited-pq"): (
+        "ci.yml:395 wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq"
+        " → dregg-wasm/wasm-test-unaudited-pq → dregg-pq/wasm-test-unaudited-pq"
+    ),
     # ── THE COCKPIT CONE. ────────────────────────────────────────────────────────────────────
     # These eighteen used to be `default@.`, and that WAS true: `starbridge-v2` is a root
     # member and its `default` was `["desktop"]`, so ci.yml's `cargo check --workspace`
