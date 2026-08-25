@@ -77,7 +77,7 @@ fn try_instantiate(vk_hash: &str) -> Result<(), ContractError> {
 fn the_pin_is_the_cross_chain_key_digest() {
     assert_eq!(
         hex_digest(&vk::VK_DIGEST),
-        "0xcfda612f472e998d1f1bad1bf545ec5b39ca99b64db94e46edf2e8d3790a37cc",
+        "0x76b2bb3853d336f49f411393585a05ee7441798d4f2c8561a01b6061b69ad11d",
         "must equal DreggSettlementVK.VK_DIGEST (EVM) and solana vk::VK_DIGEST"
     );
     assert_ne!(
