@@ -14,6 +14,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+SUPPORTED_ARTIFACT_TARGETS = {
+    "castalia-bootstrap-node-linux-x86_64": "x86_64-unknown-linux-gnu",
+    "castalia-bootstrap-node-linux-aarch64": "aarch64-unknown-linux-gnu",
+}
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -37,11 +42,24 @@ def pinned_mathlib_revision() -> str:
     return match.group(1)
 
 
-def build_provenance(binary: Path, status: dict, sbom: Path) -> dict:
+def build_provenance(
+    binary: Path,
+    status: dict,
+    sbom: Path,
+    artifact: str = "castalia-bootstrap-node-linux-x86_64",
+    target: str = "x86_64-unknown-linux-gnu",
+) -> dict:
     if status.get("state_producer") != "lean" or status.get("lean_producer") is not True:
         raise ValueError("runtime smoke did not report the verified Lean state producer")
     if status.get("federation_mode") != "solo":
         raise ValueError("runtime smoke did not report solo federation mode")
+    expected_target = SUPPORTED_ARTIFACT_TARGETS.get(artifact)
+    if expected_target is None:
+        raise ValueError(f"unsupported bootstrap artifact name: {artifact}")
+    if target != expected_target:
+        raise ValueError(
+            f"artifact {artifact} requires target {expected_target}, not {target}"
+        )
 
     revision = os.environ.get("GITHUB_SHA") or git("rev-parse", "HEAD")
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -52,7 +70,7 @@ def build_provenance(binary: Path, status: dict, sbom: Path) -> dict:
 
     return {
         "schemaVersion": 1,
-        "artifact": "castalia-bootstrap-node-linux-x86_64",
+        "artifact": artifact,
         "revision": revision,
         "stateProducer": "lean",
         "leanProducer": True,
@@ -61,7 +79,7 @@ def build_provenance(binary: Path, status: dict, sbom: Path) -> dict:
         "sbom": {"name": "dregg-node.spdx.json", "sha256": sbom_sha},
         "build": {
             "requireLean": True,
-            "target": "x86_64-unknown-linux-gnu",
+            "target": target,
             "rustToolchain": (ROOT / "rust-toolchain.toml").read_text().strip(),
             "leanToolchain": (ROOT / "metatheory" / "lean-toolchain").read_text().strip(),
             "mathlibRevision": pinned_mathlib_revision(),
@@ -85,9 +103,23 @@ def main() -> None:
     parser.add_argument("--status", required=True, type=Path)
     parser.add_argument("--sbom", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--artifact",
+        choices=sorted(SUPPORTED_ARTIFACT_TARGETS),
+        default="castalia-bootstrap-node-linux-x86_64",
+    )
+    parser.add_argument(
+        "--target",
+        choices=sorted(SUPPORTED_ARTIFACT_TARGETS.values()),
+        default="x86_64-unknown-linux-gnu",
+    )
     args = parser.parse_args()
     provenance = build_provenance(
-        args.binary, json.loads(args.status.read_text()), args.sbom
+        args.binary,
+        json.loads(args.status.read_text()),
+        args.sbom,
+        args.artifact,
+        args.target,
     )
     args.output.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n")
 

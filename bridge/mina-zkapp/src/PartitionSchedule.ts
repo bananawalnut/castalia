@@ -154,7 +154,7 @@ export type AtomKind =
   | 'fold-path' //      one level of one commit-phase Merkle path
   | 'final-poly' //     the closing evaluation of `final_poly`
   | 'air-node' //       one node of the ROOT's constraint DAG (leg 13)
-  | 'air-fold'; //      one `acc = acc*alpha + C_i` step, all 1,093 of them
+  | 'air-fold'; //      one `acc = acc*alpha + C_i` step, all 1,129 of them
 
 /** An indivisible unit of verifier work. A cut may be placed between any two
  *  atoms and nowhere else — which is what makes a schedule a placement over a
@@ -785,7 +785,7 @@ export function bestSchedule(
 //    circuit has never been emitted. 591 is a schedule over a measured MODEL,
 //    not over an emitted row list."
 //   "2.75 x 10^7 is itself a FLOOR (the AIR term in it is the fixture's four
-//    constraints, not the root's 1,093). A floor scheduled is still a floor."
+//    constraints, not the root's 1,129). A floor scheduled is still a floor."
 //
 // Both are closed here, and neither by argument:
 //
@@ -795,8 +795,8 @@ export function bestSchedule(
 //    IN-CONTEXT MARGINAL on the deployed program itself (rows at 16 layers
 //    against 15 against 14; at input depth 22 against 21), so every figure below
 //    is a difference of two emitted circuits.
-//  * the AIR term is leg 13's emission of the root's own 1,093 constraints over
-//    10,417 DAG nodes, not the fixture's four.
+//  * the AIR term is leg 13's emission of the root's own 1,129 constraints over
+//    10,689 DAG nodes, not the fixture's four.
 //
 // ⚑ THE LARGEST ATOM MOVED AND THAT IS THE INTERESTING PART. The model's
 // `perArith` is 3,221 rows — its "largest indivisible atom, 6.5% of a step",
@@ -926,7 +926,7 @@ export function emittedProgram(
           reads: kind === 'free' ? [openChunkOf(Math.min(c, cols - 1))] : ['pub'],
           ownLanes: kind === 'free' ? lanesPerCol : 0,
           // ⚑ The live set is a MEASURED property of the DAG, not a guess:
-          // `RootAirDag.liveness` bounds the cut width at 102 across all 10,417
+          // `RootAirDag.liveness` bounds the cut width at 102 across all 10,689
           // nodes. 102 extension values is 408 lanes; the mean is 65.1.
           liveAfter: 4 * 102,
         });

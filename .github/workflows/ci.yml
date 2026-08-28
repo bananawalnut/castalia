@@ -392,7 +392,16 @@ jobs:
       # bundle built above cannot take the bypass even if the feature is forwarded.
       - name: wasm-pack test (explicit archive-less PQ test backend)
         working-directory: wasm
-        run: wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq
+        env:
+          # Browser tests link the complete proof/light-client surface. A debug
+          # module is too large for Chrome to instantiate reliably, while the
+          # test-only PQ backend deliberately requires debug_assertions. Build
+          # optimized release code but retain that assertion gate.
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
+          RUSTFLAGS: "-C link-arg=-zstack-size=33554432"
+        run: >-
+          wasm-pack test --release --headless --chrome .
+          --features wasm-test-unaudited-pq
 
 
   # EXCLUDED-WORKSPACES GATE (2026-07-17, CI-meaningfulness audit Track A2).
@@ -543,12 +552,14 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # macOS keeps a whole-workspace marshal-mode run. Linux is intentionally fanned
-    # out by `linux-nextest-shard` below: forcing 6,000+ process-isolated tests
-    # through one verified-Lean job cannot produce a hosted-runner verdict. The
-    # verified Linux archive has its own fail-closed gates below; no Darwin-arm64
-    # seed is published, so this job declares marshal mode rather than pretending
-    # to be armed or failing before any test executes.
+    # macOS is a supplemental platform-compile + marshal-safe runtime lane. Linux
+    # is intentionally fanned out by `linux-nextest-shard` below and is the complete
+    # verified-Lean suite. No Darwin-arm64 seed is published, so executing a test
+    # binary that deliberately installs dregg-pq-testkit must fail closed before its
+    # first PQ operation. The reviewed manifest + metadata classifier below compiles
+    # every package but executes only the packages which do not take that test edge.
+    # It fails on exclusion drift, so a new PQ test dependency cannot silently narrow
+    # this lane. See scripts/ci-macos-marshal-packages.py.
     timeout-minutes: 360
     strategy:
       fail-fast: false
@@ -691,21 +702,46 @@ jobs:
       # to this one.
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
-      # macOS links the full workspace (incl. deos-zed's windowed gpui editor) via
-      # ld64 — green, so keep it whole.
       - if: runner.os == 'macOS'
-        name: Test workspace (nextest, process-per-test)
+        name: Compile every macOS target (including verified-PQ test packages)
         env:
           DREGG_TEST_REQUIRE_LEAN: "0"
-        run: cargo nextest run --profile full --workspace --no-fail-fast
-      # THE DOCTEST LEG — nextest runs no doctests, so without this the migration
-      # above would silently drop 210 targets. `--doc` implies the lib targets only,
-      # and it is the ONLY thing in this file that executes a doc example.
+        run: cargo check --locked --workspace --all-targets
+
       - if: runner.os == 'macOS'
-        name: Doctests (the 210 targets nextest structurally cannot run)
+        name: Test the reviewed macOS marshal-safe package set
         env:
           DREGG_TEST_REQUIRE_LEAN: "0"
-        run: cargo test --workspace --doc
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts.tests.test_ci_macos_marshal_packages
+          metadata="$RUNNER_TEMP/cargo-metadata.json"
+          packages="$RUNNER_TEMP/macos-marshal-packages.txt"
+          excluded="$RUNNER_TEMP/macos-verified-pq-compile-only.txt"
+          config="$RUNNER_TEMP/macos-nextest.toml"
+          cargo metadata --locked --no-deps --format-version 1 > "$metadata"
+          python3 scripts/ci-macos-marshal-packages.py \
+            --metadata "$metadata" \
+            --exclusions .github/macos-marshal-test-exclusions.txt \
+            --packages-output "$packages" \
+            --excluded-output "$excluded" \
+            --config-output "$config"
+
+          echo "Verified-PQ packages compiled but not executed without a Darwin Lean seed:"
+          cat "$excluded"
+          package_args=()
+          while IFS= read -r package; do
+            package_args+=(--package "$package")
+          done < "$packages"
+
+          cargo nextest run --locked \
+            --config-file "$config" \
+            --profile full \
+            "${package_args[@]}" \
+            --no-fail-fast
+          # nextest structurally cannot run doctests, so recover every doc target
+          # belonging to the same explicit marshal-safe package set.
+          cargo test --locked "${package_args[@]}" --doc
       # Linux SIGBUS root cause: it is NOT one heavy crate. Even serialized links
       # with debuginfo disabled eventually retain too many artifacts in one full
       # workspace target tree; rust-lld then faults while mmap-writing an ordinary

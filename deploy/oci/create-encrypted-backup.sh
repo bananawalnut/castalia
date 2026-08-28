@@ -18,10 +18,11 @@ AGE_RECIPIENT="$1"
 OUTPUT_DIR="$2"
 CALLING_USER="${SUDO_USER:-root}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-WORK_DIR="$(mktemp -d /tmp/dregg-backup.XXXXXX)"
-ARCHIVE="$WORK_DIR/dregg-${STAMP}.tar.gz"
-OUTPUT_PATH="$OUTPUT_DIR/dregg-${STAMP}.tar.gz.age"
+WORK_DIR="$(mktemp -d /tmp/castalia-dregg-backup.XXXXXX)"
+ARCHIVE="$WORK_DIR/castalia-dregg-${STAMP}.tar.gz"
+OUTPUT_PATH="$OUTPUT_DIR/castalia-dregg-${STAMP}.tar.gz.age"
 NODE_WAS_ACTIVE=0
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 cleanup() {
   rm -rf -- "$WORK_DIR"
@@ -40,13 +41,16 @@ tar --acls --xattrs -C /opt -czf "$ARCHIVE" dregg-data
 
 if [[ "$NODE_WAS_ACTIVE" -eq 1 ]]; then
   systemctl start dregg-solo.service
+  "$SCRIPT_DIR/wait-for-verified-node.sh" \
+    http://127.0.0.1:8420/status 900 >/dev/null
 fi
 
 install -d -m 0700 -o "$CALLING_USER" -g "$CALLING_USER" "$OUTPUT_DIR"
 age --recipient "$AGE_RECIPIENT" --output "$OUTPUT_PATH" "$ARCHIVE"
 chown "$CALLING_USER:$CALLING_USER" "$OUTPUT_PATH"
 chmod 0600 "$OUTPUT_PATH"
-sha256sum "$OUTPUT_PATH" | tee "${OUTPUT_PATH}.sha256"
+OUTPUT_DIGEST="$(sha256sum "$OUTPUT_PATH" | awk '{ print $1 }')"
+printf '%s  %s\n' "$OUTPUT_DIGEST" "$(basename "$OUTPUT_PATH")" > "${OUTPUT_PATH}.sha256"
 chown "$CALLING_USER:$CALLING_USER" "${OUTPUT_PATH}.sha256"
 
 echo "$OUTPUT_PATH"

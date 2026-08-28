@@ -148,7 +148,7 @@ export function rootShapeOf(
     // ⚑ THE ROOT IS A BATCH STARK AND HAS NO SINGLE AIR. Every field below that
     // could be read is unread: `constraints` is absent, so `assertAirClosing`
     // returns immediately and the AIR closing equality is the OTHER chain's
-    // (`RootAirChain` / `RootAirProcessChain`, seven slices over 1,093
+    // (`RootAirChain` / `RootAirProcessChain`, seven slices over 1,129
     // constraints). Saying that here rather than filling in a plausible width is
     // the difference between a shape and a fiction.
     air: {

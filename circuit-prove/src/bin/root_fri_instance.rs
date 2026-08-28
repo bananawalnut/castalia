@@ -15,8 +15,8 @@
 //! satisfy the constraint system. It stops at `zeta`. **This binary is the other half**: it
 //! starts where that one stops and emits the half that says those opened values are the
 //! openings of LOW-DEGREE polynomials the prover was committed to before `zeta` existed —
-//! the PCS batch-combination `alpha`, the 16 commit-phase roots and their `beta`s, the
-//! constant final polynomial, and all 19 query chains with their Merkle openings, reduced
+//! the PCS batch-combination `alpha`, the 17 commit-phase roots and their `beta`s, the
+//! constant final polynomial, and all 38 query chains with their Merkle openings, reduced
 //! openings, roll-ins and folds.
 //!
 //! Neither half is a proof on its own. An o1js verifier that checks only the AIR side is
@@ -30,9 +30,9 @@
 //!
 //! `ugc-dregg/tests/fixtures/whole_history_proof.bin` — the committed 3-turn whole-history
 //! envelope, `WholeChainProofBytes` (at WHOLE_CHAIN_PROOF_ENVELOPE_V1) — decoded to a `BatchStarkProof<DreggRecursionConfig>`
-//! and verified under `ir2_leaf_wrap_config()`. The FRI engine is BabyBear /
-//! `BinomialExtensionField<_,4>` / Poseidon2-width-16, `log_blowup = 6`, arity 2, 19 queries,
-//! 16 bits of query grinding, a CONSTANT final polynomial, and `log_global_max_height = 22`.
+//! and verified under `turn_chain_root_config()`. The FRI engine is BabyBear /
+//! `BinomialExtensionField<_,4>` / Poseidon2-width-16, `log_blowup = 3`, arity 2, 38 queries,
+//! 14 bits of query grinding, a CONSTANT final polynomial, and `log_global_max_height = 20`.
 //!
 //! ## ⚑ THE SELF-CHECKS, AND WHY THEY ARE NOT OPTIONAL
 //!
@@ -54,19 +54,19 @@
 //! 4. Every query's fold chain must land exactly on `final_poly[0]` (`log_final_poly_len = 0`
 //!    means the final polynomial is a constant, so its evaluation at the query point IS
 //!    coefficient 0).
-//! 5. The 19 query indices must be PAIRWISE DISTINCT, and they are printed. A prior leg in
+//! 5. The 38 query indices must be PAIRWISE DISTINCT, and they are printed. A prior leg in
 //!    this repo went green because colliding indices made a substitution falsifier a no-op;
 //!    distinctness is asserted here so that failure mode cannot recur silently.
 //! 6. `reducedOpenings[0].logHeight == 22` (the initial reduced opening sits at the global max
 //!    height, which is what makes the fold chain a statement about the tallest matrix), and
-//!    the roll-in schedule is IDENTICAL across all 19 queries.
+//!    the roll-in schedule is IDENTICAL across all 38 queries.
 //!
 //! ## ⚑ What pins `challengerStateBeforeFriAlpha`, which is the load-bearing field
 //!
 //! `challengerStateBeforeFriAlpha` is the `DuplexChallenger`'s full internal state — sponge
 //! lanes, input buffer, output buffer — at the instant `verify_fri` is entered, BEFORE FRI's
 //! own `alpha` is drawn. An o1js circuit starts its challenger from it and derives `alpha`,
-//! the 16 `beta`s and the 19 query indices itself; if this state is wrong, everything
+//! the commit-phase `beta`s and the 38 query indices itself; if this state is wrong, everything
 //! downstream is wrong and every emitted number still looks fine.
 //!
 //! Check 2 alone does NOT pin it: the real `pcs.verify` performs its own opened-value
@@ -75,8 +75,8 @@
 //! which run the whole FRI verification FROM the emitted state: a wrong state gives a wrong
 //! `alpha` (so no query's fold chain reaches `final_poly[0]`), wrong `beta`s (so the
 //! commit-phase Merkle openings fail at the folded indices), and wrong query indices (so the
-//! input-batch openings fail outright) — and `check_witness(16, query_pow_witness)` is an
-//! independent 16-bit test on the state immediately before the first index is sampled.
+//! input-batch openings fail outright) — and `check_witness(14, query_pow_witness)` is an
+//! independent 14-bit test on the state immediately before the first index is sampled.
 //! Together they leave only a sponge collision, which is not a drift mode.
 //!
 //! ## ⚑ Canonical, not Montgomery
@@ -131,13 +131,9 @@ use std::env;
 use std::fmt::Write as _;
 use std::time::Instant;
 
-use dregg_circuit_prove::ivc_turn_chain::{
-    IR2_INNER_COMMIT_POW_BITS, IR2_INNER_LOG_BLOWUP, IR2_INNER_LOG_FINAL_POLY_LEN,
-    IR2_INNER_QUERY_POW_BITS, WholeChainProofBytes, ir2_leaf_wrap_config,
-};
+use dregg_circuit_prove::ivc_turn_chain::{WholeChainProofBytes, turn_chain_root_config};
 use dregg_circuit_prove::plonky3_recursion_impl::recursive::{
-    DreggRecursionConfig, INNER_FRI_MAX_LOG_ARITY, INNER_FRI_NUM_QUERIES,
-    verify_recursive_batch_proof_with_config,
+    DreggRecursionConfig, verify_recursive_batch_proof_with_config,
 };
 use p3_air::BaseAir;
 use p3_baby_bear::{Poseidon2BabyBear, default_babybear_poseidon2_16};
@@ -203,11 +199,11 @@ const FIXTURE: &str = "ugc-dregg/tests/fixtures/whole_history_proof.bin";
 
 /// The root batch's instance shape. Asserted rather than assumed: a re-minted fixture with a
 /// different shape must announce itself here, not produce a quietly different JSON.
-const EXPECTED_DEGREE_BITS: [usize; 7] = [10, 10, 16, 15, 3, 16, 0];
-/// `sum(log_arities) + log_blowup + log_final_poly_len` = `16 + 6 + 0`.
-const EXPECTED_LOG_GLOBAL_MAX_HEIGHT: usize = 22;
+const EXPECTED_DEGREE_BITS: [usize; 7] = [10, 10, 17, 16, 4, 16, 0];
+/// `sum(log_arities) + log_blowup + log_final_poly_len` = `17 + 3 + 0`.
+const EXPECTED_LOG_GLOBAL_MAX_HEIGHT: usize = 20;
 /// One fold round per bit between the global max height and the final domain.
-const EXPECTED_LAYERS: usize = 16;
+const EXPECTED_LAYERS: usize = 17;
 
 // ===========================================================================
 // Canonical encoders — canonical-u32 on the wire, never Montgomery.
@@ -591,7 +587,7 @@ fn main() {
     );
 
     // ---- SELF-CHECK 1: p3's OWN verifier accepts ---------------------------
-    let config = ir2_leaf_wrap_config();
+    let config = turn_chain_root_config();
     let t_verify = Instant::now();
     verify_recursive_batch_proof_with_config(&root, &config)
         .unwrap_or_else(|e| panic!("the committed root does NOT verify: {e}"));
@@ -657,12 +653,13 @@ fn main() {
         })
         .collect();
 
-    let log_blowup = IR2_INNER_LOG_BLOWUP;
-    let log_final_poly_len = IR2_INNER_LOG_FINAL_POLY_LEN;
-    let commit_pow_bits = IR2_INNER_COMMIT_POW_BITS;
-    let query_pow_bits = IR2_INNER_QUERY_POW_BITS;
-    let max_log_arity = INNER_FRI_MAX_LOG_ARITY;
-    let num_queries = INNER_FRI_NUM_QUERIES;
+    let mint = *config.mint_knobs();
+    let log_blowup = mint.log_blowup;
+    let log_final_poly_len = mint.log_final_poly_len;
+    let commit_pow_bits = mint.commit_pow_bits;
+    let query_pow_bits = mint.query_pow_bits;
+    let max_log_arity = mint.max_log_arity;
+    let num_queries = mint.num_queries;
 
     let mat_meta = |round: usize,
                     matrix: usize,
@@ -1148,7 +1145,7 @@ fn main() {
         });
     }
 
-    // ---- SELF-CHECK 5: the 19 indices are pairwise distinct -----------------
+    // ---- SELF-CHECK 5: the root query indices are pairwise distinct ----------
     let idx_list: Vec<usize> = queries.iter().map(|q| q.index).collect();
     let distinct: BTreeSet<usize> = idx_list.iter().copied().collect();
     assert_eq!(

@@ -2643,25 +2643,23 @@ mod tests {
         }
     }
 
-    /// The v9 pre-limb vector has the Lean-pinned 33-limb shape, and the welded scalars sit
+    /// The v9 pre-limb vector has the Lean-pinned shape, and the welded scalars sit
     /// in the absorption order the producer / circuit carry.
     #[test]
     fn v9_pre_limbs_shape_and_welds() {
         let cell = Cell::with_balance(test_key(7), test_token(0), 100_000);
         let pre = compute_rotated_pre_limbs(&cell, &v9_ctx(11, 22));
         assert_eq!(pre.len(), V9_NUM_PRE_LIMBS);
-        // ⚑ 178 → 184: the NINE-LANE epoch. The fields octet gained a 9th lane per slot
-        // (8 slots × 1), consuming the two free pads at 176/177 plus 178..183. The first
-        // assertion above already pins `pre.len() == V9_NUM_PRE_LIMBS`, which is the emitted
-        // truth; this second one restates the composition for a reader, so it moves with it.
+        // ⚑ 184 → 187: every carrier-material octet gained its ninth lane at 184..186.
+        // The first assertion above pins `pre.len() == V9_NUM_PRE_LIMBS`, the Lean-emitted
+        // truth; this second one restates the current layout composition for a reader.
         assert_eq!(
             pre.len(),
-            184,
+            187,
             "38 base (incl. revoked_root limb 37) + 51 faithful-8-felt completion limbs (38..88) \
-             + 24 v12 carrier-material octets (89..112) + 64 v13 fields[0..7] completion lanes (8 slots × 8 lanes, the nine-lane epoch) \
-             (113..168) + 7 cells_root completion lanes (169..175, relocated off \
-             revoked's 82..88) + 2 pads (176..177) = 178, giving a clean 58x3 wire-commit body \
-             (limbs 4..177 = 174 = 58*3, no leftover chunk for the wide chip to refuse)"
+             + 24 carrier-material octet lanes (89..112) + 56 historical fields completion lanes \
+             (113..168) + 7 cells_root completion lanes (169..175) + 8 fields ninth lanes \
+             (176..183) + 3 carrier-material ninth lanes (184..186) = 187"
         );
         // The FAITHFUL 8-felt cells_root (wound #23): lane 0 at limb 0, completion lanes 1..7 at
         // limbs 169..=175 — filled by BOTH producers on EVERY turn, not zero-filled and left to the

@@ -31,7 +31,7 @@ import { planRootAirChain } from '../src/RootAirChain.js';
 //
 // This leg re-runs the SAME dynamic program over an atom list whose every row
 // figure is a difference of two emitted circuits (leg 14a) and which contains
-// the ROOT's own 1,093 constraints (leg 13) instead of the fixture's four.
+// the ROOT's own 1,129 constraints (leg 13) instead of the fixture's four.
 //
 // ⚑ WHAT WOULD MAKE THIS A GREEN THAT MEASURES NOTHING: reporting a step count
 // whose atom list happens to be the old one under a new name. [1] therefore
@@ -155,10 +155,10 @@ async function main() {
       `${fmt(withAir.totalRows).padStart(12)} rows  (+${fmt(nAirAtoms)} atoms, +${fmt(airRows)} rows)`,
   );
   if (nAirAtoms < 10_000)
-    fail(`only ${nAirAtoms} AIR atoms — the root's 10,417 nodes and 1,093 folds are not in the list`);
+    fail(`only ${nAirAtoms} AIR atoms — the root's 10,689 nodes and 1,129 folds are not in the list`);
   ok(
     `the AIR block is ${fmt(nAirAtoms)} atoms and ${fmt(airRows)} rows — the root's ` +
-      `10,417 DAG nodes and 1,093 folds, at leg 13's EMITTED prices`,
+      `10,689 DAG nodes and 1,129 folds, at leg 13's EMITTED prices`,
   );
   const drift = withAir.totalRows / MEASURED.deployedTotal - 1;
   console.log(

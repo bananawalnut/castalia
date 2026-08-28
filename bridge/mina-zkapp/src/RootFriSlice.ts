@@ -80,7 +80,7 @@ import {
 //
 // ⚑ WHAT IT ESTABLISHES AND WHAT IT DOES NOT, SAID HERE SO IT IS NOT INFERRED.
 // The AIR half proves: at the opened values under `dagDigest`, every one of the
-// root's 1,093 constraints folds to `acc`, and `acc` is the α-weighted sum of
+// root's 1,129 constraints folds to `acc`, and `acc` is the α-weighted sum of
 // p3's seven per-instance accumulators. The FRI half proves: those opened values
 // open, under the commitments the transcript absorbed, at the query indices that
 // transcript derived, and the resulting DEEP quotients fold through sixteen

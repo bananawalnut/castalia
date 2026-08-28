@@ -21,14 +21,14 @@ import { foldConstraints } from '../src/AirEval.js';
 //
 // §3.19 built the assembly and named ONE thing in it as still the fixture's:
 // `DreggProofVerify`'s `constraints` argument, a 3-column AIR with FOUR
-// constraints against the root's 1,093. It said so in the plainest available
+// constraints against the root's 1,129. It said so in the plainest available
 // terms — "2.75 x 10^7 is a FLOOR, and 500-573 steps is a floor. The AIR term
 // inside it is the fixture's four constraints" — and §3.21 inherited the floor
 // wholesale: "a floor scheduled is still a floor."
 //
 // This leg emits the root's own constraint system into a Kimchi circuit and
 // measures what it costs. Not a model of what it would cost: `getRows()` on a
-// circuit that walks all 10,417 DAG nodes and folds all 1,093 constraints.
+// circuit that walks all 10,689 DAG nodes and folds all 1,129 constraints.
 //
 // ⚑ WHAT WOULD MAKE THIS LEG A GREEN THAT MEASURES NOTHING, and what is done
 // about each:
@@ -127,9 +127,9 @@ async function main() {
   console.log(
     `    columns the DAG indexes: ${fmt(shape.base)} base + ${fmt(shape.ext)} extension`,
   );
-  if (d.totals.n !== 1093) fail(`the artifact carries N = ${d.totals.n}, not the census's 1,093`);
-  ok(`N = 1,093 — all 901 base and all 192 LogUp constraints, not the fixture's four`);
-  if (d.totals.base !== 901 || d.totals.ext !== 192) fail('the base/ext split is not 901/192');
+  if (d.totals.n !== 1129) fail(`the artifact carries N = ${d.totals.n}, not the census's 1,129`);
+  ok(`N = 1,129 — all 913 base and all 216 LogUp constraints, not the fixture's four`);
+  if (d.totals.base !== 913 || d.totals.ext !== 216) fail('the base/ext split is not 913/216');
   ok(`the DAG is ${fmt(d.totals.nodes)} nodes for ${fmt(d.totals.n)} constraints — the shared form`);
 
   const kat = checkKat(d);
@@ -388,12 +388,12 @@ async function main() {
       `${(foldDrift * 100).toFixed(1)}% — the split is a decomposition, not a subtraction`,
   );
 
-  // And `C_i` against §3.18's model, which priced only the 901 BASE constraints.
+  // And `C_i` against §3.18's model, which priced only the old pre-spine BASE constraints.
   const k = d.totals.kinds;
   const modelCi = k.mul * MODEL.mul + (k.var + k.add + k.sub + k.neg + k.evar) * MODEL.lin;
   console.log(
-    `\n    §3.18's model priced C_i (901 base constraints, 8,698 nodes) at 187,295 rows and the ` +
-      `whole\n    AIR side at 253,934. EMITTED, over all 1,093 constraints and ${fmt(d.totals.nodes)} nodes:`,
+    `\n    §3.18's model priced C_i for the old pre-spine root at 187,295 rows and the ` +
+      `whole\n    AIR side at 253,934. EMITTED, over all 1,129 constraints and ${fmt(d.totals.nodes)} nodes:`,
   );
   console.log(
     `      C_i          ${fmt(totCi).padStart(9)}  (the same units applied to this node census: ${fmt(modelCi)})`,
@@ -419,7 +419,7 @@ async function main() {
   console.log(
     `    §3.19 projects the deployed root at ${DEPLOYED_TOTAL.toExponential(2)} rows and says in ` +
       `terms:\n      "2.75 x 10^7 is a FLOOR ... the AIR term inside it is the fixture's ${FIXTURE_AIR} ` +
-      `constraints,\n       not the root's 1,093".`,
+      `constraints,\n       not the root's 1,129".`,
   );
   const repriced = DEPLOYED_TOTAL + totRows;
   console.log(
@@ -437,15 +437,15 @@ async function main() {
   // -----------------------------------------------------------------------
   console.log('\n[8] RATCHET');
   const RECORDED: [string, number, number][] = [
-    ['N, the root batch constraint count', d.totals.n, 1093],
-    ['DAG nodes for all 1,093 constraints', d.totals.nodes, 10417],
-    ['DAG multiplies', d.totals.muls, 3029],
+    ['N, the root batch constraint count', d.totals.n, 1129],
+    ['DAG nodes for all 1,129 constraints', d.totals.nodes, 10689],
+    ['DAG multiplies', d.totals.muls, 3109],
     ['EMITTED rows, one extension multiply', rMul, 30],
     ['EMITTED rows, one extension add', rAdd, 18],
     ['EMITTED rows, one alpha-fold step', rFold, 48],
-    ['EMITTED rows, C_i over all 1,093 constraints', totCi, 181126],
-    ['EMITTED rows, the alpha-fold', totFold, 52358],
-    ['EMITTED rows, the root AIR whole', totRows, 275143],
+    ['EMITTED rows, C_i over all 1,129 constraints', totCi, 185182],
+    ['EMITTED rows, the alpha-fold', totFold, 54086],
+    ['EMITTED rows, the root AIR whole', totRows, 283527],
   ];
   let drifted = 0;
   for (const [label, got, want] of RECORDED) {

@@ -1,28 +1,18 @@
 #cloud-config
 # Base image: Ubuntu 24.04 AArch64 on OCI Always Free Ampere A1.
-# This prepares the host only. It deliberately does not create node identity,
-# copy source, or start Dregg; those steps happen after the verified binary is
-# built and the public hostname is known.
+# This prepares the runtime host only. It deliberately does not create node
+# identity, copy source, compile code, or start Dregg; install.sh consumes the
+# protected release bundle after the public hostname is known.
 package_update: true
 package_upgrade: false
 
 packages:
   - age
-  - build-essential
   - caddy
-  - clang
-  - cmake
   - curl
-  - git
   - jq
-  - libssl-dev
-  - ninja-build
-  - pkg-config
-  - rsync
   - shellcheck
   - ufw
-  - unzip
-  - zstd
 
 write_files:
   - path: /etc/sysctl.d/60-dregg-network.conf
@@ -36,9 +26,6 @@ write_files:
       net.ipv4.conf.default.send_redirects = 0
 
 runcmd:
-  - [install, -d, -m, "0755", /opt/dregg]
-  - [install, -d, -m, "0755", /opt/dregg/bin]
-  - [install, -d, -m, "0755", /opt/dregg-src]
   - [ufw, default, deny, incoming]
   - [ufw, default, allow, outgoing]
   - [ufw, allow, OpenSSH]

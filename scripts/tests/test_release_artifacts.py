@@ -74,6 +74,45 @@ ignore = [
                     sbom_file,
                 )
 
+    def test_provenance_accepts_the_arm64_release_pair(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "dregg-node"
+            sbom_file = Path(directory) / "sbom.json"
+            binary.write_bytes(b"node")
+            sbom_file.write_text("{}")
+            result = provenance.build_provenance(
+                binary,
+                {
+                    "state_producer": "lean",
+                    "lean_producer": True,
+                    "federation_mode": "solo",
+                },
+                sbom_file,
+                "castalia-bootstrap-node-linux-aarch64",
+                "aarch64-unknown-linux-gnu",
+            )
+            self.assertEqual(result["artifact"], "castalia-bootstrap-node-linux-aarch64")
+            self.assertEqual(result["build"]["target"], "aarch64-unknown-linux-gnu")
+
+    def test_provenance_rejects_an_artifact_target_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "dregg-node"
+            sbom_file = Path(directory) / "sbom.json"
+            binary.write_bytes(b"node")
+            sbom_file.write_text("{}")
+            with self.assertRaisesRegex(ValueError, "requires target"):
+                provenance.build_provenance(
+                    binary,
+                    {
+                        "state_producer": "lean",
+                        "lean_producer": True,
+                        "federation_mode": "solo",
+                    },
+                    sbom_file,
+                    "castalia-bootstrap-node-linux-aarch64",
+                    "x86_64-unknown-linux-gnu",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

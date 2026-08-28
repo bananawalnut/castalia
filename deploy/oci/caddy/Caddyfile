@@ -1,6 +1,5 @@
 # DREGG_HOSTNAME is supplied to the Caddy systemd unit from
-# /etc/dregg/public.env. For the zero-cost bootstrap it can be an IP-derived
-# hostname such as 203.0.113.10.sslip.io.
+# /etc/dregg/public.env. Production uses dregg.zenith-research.ca.
 
 (strip_upstream_cors) {
     header_down -Access-Control-Allow-Origin
@@ -24,19 +23,29 @@
         respond "" 204
     }
 
-    handle /api/castalia/memberships {
+    @membership_join {
+        method POST
+        path /api/castalia/memberships
+    }
+    handle @membership_join {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }
     }
-
-    handle /api/cell/* {
+    @cell_read {
+        method GET
+        path /api/cell/*
+    }
+    handle @cell_read {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }
     }
-
-    handle /status {
+    @status_read {
+        method GET
+        path /status
+    }
+    handle @status_read {
         reverse_proxy 127.0.0.1:8420 {
             import strip_upstream_cors
         }

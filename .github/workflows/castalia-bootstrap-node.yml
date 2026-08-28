@@ -55,7 +55,9 @@ jobs:
           set -euo pipefail
           bash -n deploy/aws-free-plan/*.sh deploy/oci/*.sh
           shellcheck deploy/aws-free-plan/*.sh deploy/oci/*.sh
-          python3 -m unittest scripts.tests.test_deploy_wait_verified_node
+          python3 -m unittest \
+            scripts.tests.test_deploy_wait_verified_node \
+            scripts.tests.test_release_artifacts
 
   verified-kernel-base:
     name: Verified Lean kernel base checkpoint
@@ -71,7 +73,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -106,7 +108,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -149,7 +151,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -187,7 +189,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -225,7 +227,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -263,7 +265,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential clang zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -306,7 +308,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -449,7 +451,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
-          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
             -o "${RUNNER_TEMP}/elan-init.sh"
           bash "${RUNNER_TEMP}/elan-init.sh" -y \
             --default-toolchain "$(cat metatheory/lean-toolchain)"
@@ -599,6 +601,8 @@ jobs:
             --binary "$OUT/dregg-node" \
             --status "${RUNNER_TEMP}/verified-status.json" \
             --sbom "$OUT/dregg-node.spdx.json" \
+            --artifact castalia-bootstrap-node-linux-x86_64 \
+            --target x86_64-unknown-linux-gnu \
             --output "$OUT/provenance.json"
           SHA="$(awk 'NR == 1 { print $1 }' "$OUT/dregg-node.sha256")"
           jq -e --arg sha "$SHA" '
@@ -618,20 +622,207 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  verified-artifact-arm64:
+    name: Verified Lean Linux ARM64 artifact
+    needs: [verified-kernel, deployment-package]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install native and pinned Lean prerequisites
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "aarch64"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang cmake jq libssl-dev libxkbcommon-x11-dev pkg-config zstd
+          curl --retry 5 --retry-all-errors --retry-delay 2 -sSfL https://raw.githubusercontent.com/leanprover/elan/464c9d28395000a2a0128e07081e4956d50eced2/elan-init.sh \
+            -o "${RUNNER_TEMP}/elan-init.sh"
+          bash "${RUNNER_TEMP}/elan-init.sh" -y \
+            --default-toolchain "$(cat metatheory/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: castalia-bootstrap-node-linux-aarch64
+
+      - name: Verify the checked-in canonical descriptor set
+        run: |
+          set -euo pipefail
+          python3 scripts/emit_descriptors.py --verify-provenance --rev HEAD
+          python3 scripts/emit_descriptors.py --verify-by-name-routing
+          python3 scripts/check-emit-gate-weld.py
+
+      - name: Build and attest the platform-native verified Lean kernel
+        run: |
+          set -euo pipefail
+          bash scripts/ci-mathlib-cache.sh
+          ( cd metatheory && lake build Dregg2.FFI )
+          dregg-lean-ffi/scripts/seed-dregg2-closure.sh
+          ARCH="dregg-lean-ffi/libdregg_lean.a"
+          test -s "$ARCH"
+          bash scripts/lean-seed-key.sh > "$ARCH.provenance"
+          SHA="$(sha256sum "$ARCH" | awk 'NR == 1 { print $1 }')"
+          {
+            echo "SHA256=$SHA"
+            echo "SOURCE_REVISION=$(git rev-parse HEAD)"
+            echo "GENERATED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$ARCH.provenance"
+          test "$(sed -n 's/^KEY=//p' "$ARCH.provenance" | head -1)" = \
+            "$(bash scripts/lean-seed-key.sh --key)"
+          test "$(sed -n 's/^SHA256=//p' "$ARCH.provenance" | head -1)" = "$SHA"
+
+      - name: Build the production ARM64 node without marshal-only fallback
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+        run: cargo build --locked --release -p dregg-node
+
+      - name: Prove permissionless issuance survives a production solo restart
+        env:
+          DREGG_REQUIRE_LEAN: "1"
+          CASTALIA_TEST_REQUIRE_LEAN: "1"
+        run: >-
+          cargo test --locked --release -p dregg-node
+          --test castalia_membership_process_restart
+          permissionless_v2_join_is_idempotent_and_survives_production_solo_restart
+
+      - name: Boot and assert the verified ARM64 producer at runtime
+        run: |
+          set -euo pipefail
+          DATA_ROOT="$(mktemp -d "${RUNNER_TEMP}/castalia-node.XXXXXX")"
+          DATA_DIR="${DATA_ROOT}/data"
+          STATUS_JSON="${RUNNER_TEMP}/status.json"
+          LOG="${RUNNER_TEMP}/dregg-node.log"
+          target/release/dregg-node init --data-dir "$DATA_DIR" --solo-genesis
+          target/release/dregg-node run \
+            --data-dir "$DATA_DIR" \
+            --port 18420 \
+            --bind 127.0.0.1 \
+            --gossip-port 19420 \
+            --federation-size 1 \
+            --federation-mode solo >"$LOG" 2>&1 &
+          NODE_PID=$!
+          trap 'kill "$NODE_PID" 2>/dev/null || true' EXIT
+          READY=0
+          for attempt in $(seq 1 1200); do
+            if curl -fsS http://127.0.0.1:18420/status >"$STATUS_JSON" 2>/dev/null; then
+              READY=1
+              break
+            fi
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              NODE_RC=0
+              wait "$NODE_PID" || NODE_RC=$?
+              cat "$LOG"
+              echo "::error::verified ARM64 node exited before readiness (status $NODE_RC)"
+              exit 1
+            fi
+            if (( attempt % 30 == 0 )); then
+              echo "waiting for verified ARM64 node readiness (${attempt}s / 1200s)"
+              tail -20 "$LOG" || true
+            fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ] || [ ! -s "$STATUS_JSON" ]; then
+            cat "$LOG"
+            echo "::error::verified ARM64 node did not become ready within 1200 seconds"
+            exit 1
+          fi
+          jq -e '
+            .state_producer == "lean" and
+            .lean_producer == true and
+            .federation_mode == "solo"
+          ' "$STATUS_JSON"
+          if grep -Eqi 'marshal-only|un-verified rust executor' "$LOG"; then
+            echo "::error::ARM64 runtime log indicates an unverified producer"
+            exit 1
+          fi
+          cp "$STATUS_JSON" "${RUNNER_TEMP}/verified-status.json"
+          kill "$NODE_PID"
+          STOPPED=0
+          for _ in $(seq 1 120); do
+            if ! kill -0 "$NODE_PID" 2>/dev/null; then
+              wait "$NODE_PID" || true
+              STOPPED=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$STOPPED" -ne 1 ]; then
+            cat "$LOG"
+            kill -KILL "$NODE_PID" 2>/dev/null || true
+            wait "$NODE_PID" || true
+            echo "::error::verified ARM64 node did not finish graceful shutdown within 120 seconds"
+            exit 1
+          fi
+          trap - EXIT
+
+      - name: Package ARM64 checksum, provenance, and SPDX SBOM
+        run: |
+          set -euo pipefail
+          OUT="${RUNNER_TEMP}/castalia-bootstrap-node-linux-aarch64"
+          mkdir -p "$OUT"
+          install -m 0755 target/release/dregg-node "$OUT/dregg-node"
+          ( cd "$OUT" && sha256sum dregg-node > dregg-node.sha256 )
+          cargo metadata --locked --format-version 1 > "${RUNNER_TEMP}/cargo-metadata.json"
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)" \
+            python3 scripts/cargo_metadata_to_spdx.py \
+              --metadata "${RUNNER_TEMP}/cargo-metadata.json" \
+              --root-package dregg-node \
+              --output "$OUT/dregg-node.spdx.json"
+          python3 scripts/write_bootstrap_provenance.py \
+            --binary "$OUT/dregg-node" \
+            --status "${RUNNER_TEMP}/verified-status.json" \
+            --sbom "$OUT/dregg-node.spdx.json" \
+            --artifact castalia-bootstrap-node-linux-aarch64 \
+            --target aarch64-unknown-linux-gnu \
+            --output "$OUT/provenance.json"
+          SHA="$(awk 'NR == 1 { print $1 }' "$OUT/dregg-node.sha256")"
+          jq -e --arg sha "$SHA" '
+            .artifact == "castalia-bootstrap-node-linux-aarch64" and
+            .binary.sha256 == $sha and
+            .build.target == "aarch64-unknown-linux-gnu" and
+            .stateProducer == "lean" and
+            .leanProducer == true and
+            (.revision | test("^[0-9a-f]{40}$"))
+          ' "$OUT/provenance.json"
+          jq -e '.spdxVersion == "SPDX-2.3" and (.packages | length) > 0' \
+            "$OUT/dregg-node.spdx.json"
+
+      - name: Upload verified ARM64 deployment bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: castalia-bootstrap-node-linux-aarch64
+          path: ${{ runner.temp }}/castalia-bootstrap-node-linux-aarch64
+          if-no-files-found: error
+          retention-days: 30
+
   publish-release:
     name: Publish protected release
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/castalia-bootstrap-v')
-    needs: verified-artifact
+    needs: [verified-artifact, verified-artifact-arm64]
     runs-on: ubuntu-24.04
     environment: castalia-bootstrap-release
     permissions:
       contents: write
     steps:
-      - name: Download verified bundle
+      - name: Download verified x86-64 bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: castalia-bootstrap-node-linux-x86_64
-          path: artifact
+          path: artifact/x86_64
+
+      - name: Download verified ARM64 bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: castalia-bootstrap-node-linux-aarch64
+          path: artifact/aarch64
 
       - name: Publish immutable GitHub release assets
         env:
@@ -647,7 +838,15 @@ jobs:
             echo "::error::release $RELEASE_TAG already exists; verified assets are immutable"
             exit 3
           fi
-          gh release create "$RELEASE_TAG" artifact/* \
+          mkdir -p release-assets
+          for arch in x86_64 aarch64; do
+            cp "artifact/$arch/dregg-node" "release-assets/dregg-node-linux-$arch"
+            sha256sum "release-assets/dregg-node-linux-$arch" > \
+              "release-assets/dregg-node-linux-$arch.sha256"
+            cp "artifact/$arch/provenance.json" "release-assets/provenance-linux-$arch.json"
+            cp "artifact/$arch/dregg-node.spdx.json" "release-assets/dregg-node-linux-$arch.spdx.json"
+          done
+          gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Castalia bootstrap node $RELEASE_TAG" \

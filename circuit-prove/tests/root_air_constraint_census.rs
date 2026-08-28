@@ -30,7 +30,7 @@
 //! | `poseidon2_perm/baby_bear_d4_w16` | `BabyBearD4Width16::default_air()` | `plonky3_recursion_impl.rs:250` |
 //! | `poseidon2_perm/baby_bear_d4_w24` | `BabyBearD4Width24::default_air()` | `plonky3_recursion_impl.rs:260` |
 //! | `recompose` | `RecomposeAir::<F,4>::new_with_preprocessed(1, .., 1, false)` | `register_recompose_table::<D>(false)` ⇒ `recompose_table_provers(1, false)` ⇒ `RecomposeProver::new(1, false)` (`batch_stark_prover.rs:911,1696-1703`) |
-//! | `expose_claim` | `ExposeClaimAir::<F,4>::new_with_preprocessed(25, .., 1)` | `NUM_CHAIN_CLAIMS = 25` (`ivc_turn_chain.rs:366,278`) |
+//! | `expose_claim` | `ExposeClaimAir::<F,4>::new_with_preprocessed(33, .., 1)` | `SEG_SPINE_WIDTH = NUM_CHAIN_CLAIMS + VK_SPINE_WIDTH = 33` (`ivc_turn_chain.rs`) |
 //!
 //! `TablePacking::new(1, 4)` is `ProveNextLayerParams::default()`
 //! (`plonky3-recursion@0a4a554 recursion/src/recursion.rs:328`), which `wrap_params()` inherits
@@ -78,6 +78,8 @@ use p3_field::{Field, PrimeCharacteristicRing, PrimeField32};
 use p3_lookup::{LogUpGadget, Lookups};
 use p3_poseidon2_circuit_air::{BabyBearD4Width16, BabyBearD4Width24};
 
+use dregg_circuit_prove::ivc_turn_chain::SEG_SPINE_WIDTH;
+
 type F = BabyBear;
 /// The root's challenge field — `BinomialExtensionField<BabyBear, 4>`
 /// (`circuit-prove/src/plonky3_recursion_impl.rs:136`).
@@ -93,8 +95,10 @@ const ALU_LANES: usize = 4;
 const HORNER_PACKED_STEPS: usize = 2;
 /// `W` for `BinomialExtensionField<BabyBear, 4>` — the binomial the ALU AIR carries.
 const ALU_W: u32 = 11;
-/// `SEG_WIDTH = NUM_CHAIN_CLAIMS` (`circuit-prove/src/ivc_turn_chain.rs:366,278`).
-const NUM_CHAIN_CLAIMS: usize = 25;
+/// The recursion root exposes the 25-lane ordered-history segment plus the
+/// eight-lane verifier-key spine.  This must come from the production root ABI,
+/// rather than duplicating the pre-spine width that older artifacts used.
+const ROOT_EXPOSED_CLAIM_WIDTH: usize = SEG_SPINE_WIDTH;
 
 /// One table's measured constraint census.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,7 +198,7 @@ fn recompose_air() -> RecomposeAir<F, D> {
 }
 
 fn expose_claim_air() -> ExposeClaimAir<F, D> {
-    ExposeClaimAir::<F, D>::new_with_preprocessed(NUM_CHAIN_CLAIMS, Vec::new(), 1)
+    ExposeClaimAir::<F, D>::new_with_preprocessed(ROOT_EXPOSED_CLAIM_WIDTH, Vec::new(), 1)
 }
 
 /// The census of all seven, at a given primitive row count.
@@ -1643,23 +1647,22 @@ fn dag_source_language_census() {
         k[0] * ext_lin
     );
     println!(
-        "the alpha-fold, A + N*h  : {} rows (14175 + 1093*48, all 1093)",
-        14_175 + 1093 * 48
+        "the alpha-fold, A + N*h  : {} rows (14175 + 1129*48, all 1129)",
+        14_175 + 1129 * 48
     );
     println!(
         "AIR side, whole root     : {} rows",
-        ci_rows + 14_175 + 1093 * 48
+        ci_rows + 14_175 + 1129 * 48
     );
     println!("the FLAT form's multiplies alone: {flat_rows} rows");
 
-    // ⚑ RE-PRICED 901 -> 905 at fork rev `fc3c6df`, and the +4 is attributable: `ConstAir::eval`
-    // gained exactly `D` = 4 degree-1 constraints `main.value[i] == prep.value[i]`, binding a
-    // constant's value to its new preprocessed column so a const-swapped child cannot ride an
-    // honest anchor. A re-price, not a weakening — the count went UP, and if it ever goes back
-    // DOWN by 4 the binding has been removed.
+    // ⚑ RE-PRICED 905 -> 913 when the root started carrying the eight-lane VK spine in addition
+    // to the 25-lane ordered-history segment. `ExposeClaimAir` contributes one base equality per
+    // exposed lane, so the increase is exactly eight. A future drop means the root artifact no
+    // longer describes the production `SEG_SPINE_WIDTH` ABI.
     assert_eq!(
-        r, 905,
-        "the root count is the census's 905 base constraints"
+        r, 913,
+        "the root count is the census's 913 base constraints"
     );
     assert_eq!(
         k.iter().sum::<usize>(),
@@ -1794,13 +1797,13 @@ fn emit_lean_dag() {
 //
 // `docs/MINA-VERIFIES-DREGG-FRI-SIZE.md` §3.19 measures a Kimchi circuit that decides a real
 // dregg STARK proof, and names one seam in it: `DreggProofVerify`'s `constraints` argument is the
-// FIXTURE's four constraints, not the root's 1,093. Every row total downstream of that — the
+// FIXTURE's four constraints, not the root's 1,129. Every row total downstream of that — the
 // 2.75e7 projection, and §3.21's 591-step schedule over it — is therefore a FLOOR. This emitter
 // closes that seam by rendering the root's own constraint system into a form the o1js side reads.
 //
 // It is an EMISSION, not an authoring. The AIRs are p3's (`plonky3-recursion@0a4a554`); the
 // numbering is `to_dag`'s, already differentially checked against p3's own evaluation over all
-// 901 base constraints (`dag_extractor_agrees_with_p3_evaluation`); the LOWERING of a node list to
+// 913 base constraints (`dag_extractor_agrees_with_p3_evaluation`); the LOWERING of a node list to
 // Kimchi rows is proved in Lean (`Dregg2.Circuit.Emit.KimchiDag.dagGens_forces`, at an arbitrary
 // `CommRing`). What this file adds is the wire form and a KAT, and the KAT is the whole of the
 // evidence that the TypeScript interpreter of this DAG denotes the same thing.
@@ -1963,19 +1966,19 @@ fn emit_root_air_dag_json() {
         kinds[0], kinds[1], kinds[2], kinds[3], kinds[4], kinds[5], kinds[6], kinds[7]
     );
 
-    // ⚑ THE COUNTS ARE PINNED. §3.17 measured N = 901 base + 192 ext by a completely
+    // ⚑ THE COUNTS ARE PINNED. The census measures N = 913 base + 216 ext by a completely
     // different route (`census`, which never builds a DAG). If the extractor ever drops or
     // duplicates a root this reds here, and a Mina-side verifier built on a short constraint list
     // would otherwise be silently weaker than the deployed one.
     //
-    // ⚑ RE-PRICED base 901 -> 905, N 1093 -> 1097 at fork rev `fc3c6df`. The +4 is exactly `D`:
-    // `ConstAir::eval` gained `D` = 4 degree-1 constraints `main.value[i] == prep.value[i]`,
-    // putting a constant's value inside the preprocessed commitment so a const-swapped child moves
-    // the anchor. The ext count is untouched (the new constraints are base-field). A re-price
-    // upward; a future drop of 4 here means the binding was removed.
-    assert_eq!(tot_base, 905, "the base root count is the census's 905");
-    assert_eq!(tot_ext, 192, "the ext root count is the census's 192");
-    assert_eq!(tot_base + tot_ext, 1097, "N is the census's 1,097");
+    // ⚑ RE-PRICED from the pre-spine 25-lane root to the production 33-lane root. Each of the
+    // eight VK-spine lanes adds one base equality and one global lookup; each global lookup adds
+    // three extension constraints. Therefore base 905 -> 913, ext 192 -> 216, and N 1097 -> 1129.
+    // This is an upward re-price and, more importantly, makes the artifact describe the proof the
+    // verifier actually accepts.
+    assert_eq!(tot_base, 913, "the base root count is the census's 913");
+    assert_eq!(tot_ext, 216, "the ext root count is the census's 216");
+    assert_eq!(tot_base + tot_ext, 1129, "N is the census's 1,129");
     assert_eq!(
         kinds.iter().sum::<usize>(),
         tot_nodes,
@@ -2011,10 +2014,10 @@ fn emit_root_air_dag_json() {
 }
 
 /// ⚑ **THE ANTI-VACUITY CHECK FOR THE EXTENSION HALF** — the same confession `to_dag` makes, over
-/// the constraints `to_dag` could not see. For every one of the 192 LogUp constraints, the unified
+/// the constraints `to_dag` could not see. For every one of the 216 LogUp constraints, the unified
 /// DAG's root and p3's own `SymbolicExpressionExt` must agree at pseudorandom EXTENSION-valued
-/// assignments. Without this the ext walker is an unchecked transcription and `N = 1,093` in the
-/// artifact would be 901 real constraints and 192 decorative ones.
+/// assignments. Without this the ext walker is an unchecked transcription and `N = 1,129` in the
+/// artifact would be 913 real constraints and 216 decorative ones.
 #[test]
 fn ext_dag_agrees_with_p3_evaluation() {
     let mut seed = 0x1eaf_0f5e_c0de_0011u64;

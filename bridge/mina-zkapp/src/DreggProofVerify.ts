@@ -589,7 +589,7 @@ export function assertAirClosing(
   // is: `openedQuotient` is read as `numQuotientChunks` consecutive chunks, and
   // at four rounds it carries the preprocessed and permutation rounds too. The
   // root supplies no `constraints` — its AIR closing equality is `RootAirChain`'s
-  // seven slices over 1,093 constraints — so this is unreachable today, and it
+  // seven slices over 1,129 constraints — so this is unreachable today, and it
   // refuses rather than folding a permutation column as a quotient chunk if a
   // caller ever does supply one.
   if (plan.nBatches !== 2)

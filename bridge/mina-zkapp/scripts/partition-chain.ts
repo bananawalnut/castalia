@@ -736,7 +736,7 @@ console.log('\n[9] the deployed step count, with the measured carry in it');
 {
   // §3.19's projection of the deployed root, recorded in
   // `docs/MINA-VERIFIES-DREGG-FRI-SIZE.md`. It is a FLOOR: the AIR term in it is
-  // the fixture's four constraints, not the root's 1,093 (§3.17).
+  // the fixture's four constraints, not the root's 1,129 (§3.17).
   const DEPLOYED_TOTAL_ROWS = 2.75e7;
   const ZK_ROWS = 3;
   const N_PUB = 1; //   `StepPublicInput` is ONE field element, which is the point

@@ -24,8 +24,8 @@ import { PICKLES_OVERHEAD, usableRows } from '../src/PartitionSchedule.js';
 // ---------------------------------------------------------------------------
 // LEG 15 — THE ROOT'S OWN AIR, PROVED AS A CHAIN.
 //
-// Leg 13 emits the root's 1,093 constraints and measures them at 275,143 Kimchi
-// rows. That is 4.8x the 65,536-row Pickles step domain, so dregg's root
+// Leg 13 emits the root's 1,129 constraints and measures them at 283,527 Kimchi
+// rows. That is 4.33x the 65,536-row Pickles step domain, so dregg's root
 // constraint system HAS NO ONE-STEP VERIFIER — the same situation §3.20
 // constructed deliberately with three queries, arrived at here by the object
 // itself rather than by choosing a geometry.
@@ -254,7 +254,7 @@ async function main() {
   const full = planRootAirChain(u, { usableRows: USABLE, chunkSize: CHUNK_SIZE });
   console.log(
     `    ${fmt(u.nodes.length)} DAG nodes, ${fmt(u.roots.length)} constraints, ` +
-      `275,143 EMITTED rows = 4.20x the 65,536-row step domain`,
+      `283,527 EMITTED rows = 4.33x the 65,536-row step domain`,
   );
   console.log(
     `    the FULL chain is ${full.slices.length} slices: work ${fmt(full.totalWork)} + carry ` +
@@ -396,7 +396,7 @@ async function main() {
   );
   ok(
     `the terminal seal carries the accumulator over ${fmt(coveredConstraints)} of the root's ` +
-      `1,093 constraints`,
+      `1,129 constraints`,
   );
 
   // -----------------------------------------------------------------------

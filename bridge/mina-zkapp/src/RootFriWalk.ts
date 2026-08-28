@@ -8,9 +8,9 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 // seal is braided INTO.
 //
 // ⚑ WHAT THIS IS FOR. The AIR half is closed at real geometry: seven slices,
-// seven processes, all 10,417 DAG nodes and all 1,093 constraints over dregg's
+// seven processes, all 10,689 DAG nodes and all 1,129 constraints over dregg's
 // committed root proof, ending in `airTerminalSeal(dagDigest, digest(acc), 7)` —
-// and `acc` is verifier-computable as `Σ_T acc_T · α^(1093 − b_T)`. That seal
+// and `acc` is verifier-computable as `Σ_T acc_T · α^(1129 − b_T)`. That seal
 // says the AIR's closing equalities hold **at the opened values the chain was
 // handed**. It says nothing about whether those opened values are the ones
 // dregg committed to. Authenticating them is the FRI walk, and the two halves
@@ -21,7 +21,7 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 // looks like it proves: the AIR half folds one set of numbers, the FRI half
 // authenticates another, and nothing says they are the same set. The braid is
 // therefore built on ONE column commitment. `dagDigest` — the AIR chain's own
-// chunked commitment over its 1,602 extension values — is carried across the
+// chunked commitment over its 1,702 extension values — is carried across the
 // seal into the FRI slices, and every DEEP-quotient term whose `f(z)` the AIR
 // legend names is READ OUT OF THOSE CHUNKS rather than witnessed again. A FRI
 // half that authenticated different numbers would re-derive a different
@@ -29,14 +29,14 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 //
 // ⚑ WHAT THE AIR LEGEND DOES NOT COVER, MEASURED RATHER THAN ASSUMED. The AIR
 // reads only the columns it constrains. Measured against the proof's own opened
-// set: **1,748 of the 2,630 opened values (66.5%) are lanes of the AIR chain's
-// assignment**, and the other 882 — the main and preprocessed columns the AIR
-// never touches, plus all 56 quotient-chunk openings — go under a second,
+// set: **1,288 of the 2,746 opened values (46.9%) are lanes of the AIR chain's
+// assignment**, and the other 1,458 — the permutation and quotient openings
+// that need their own binding, plus columns the AIR never names — go under a second,
 // FRI-side commitment (`friDigest`). Both are in the boundary; only the first is
 // shared with the AIR half, and `planOpenedValues` reports the ratio so the
 // claim is a number rather than a word.
 //
-// ⚑ 2,630, NOT 2,286 — AND THE CORRECTION GOES BOTH WAYS. §3.15 prices the DEEP
+// ⚑ 2,746, NOT 2,286 — AND THE CORRECTION GOES BOTH WAYS. §3.15 prices the DEEP
 // quotient at `940·2 + 175·2 + 7·2·4 = 2,286`. Two things are wrong with that
 // and they pull in opposite directions. It omits the PERMUTATION round entirely
 // (the root's seven instances carry 64 extension permutation columns = 512

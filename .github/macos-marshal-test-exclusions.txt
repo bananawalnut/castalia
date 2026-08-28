@@ -1,0 +1,34 @@
+# Packages whose tests deliberately install the Lean-verified PQ cores through
+# dregg-pq-testkit. The macOS CI runner has no published Darwin-arm64 Lean seed,
+# so executing these tests would fail closed before their first PQ operation.
+#
+# scripts/ci-macos-marshal-packages.py derives the actual direct dev-dependency
+# set from Cargo metadata and requires it to match this reviewed manifest. Adding
+# or removing a testkit edge therefore changes CI only through an explicit diff.
+agent-platform
+deos-view
+dregg-analyzer
+dregg-auth
+dregg-blocklace
+dregg-captp
+dregg-cell-crypto
+dregg-coord
+dregg-doc
+dregg-federation
+dregg-lightclient
+dregg-persist
+dregg-pq-testkit
+dregg-redteam
+dregg-sdk
+dregg-sdk-net
+dregg-teasting
+dregg-token
+dregg-turn
+dregg-verifier
+dregg-wire
+fhegg-fhe
+grain-commons
+procgen-dregg
+realm-model
+sandstorm-bridge
+sandstorm-serve

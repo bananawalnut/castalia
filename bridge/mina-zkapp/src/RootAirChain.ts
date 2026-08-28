@@ -13,7 +13,7 @@ import {
 import { chainStepBoundary, taggedTerminalSeal } from './CostModel.js';
 
 // ---------------------------------------------------------------------------
-// THE ROOT AIR AS A CHAIN — 275,143 emitted rows do not fit in a 65,536-row
+// THE ROOT AIR AS A CHAIN — 283,527 emitted rows do not fit in a 65,536-row
 // Pickles step, so the root's own constraint system is decided by chained steps
 // or not at all.
 //
@@ -42,8 +42,8 @@ import { chainStepBoundary, taggedTerminalSeal } from './CostModel.js';
 // ⚑ THE LIVE SET IS WHAT MAKES THIS AFFORDABLE, and it is a property of the DAG
 // rather than a design choice: the extractor emits in DFS post-order, so the cut
 // width — the number of already-computed values a later node still reads —
-// never exceeds 102 across all 10,417 nodes, median 66. A boundary therefore
-// carries ~100 extension values, not the 1,602 columns.
+// never exceeds 102 across all 10,689 nodes. A boundary therefore
+// carries ~100 extension values, not the 1,702 columns.
 // ---------------------------------------------------------------------------
 
 const LANE_MAX = (1n << 31n) - 1n;
