@@ -175,6 +175,10 @@ creation, `.castalia-recovery` export/import, issuance, idempotent retry,
 lock/unlock persistence, node restart, and backup restoration. The local
 development membership does not migrate to this new ledger; the same Member
 Key deterministically reacquires one membership on the production federation.
+Record every release, infrastructure, membership, soak, recovery, and
+clean-profile result in `deploy/oci/ACCEPTANCE-RECORD.md`. Do not copy any
+private key, passphrase, OCI credential, or recovery-export contents into the
+record.
 
 ## Operations
 
