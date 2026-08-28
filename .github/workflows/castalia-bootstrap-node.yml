@@ -806,12 +806,22 @@ jobs:
   publish-release:
     name: Publish protected release
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/castalia-bootstrap-v')
-    needs: [verified-artifact, verified-artifact-arm64]
+    needs: [verified-kernel, verified-artifact, verified-artifact-arm64]
     runs-on: ubuntu-24.04
     environment: castalia-bootstrap-release
+    concurrency: castalia-bootstrap-release
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          lfs: false
+
+      - name: Install release packaging prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zstd
+
       - name: Download verified x86-64 bundle
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -823,6 +833,86 @@ jobs:
         with:
           name: castalia-bootstrap-node-linux-aarch64
           path: artifact/aarch64
+
+      - name: Download the verified Lean kernel seed
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: castalia-verified-lean-seed-linux-x86_64
+          path: artifact/lean-seed
+
+      - name: Publish the immutable content-keyed Lean seed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEED_TAG: lean-seed
+        run: |
+          set -euo pipefail
+          BUNDLE="artifact/lean-seed"
+          SOURCE_ZST="$BUNDLE/libdregg_lean.a.zst"
+          PROVENANCE="$BUNDLE/libdregg_lean.a.provenance"
+          test -s "$SOURCE_ZST"
+          test -s "$PROVENANCE"
+
+          ASSET="$(bash scripts/lean-seed-key.sh --asset)"
+          EXPECTED_KEY="$(bash scripts/lean-seed-key.sh --key)"
+          RECORDED_KEY="$(sed -n 's/^KEY=//p' "$PROVENANCE" | head -1)"
+          RECORDED_ASSET="$(sed -n 's/^ASSET=//p' "$PROVENANCE" | head -1)"
+          RECORDED_SHA="$(sed -n 's/^SHA256=//p' "$PROVENANCE" | head -1)"
+          test -n "$ASSET"
+          test "$RECORDED_KEY" = "$EXPECTED_KEY"
+          test "$RECORDED_ASSET" = "$ASSET"
+
+          VERIFIED_ARCHIVE="${RUNNER_TEMP}/libdregg_lean.a"
+          zstd -d -q "$SOURCE_ZST" -o "$VERIFIED_ARCHIVE"
+          LIVE_ARCHIVE_SHA="$(sha256sum "$VERIFIED_ARCHIVE" | awk 'NR == 1 { print $1 }')"
+          test "$RECORDED_SHA" = "$LIVE_ARCHIVE_SHA"
+
+          SEED_OUT="${RUNNER_TEMP}/lean-seed-release"
+          mkdir -p "$SEED_OUT"
+          cp "$SOURCE_ZST" "$SEED_OUT/$ASSET"
+          ( cd "$SEED_OUT" && sha256sum "$ASSET" > "$ASSET.sha256" )
+
+          if ! gh release view "$SEED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$SEED_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Lean seed archives" \
+              --notes "Content-keyed verified Lean kernel seeds. Consumers derive the exact asset name with scripts/lean-seed-key.sh and verify its SHA-256 sidecar before installation."
+          fi
+
+          REMOTE_NAMES="$(gh release view "$SEED_TAG" --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name')"
+          HAVE_ASSET=0
+          HAVE_SUM=0
+          grep -Fxq "$ASSET" <<<"$REMOTE_NAMES" && HAVE_ASSET=1
+          grep -Fxq "$ASSET.sha256" <<<"$REMOTE_NAMES" && HAVE_SUM=1
+          if [ "$HAVE_ASSET" -ne "$HAVE_SUM" ]; then
+            echo "::error::release $SEED_TAG contains only one half of $ASSET and its checksum; refusing to overwrite a partial immutable publication"
+            exit 4
+          fi
+          if [ "$HAVE_ASSET" -eq 1 ]; then
+            REMOTE_DIR="${RUNNER_TEMP}/published-lean-seed"
+            mkdir -p "$REMOTE_DIR"
+            gh release download "$SEED_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$ASSET" \
+              --pattern "$ASSET.sha256" \
+              --dir "$REMOTE_DIR"
+            REMOTE_RECORDED_SHA="$(awk 'NR == 1 { print $1 }' "$REMOTE_DIR/$ASSET.sha256")"
+            REMOTE_LIVE_SHA="$(sha256sum "$REMOTE_DIR/$ASSET" | awk 'NR == 1 { print $1 }')"
+            REMOTE_ARCHIVE="${RUNNER_TEMP}/published-libdregg_lean.a"
+            zstd -d -q "$REMOTE_DIR/$ASSET" -o "$REMOTE_ARCHIVE"
+            REMOTE_ARCHIVE_SHA="$(sha256sum "$REMOTE_ARCHIVE" | awk 'NR == 1 { print $1 }')"
+            if [ "$REMOTE_RECORDED_SHA" != "$REMOTE_LIVE_SHA" ] || \
+               [ "$REMOTE_ARCHIVE_SHA" != "$RECORDED_SHA" ]; then
+              echo "::error::content-keyed seed $ASSET already exists with different or invalid bytes; refusing to overwrite it"
+              exit 5
+            fi
+            echo "::notice::$ASSET is already published with identical verified archive contents"
+          else
+            gh release upload "$SEED_TAG" "$SEED_OUT/$ASSET" "$SEED_OUT/$ASSET.sha256" \
+              --repo "$GITHUB_REPOSITORY"
+            echo "::notice::published immutable verified seed $ASSET"
+          fi
 
       - name: Publish immutable GitHub release assets
         env:

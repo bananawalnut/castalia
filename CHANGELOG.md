@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Added
 
 - Added protected x86-64 and ARM64 Castalia bootstrap artifacts plus a hardened Oracle Cloud Always Free deployment package — production nodes can install a verified Lean-backed binary without compiling from a mutable server checkout.
+- The protected bootstrap release now publishes its verified x86-64 Lean kernel seed under the canonical content-keyed name, making subsequent clean CI builds reproducible without weakening the verified-producer gate.
 
 ### Changed
 
