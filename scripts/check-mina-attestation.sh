@@ -653,6 +653,17 @@ if [ "$MODE" = "headline" ]; then
 
   hydrate_real_root_instances
 
+  # The tier-2 braid checks the terminal AIR proof emitted by the full-chain
+  # leg. On a clean runner that proof does not exist yet, so produce it before
+  # the braid instead of accidentally relying on a developer's gitignored
+  # `.fullchain/` cache. The complete assertions remain with the full-chain
+  # gate below; a producer failure is fatal here before any consumer runs.
+  if leg_at_tier air-fullchain; then
+    fchn_out="$(run_air_fullchain "$APP" 2>&1)"; rc=$?
+    printf '%s\n' "$fchn_out"
+    [ "$rc" -eq 0 ] || die "the root-air-fullchain leg exited $rc"
+  fi
+
   echo
   echo "── tier 0: the out-of-circuit differentials ───────────────────────────"
   # ⚑ THE INSTRUMENTS THAT FOUND EVERYTHING. See the header. These three walk the
@@ -1268,9 +1279,6 @@ if [ "$MODE" = "headline" ]; then
 
   if leg_at_tier air-fullchain; then
   # ── the FULL chain, one process per slice ──────────────────────────────────
-  fchn_out="$(run_air_fullchain "$APP" 2>&1)"; rc=$?
-  printf '%s\n' "$fchn_out"
-  [ "$rc" -eq 0 ] || die "the root-air-fullchain leg exited $rc"
   n_fchain="$(printf '%s' "$fchn_out" | grep -c '✓')"
   [ "$n_fchain" -ge 14 ] || die "only $n_fchain full-chain checks passed; expected >= 14"
   grep -q 'covering ALL' <<<"$fchn_out" \

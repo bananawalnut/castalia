@@ -415,8 +415,8 @@ console.log(
 }
 
 //  A ratchet at 2%, as every new figure in this arc carries.
-const RECORDED_PASTA_QUERY_ROWS = 171_742;
-const RECORDED_BB_QUERY_ROWS = 1_537_038;
+const RECORDED_PASTA_QUERY_ROWS = 178_081;
+const RECORDED_BB_QUERY_ROWS = 1_474_740;
 for (const [name, got, want] of [
   ['Pasta, one query', paRow.q, RECORDED_PASTA_QUERY_ROWS],
   ['BabyBear, one query', bbRow.q, RECORDED_BB_QUERY_ROWS],
@@ -619,10 +619,22 @@ await refuse('an opened ROW lane bent by one (the leaf sponge no longer matches)
   return [claim, rows, wq.map((w) => w.inputPaths), bitsPerQ];
 });
 
+const injectedRound = PA_SH.batches.findIndex(
+  (batch) => new Set(batch.matrices.map((matrix) => matrix.logHeight)).size > 1,
+);
+if (injectedRound < 0) throw new Error('the production root has no mixed-height input round to falsify');
+const injectedHeights = [
+  ...new Set(PA_SH.batches[injectedRound].matrices.map((matrix) => matrix.logHeight)),
+].sort((a, b) => b - a);
+const injectedLevel = injectedHeights[0] - 1 - injectedHeights[1];
+if (injectedLevel < 0 || injectedLevel >= PA_SH.batches[injectedRound].pathDepth)
+  throw new Error(
+    `the derived injection level ${injectedLevel} is outside round ${injectedRound}'s path`,
+  );
+
 await refuse("a PATH sibling from a level the mixed-height walk injects at", () => {
   const paths = wq.map((w) => w.inputPaths.map((r) => r.slice()));
-  const lv = PA_SH.logGlobalMaxHeight - 1 - 21; //  the level height 21 is injected at
-  paths[0][0][lv] = PA_PLAN.suite.from([12345n]);
+  paths[0][injectedRound][injectedLevel] = PA_PLAN.suite.from([12345n]);
   return [claim, wq.map((w) => w.rows), paths, bitsPerQ];
 });
 

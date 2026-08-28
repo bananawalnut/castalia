@@ -21,6 +21,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ### Fixed
 
+- Made clean Mina tier-2 runs produce the terminal AIR proof before the FRI
+  braid consumes it, re-recorded the query-row measurements for the canonical
+  derived root geometry, and replaced a stale negative-index sibling falsifier
+  with a production-shape-derived mixed-height injection level.
 - Repaired root AIR, root-FRI, WASM release, and deployment verification gates — the permissionless membership node can be built and checked against the production proof and fail closed during install, restart, backup, and rollback operations.
 - Refreshed the Mina FRI-preamble protocol ratchets from the canonical seven-instance root and derived its opened-value permutation count instead of reporting the retired proof shape.
 - Seeded the upgradeable Groth16 verifier from the generated canonical settlement key, eliminating a stale copied key that broke proof attestation and cross-chain digest checks.
