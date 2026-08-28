@@ -258,7 +258,7 @@ ring remains a separate (already no-viewer, already PQ-private) product. Do not 
 
 **PQ posture the FHE must match.** The **Option-A cutover of `docs/deos/PQ-SHIELDED-COMMITMENT.md`
 is landed** (its §5): the authoritative value-commitment is the Poseidon2 `hash_fact` value-binding
-(`HashCR`; `circuit-prove/src/shielded/spend_circuit.rs::value_binding`, re-computed in-AIR by both
+(`HashCR`; retired `spend_circuit.rs::value_binding`, re-computed in-AIR by both
 ring AIRs), conservation is the in-AIR field gate, and the Schnorr/Bulletproof DLog path is retired
 from the TCB. So FHE (lattice/LWE, PQ) + STARK (Poseidon2 / FRI, PQ) + hash-commitment (PQ) already
 compose post-quantum on the settlement path. The PQ residual the FHE rung must respect is the
@@ -386,7 +386,7 @@ stays the classical-shielded product; and the ladder is honest rungs, not a leap
 - dregg (this repo): `intent/src/solver.rs`, `intent/src/trustless.rs`, `intent/src/matcher.rs`,
   `intent/src/drex_routing.rs`, `intent/src/verified_settle.rs`, `tee-verify/src/{lib,attested_data,
   oracle_mark,snp}.rs`, `metatheory/Market/ShieldedClearing.lean`, `metatheory/Market/Optimality.lean`,
-  `circuit-prove/src/shielded_ring_clearing_air.rs`, `..._nleg_air.rs`,
+  retired `shielded_ring_clearing_air.rs` and `shielded_ring_clearing_nleg_air.rs`,
   `docs/deos/{DREX-DESIGN,SHIELDED-AUCTIONS-DESIGN,SHIELDED-DREX-ASSURANCE-ROADMAP,
   PQ-SHIELDED-COMMITMENT,OUTPUT-BOUNDARY-MPC}.md`,
   `fhegg-fhe/src/{additive,mpc}.rs`, `fhegg-fhe/{ADDITIVE-FOLD-ENVELOPE,MEASURED-ENVELOPE}.md`,

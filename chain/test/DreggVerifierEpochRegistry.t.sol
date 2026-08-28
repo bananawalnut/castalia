@@ -117,7 +117,7 @@ contract DreggVerifierEpochRegistryTest is Test {
         );
         assertEq(
             verifier.vkDigest(),
-            0xcfda612f472e998d1f1bad1bf545ec5b39ca99b64db94e46edf2e8d3790a37cc,
+            0x76b2bb3853d336f49f411393585a05ee7441798d4f2c8561a01b6061b69ad11d,
             "byte-identical to solana vk::VK_DIGEST and cosmos vk::VK_DIGEST"
         );
     }

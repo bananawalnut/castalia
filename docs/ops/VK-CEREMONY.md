@@ -48,7 +48,7 @@ a *known-toxic-waste* single-party setup:
   ceremony, and its output would NOT live here" (`:24-25`).
 - **on-chain identifier:** `docs/ops/DEPLOY-SOLANA-COSMOS-TESTNET.md:12-14,177-184` pins
   `vk_hash = dregg_solana_settlement::settlement_vk_digest() = vk::VK_DIGEST
-  = 0xcfda612f472e998d1f1bad1bf545ec5b39ca99b64db94e46edf2e8d3790a37cc` across EVM/Solana/
+  = 0x76b2bb3853d336f49f411393585a05ee7441798d4f2c8561a01b6061b69ad11d` across EVM/Solana/
   Cosmos. ⚑ 2026-07-28: this WAS `dev_ceremony_vk_hash() =
   keccak256("dregg-settlement-vk-dev-setup") = 0x18f57474...31e1ff76` — a hash of a LABEL,
   so the "re-pin the vk_hash" step below was a NO-OP that could never be observed to have
@@ -101,7 +101,7 @@ tailnet" — that path is *false at the network layer* (`deploy/README.md:34-37`
 | apex VK pin (Rust) | `DREGG_APEX_RECURSION_VK` = `3ad1c9c6…5503` (`circuit-prove/src/apex_shrink_gnark_export.rs:216-217`) | re-derive |
 | apex VK pin (Go mirror) | `DreggApexRecursionVk` = `3ad1c9c6…5503` (`chain/gnark/settlement_circuit.go:122`) | re-derive |
 | apex identity fixture | `chain/gnark/fixtures/apex_vk_identity.json` (`FRI-CUTOVER-PLAN.md:125,233`) | regen |
-| on-chain `vk_hash` | `VK_DIGEST` = keccak of the DEV VK's canonical serialization, `0xcfda612f...790a37cc` | `VK_DIGEST` of the MPC VK — emitted by `gen_verifiers.py` from the new spec, no hand-edit |
+| on-chain `vk_hash` | `VK_DIGEST` = keccak of the DEV VK's canonical serialization, `0x76b2bb38...69ad11d` | `VK_DIGEST` of the MPC VK — emitted by `gen_verifiers.py` from the new spec, no hand-edit |
 | recursion VK pin (KAT) | **none yet** — tautology (`recursive_witness_bundle.rs:191-197`, §6.1) | frozen hex constant |
 | audit row | `docs/VK-REGEN-LOG.md` (append-only) | +1 row, `source dirty = no` |
 

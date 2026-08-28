@@ -49,7 +49,7 @@ Downstream: `B_SPAN` 239 -> 247, `2*B_SPAN` 478 -> 494, `APPENDIX_SPAN` 521 -> 5
 `circuit/src/exact_nullifier_aafi_rotated_trace.rs`'s width pins fail the BUILD, by design. Two
 hand-mirrors that would have disagreed SILENTLY were de-mirrored in the same change:
 `exact_nullifier_aafi_rotated_trace.rs` (`ROTATED_PRE_LIMBS` / `ROTATED_IROOT_OFFSET` /
-`ROTATED_PAYLOAD_WIDTH` / `WIDE_CARRIERS`) and `circuit-prove/src/shielded_ring_clearing_air.rs`
+`ROTATED_PAYLOAD_WIDTH` / `WIDE_CARRIERS`) and the now-retired `shielded_ring_clearing_air.rs`
 (`ENDPOINT_NUM_PRE_LIMBS`, whose doc CLAIMED "the same `wireCommitR8` shape as the live wide cohort"
 with nothing checking it) now PROJECT `layout_generated::NUM_PRE_LIMBS` and carry compile-time pins.
 

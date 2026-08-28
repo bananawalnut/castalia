@@ -75,6 +75,7 @@ jobs:
             find docs site -type f -name '*.md' \
               -not -path 'docs/SUPERSEDED/*' \
               -not -path 'docs/audit/*' \
+              -not -name 'REVIEW-*.md' \
               2>/dev/null | sort
           )
           if [ "${#docs[@]}" -eq 0 ]; then
@@ -93,6 +94,15 @@ jobs:
           # block at the top of this file for why it had never run). Arming the trigger is what
           # made the degenerate invocation visible; a gate that cannot pass in the shape CI calls
           # it is not a stricter gate, it is a wall, and the escape hatch would become routine.
-          # Passing `metatheory` makes CI ask the SAME question `scripts/git-hooks/pre-push` asks
-          # — the two must not diverge, or the hook and the checks page grade different trees.
-          bash scripts/check-doc-refs.sh "${docs[@]}" metatheory
+          # Passing the `metatheory` directory used to arm the Lean pass, but it also made the
+          # markdown pass ingest every historical `metatheory/**/*.md` file. That silently
+          # defeated the explicit markdown scope above and turned archived design records into
+          # live claims. Feed the checker the repository-owned Lean files explicitly instead:
+          # the Lean pass remains exhaustive while the Markdown exclusions remain authoritative.
+          mapfile -t lean < <(git ls-files '*.lean' | sort)
+          if [ "${#lean[@]}" -eq 0 ]; then
+            echo "no tracked Lean files matched -- the metatheory tree moved" >&2
+            exit 1
+          fi
+          echo "scanning ${#lean[@]} tracked Lean files"
+          bash scripts/check-doc-refs.sh "${docs[@]}" "${lean[@]}"

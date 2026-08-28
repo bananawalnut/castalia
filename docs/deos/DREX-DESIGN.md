@@ -99,7 +99,7 @@ DrEX is a Lean-first proof-carrying exchange: the exchange's *rules* are proven 
 > layer — nullifier double-spend, pool-undrainability, value-binding (`Dregg2/Exec/ShieldedValue.lean`,
 > `Dregg2/Shielded/ClaimRefinement.lean`) — is REAL over the `RecordKernelState` kernel, and the
 > note-algebra circuit is BUILT: the deployed 2-leg and N-leg ring-clearing AIRs
-> (`circuit-prove/src/shielded_ring_clearing_air.rs`, `_nleg_air.rs`) fold real shielded-spend leaves
+> (the now-retired `shielded_ring_clearing_air.rs` and `shielded_ring_clearing_nleg_air.rs`) fold real shielded-spend leaves
 > and enforce fusion (`LegFused` — the matcher's `offerAsset`/`offerAmount` ARE the spent note's
 > asset/value, via `Market/LedgerRealizationExt.lean::shielded_ring_fused_clears`), the cycle edges,
 > and no-wrap conservation+range in-AIR. `shielded_ring_clears_real_crypto` retires the earlier toy
@@ -200,7 +200,7 @@ proofs close inflation; tested both polarities) rather than over the clear ledge
   reveal (`SealedAuction.lean`, CR over a real Blake3 kernel).
 - **Gap (grade BUILT — note-level AIRs + the two-leg endpoint descriptor; trace refinement NAMED):**
   the private-matching circuit exists — the 2-leg and N-leg ring-clearing AIRs
-  (`circuit-prove/src/shielded_ring_clearing_air.rs`, `_nleg_air.rs`) fold shielded-spend leaves with
+  (the now-retired `shielded_ring_clearing_air.rs` and `shielded_ring_clearing_nleg_air.rs`) fold shielded-spend leaves with
   in-AIR fusion, cycle edges, and no-wrap conservation+range, and the Lean-authored endpoint-carrying
   outer descriptor (`Market/ShieldedRingEndpointDescriptor.lean`,
   "shielded-ring-clear-2-endpoint-wide") is deployed for the two-leg apex with
@@ -446,5 +446,5 @@ turns the proven exact-book core into a real exchange.
 `metatheory/Dregg2/Intent/{Kernel,Ring,SealedAuction}.lean` · `metatheory/Dregg2/Agent/Mandate.lean` ·
 `metatheory/Dregg2/Verify/StripeReserve.lean` ·
 `intent/src/{solver,trustless,verified_settle,agent_mandate}.rs` ·
-`circuit-prove/src/shielded/pool.rs` · `circuit-prove/src/shielded_ring_clearing_air.rs` (+ `_nleg_air.rs`) ·
+`circuit-prove/src/shielded/pool.rs` · retired `shielded_ring_clearing_air.rs` + `shielded_ring_clearing_nleg_air.rs` ·
 `circuit-prove/src/*_leaf_adapter.rs` · `chain/gnark/`.

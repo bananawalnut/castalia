@@ -636,7 +636,7 @@ Source, verified at HEAD 2026-08-06:
   * the emitted spend descriptor pins membership via the PLAIN 4-ary fold
     `Hair hash cur lvl = hash_fact(cur,[sib0,sib1,sib2,pos])` to a SINGLE PI lane `piCOMMITTED`
     (`Emit/ShieldedSpendDescriptor.lean:158,212`; the root-bound adapter binds only
-    `ROOT_BOUND_LANES = 2` single lanes, `circuit-prove/src/shielded_spend_leaf_adapter.rs:610`);
+    `ROOT_BOUND_LANES = 2` single lanes, retired `shielded_spend_leaf_adapter.rs` former line 610);
   * the committed `note_shielded` accumulator produces an EIGHT-lane root
     (`exact_linked_append_root8 : … → Digest8`, `ROOT_LANES = 8`, `TREE_DEPTH = 16`,
     `circuit/src/exact_nullifier_aafi.rs:34,36`) via a depth-16 INDEXED-MERKLE sorted-linked leaf

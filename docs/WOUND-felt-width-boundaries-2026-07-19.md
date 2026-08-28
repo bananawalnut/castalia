@@ -159,7 +159,7 @@ readiness claim. Captured here so they ride the same campaign.
   and proves membership in an attacker-built tree. Theft/inflation vector **larger than any birthday
   collision**; widening the felt does not fix it.
 - **#16 Shielded value-link is honest-prover-trusted [A, HIGH].** `verify_value_link` (leaf-value ↔
-  Pedersen-leg-value equality) is called **only in a test** (`circuit-prove/tests/shielded_transfer_m2a.rs`),
+  Pedersen-leg-value equality) was called **only in a test** (the now-retired `shielded_transfer_m2a.rs`),
   never in `apply_shielded_transfer`. Conservation over `value_binding` is attested, not proved — the real
   inflation exposure, independent of the 31-bit width.
 - **#17 Shielded PQ-commitment disagreement [A].** The Lean apex rests on Shor-broken Ristretto Pedersen
@@ -1478,7 +1478,7 @@ files (`cell/src/commitment.rs`, `turn/src/rotation_witness.rs`,
 | 7 | Fiat mint gate — payment identity folded to 1 felt | `circuit/src/dsl/deco_payment.rs:107` | ~2^16 | C | [A] bridge gate live (`bridge/src/stripe_deco.rs:287`); fold arm fail-closed |
 | 8 | Topic wake mask — `1u64 << (topic_hash[0] % 64)` | `starbridge-v2/src/swarm.rs:111` | **~64 evals** | ? | [A][?] load-bearing vs optimization unconfirmed |
 | 9 | `SenderAuthorized` authorized-set root — 1 felt, leaf proves no path | `turn/src/executor/membership_verifier.rs:105` | ~2^31 | D/E | [A] |
-| 10 | Shielded pool — `merkle_root`/`nullifier`/`value_binding` declared **`u32`** | `turn/src/action.rs:1005`; `circuit-prove/src/shielded/spend_circuit.rs:462` | direct inflation on value collision | C | [A] `Effect::ShieldedTransfer` live |
+| 10 | Shielded pool — `merkle_root`/`nullifier`/`value_binding` declared **`u32`** | `turn/src/action.rs:1005`; retired `spend_circuit.rs` former line 462 | direct inflation on value collision | C | [A] `Effect::ShieldedTransfer` live |
 | 11 | Freshness/revocation root — 1 felt, tree depth 4 ≤14 entries | `sdk/src/full_turn_proof.rs:5248` | grind padding leaves | D/E | [A] |
 | 12 | `interface_id` — ~~1 felt, no wide twin~~ **Rust-widened to 8-felt at HEAD**; a factory VK is derived from it | `cell/src/interface.rs:275`; `directory/src/service_factory.rs:92` | ~2^31 → colliding interfaces share a VK | C | [V] **BYTE-SAFE PROVEN 07-22** (`InterfaceIdWidth.lean`; wound "no wide twin" was STALE) |
 | 13 | sandstorm-bridge — narrow throughout; byte-identity claim now **false** | `sandstorm-bridge/.../cell.rs:87,138` | ~2^31 (hostile host) | C/drift | [A] `cell/src/state.rs:535` widened, sandstorm did not — correctness drift too |

@@ -1,6 +1,6 @@
 # A Different Midnight Bridge: native state-INCLUSION, not transition-proof
 
-The current Midnight path (`bridge/src/midnight_verified.rs`,
+The historical Midnight path (the now-retired `midnight_verified.rs` watchtower implementation,
 `midnight_gateway.rs`) is an optimistic / watchtower bridge: Midnight checks a
 federation **attestation**, and a STARK proof rides along *only as dregg-side
 fraud-proof material* (`docs/SUPERSEDED/NATIVE-PROOF-BRIDGES.md §2`). Midnight itself

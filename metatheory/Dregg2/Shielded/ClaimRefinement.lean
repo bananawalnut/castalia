@@ -12,7 +12,7 @@ contributes a claim to a turn must prove its committed claim REFINES a sound eff
       ConservesOn S k k' ∧ AuthorizedOn S k turn ∧ NullifierFreshOn S k turn
 
 The shielded-spend claim (the marquee side-structure) is the 3-felt uni-STARK PI
-`[nullifier, merkle_root, value_binding]` (`circuit-prove/src/shielded/spend_circuit.rs:135-147`).
+`[nullifier, merkle_root, value_binding]` (retired `spend_circuit.rs`, former lines 135–147).
 Its two halves plug in at DIFFERENT grades (ABI §4.1):
 
   * **PROVED half — membership + nullifier** (THIS theorem). A valid shielded spend

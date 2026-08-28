@@ -46,7 +46,7 @@ let transfer = ShieldedTransfer::from_serialized_parts(
 and every input's hiding spend proof is verified against **that** felt
 (`input.public_inputs(self.merkle_root)`, `transfer.rs:91-95`, verified `:155`). The membership leaf
 `hash_fact(value,[asset,owner,randomness])` and the whole arity-4 Merkle path are **witness data**
-(`circuit-prove/src/shielded/spend_circuit.rs` cols `VALUE=12 … LEAF_COMMIT=16`,
+(the now-retired `spend_circuit.rs`, columns `VALUE=12 … LEAF_COMMIT=16`,
 `pi::{NULLIFIER=0, MERKLE_ROOT=1, VALUE_BINDING=2}`, `PUBLIC_INPUT_COUNT=3`).
 
 So "this input note exists" is proven **relative to a root the prover chose**. The only producers in
@@ -56,7 +56,7 @@ the tree do exactly that, explicitly:
 let w = make_input(11, amount, in_blinding, 0xABCD, 4);   // fabricated deterministic siblings
 let merkle_root = w.spend.merkle_root();                  // the root COMPUTED FROM the fabrication
 ```
-(`turn/src/executor/apply.rs:5085-5087`; identically `circuit-prove/tests/shielded_transfer_m2a.rs:113-114`,
+(`turn/src/executor/apply.rs:5085-5087`; identically the retired `shielded_transfer_m2a.rs` lines 113–114,
 `make_input` at `:54-102`.)
 
 **There is no mint, no shield, no genesis, and no ledger read anywhere in an input's provenance.**
@@ -102,7 +102,7 @@ closed before, not after, L1/L4.
 
 **No.** `grep Effect::ShieldedTransfer` across the workspace yields dispatch/classification arms and
 **test constructors only** (`turn/src/executor/apply.rs:5045,5073,5114`;
-`circuit-prove/tests/shielded_transfer_m2a.rs`). No SDK, CLI, node, or web surface builds a
+the retired `shielded_transfer_m2a.rs`). No SDK, CLI, node, or web surface builds a
 `ShieldedTransferPayload`. And a verify-only build fails the effect closed (`apply.rs:1861-1876`), so
 even in principle it is node-operator-trust only.
 

@@ -4,7 +4,7 @@
 **Component 3 of `docs/deos/SHIELDED-DREX-ASSURANCE-ROADMAP.md` — THE CRUX and the differentiator
 ("nobody learns what settled").** This module states, and discharges the *tractable core* of, the
 zero-knowledge / reveal-nothing property of a shielded clearing, on the finalized N-leg
-ring-clearing transcript `[nf, root, vb]ⁿ` (`circuit-prove/src/shielded_ring_clearing_nleg_air.rs`)
+ring-clearing transcript `[nf, root, vb]ⁿ` (the now-retired `shielded_ring_clearing_nleg_air.rs`)
 and the just-proven clearing cores (`Market/FhEggClearing.lean`, `Market/CertF.lean`).
 
 ## The honest statement (codex's key correction, `docs/deos/FHEGG-CODEX-INSIGHTS.md` Q2)
@@ -93,7 +93,7 @@ set_option autoImplicit false
 amount, the wanted minimum, the commitment randomness (blinder), and the created output note. Under
 the hiding PCS (`HidingFriPcs`, `ZK = true`) NONE of these leaves the witness — the N-leg apex
 exposes only the per-leg carrier triple `[nf, root, vb]`
-(`circuit-prove/src/shielded_ring_clearing_nleg_air.rs`, clause header). -/
+(the now-retired `shielded_ring_clearing_nleg_air.rs`, clause header). -/
 structure LegPrivate where
   /-- The note owner (hidden). -/
   owner : ℤ

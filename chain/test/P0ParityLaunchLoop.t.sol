@@ -79,8 +79,9 @@ contract P0ParityLaunchLoopTest is Test {
     function setUp() public {
         // The gate: bond OR cleared-audit accepted. The arms stay PLUGGABLE — the
         // launchpad pins the gate, never an arm.
-        vm.prank(admin);
+        vm.startPrank(admin);
         gate = new DreggDeployerGate(admin, MIN_BOND);
+        vm.stopPrank();
         vm.prank(admin);
         gate.setAcceptedArms(uint8((1 << ARM_BOND) | (1 << ARM_AUDIT)));
         assertEq(gate.ARM_BOND(), ARM_BOND, "arm mirror is the real bond arm");

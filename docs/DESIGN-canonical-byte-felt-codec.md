@@ -228,7 +228,7 @@ property that Layer L happens to have for free, and it is the *necessary* proper
 felts must be inverted or ordered.
 
 **Width consequence:** at PI/column sites, `Digest8` is **8 felts — the same width as today**, and
-in several places *narrower* (`circuit/src/bridge_action_witness.rs` publishes 24 PI slots as
+in several places *narrower* (`bridge_action_witness.rs`, now retired, published 24 PI slots as
 3 × 8 limbs; 3 × `Digest8` is also 24, but `effect_action_air`'s per-field 8-slot layouts and
 `ci_assurance`'s `CI_PI_COUNT = 25` are unchanged). **The migration is width-neutral at the
 committed boundary and rate-neutral at the hashed boundary.** The 2× cost ember was rightly
@@ -376,7 +376,7 @@ Order within the stage, hardest-hit first:
 Sites where limbs sit in **PI slots or trace param columns**. Replace *limbs-in-PI* with
 *`Digest8`-in-PI*. Width-neutral or narrowing; PI offsets move, descriptors regenerate.
 
-* `circuit/src/bridge_action_witness.rs:159–161` — `nullifier[8] ‖ recipient[8] ‖
+* `bridge_action_witness.rs` (retired; former lines 159–161) — `nullifier[8] ‖ recipient[8] ‖
   destination_federation[8]`, attacker-DIRECT, and **the most consequential unknown in §7**.
 * `circuit/src/effect_action_air.rs:190,231` — per-effect PI slots `[8i, 8i+8)`.
 * `turn/src/executor/effect_vm_bridge.rs:104` (+24 call sites) and its byte-twin
@@ -574,7 +574,7 @@ flag. Named with its last consumer so the rewire is a bounded task.
 **Family F1 (~16 copies → 0).** `circuit/src/field.rs:212` `BabyBear::encode_hash`; `:194`
 `from_bytes_packed`; `:222` `decode_hash` (lossy inverse — its existence invites round-tripping a
 non-injective map); `circuit/src/effect_vm/helpers.rs:37` `bytes32_to_8_limbs`;
-`circuit/src/bridge_action_witness.rs:125` and `circuit/src/effect_action_air.rs:151` `encode_hash`;
+`bridge_action_witness.rs` (retired; former line 125) and `circuit/src/effect_action_air.rs:151` `encode_hash`;
 `cell/src/note.rs:176` `bytes32_to_limbs`; `circuit/src/note_spending_witness.rs:365`
 `bytes32_to_limbs` + `key_to_field_elements`; `turn/src/action.rs`
 `stark_delegation_bytes32_to_babybear` (this list said `action.rs:576` under `cell/src/`; the crate was wrong
@@ -691,7 +691,7 @@ because a false comment is how the next author inherits the mistake.
 | `bridge/src/present.rs:1759–1760` | *"preserves **full 256-bit distinguishability**"* | mod-`p` alias; **this is the F1 root comment** for the whole `hash_bytes` family |
 | `turn/src/executor/effect_vm_bridge.rs:95–103` + `sdk/src/cipherclerk.rs:6734–6743` | *"full 256-bit binding path"* | true only for hash-image inputs; O(1) for chosen bytes |
 | `turn/src/executor/effect_vm_bridge.rs:72–75` + `sdk/src/cipherclerk.rs:6719–6721` | *"binds the **full 32-byte value**"* | binds a ~31-bit linear image. The 4-byte-truncation fix it describes was real; the framing overstates the result |
-| `circuit/src/bridge_action_witness.rs:118–124` **and** `circuit/src/effect_action_air.rs:145–149` | *"the **canonical** bridge-action encoding"*, *"collision probability ~p⁻⁸ ≈ **2⁻²⁴⁸**, well above the 124-bit STARK soundness target"* | 2⁻²⁴⁸ is the **random** all-limbs-collide probability, not the adversarial cost, which is **O(1)**. Copy-pasted onto two deployed encoders |
+| `bridge_action_witness.rs` (retired; former lines 118–124) **and** `circuit/src/effect_action_air.rs:145–149` | *"the **canonical** bridge-action encoding"*, *"collision probability ~p⁻⁸ ≈ **2⁻²⁴⁸**, well above the 124-bit STARK soundness target"* | 2⁻²⁴⁸ is the **random** all-limbs-collide probability, not the adversarial cost, which is **O(1)**. Copy-pasted onto two deployed encoders |
 | `circuit/src/effect_vm/helpers.rs:136–158` | *"**Collision-resistant** fold"*, *"collide only with ~2⁻³¹ probability for random inputs"* | an onto **linear** form: chosen-input collision **and** targeted hit are O(1). Contradicted by the repo's own test at `circuit/tests/effects_hash_fold_and_burn_target_width.rs:95` |
 | `circuit/src/effect_vm/helpers.rs:181–190` | `refusal_reason_bytes` *"at ~256-bit strength"* | holds only because the input is a hash image, not by the encoder |
 | `circuit/src/effect_vm/helpers.rs:31–33` | *"the **canonical** full-32-byte limb decomposition"* | "canonical" is precisely the word that invited the reinvention |
@@ -733,7 +733,7 @@ settle it.
 
 1. **Is `bridge_action_witness` a soundness break or an availability break?** The census's uniform
    finding is that collisions *over-include* (both sides project identically ⇒ an honest turn goes
-   UNSAT), which is availability. But `circuit/src/bridge_action_witness.rs:159–161` PIs
+   UNSAT), which is availability. But the former `bridge_action_witness.rs` lines 159–161 PIs
    `recipient` and `destination_federation` alongside the nullifier, and a colliding **recipient**
    would mean one bridge proof authorizes payment to either of two addresses — that is a genuine
    soundness break, not denial. **Settle:** construct the `+p` alias pair, run the prover, and check

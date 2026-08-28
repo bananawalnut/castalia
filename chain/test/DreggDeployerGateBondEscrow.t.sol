@@ -23,8 +23,9 @@ contract DreggDeployerGateBondEscrowTest is Test {
     uint256 constant MIN_BOND = 10 ether;
 
     function setUp() public {
-        vm.prank(admin);
+        vm.startPrank(admin);
         gate = new DreggDeployerGate(admin, MIN_BOND);
+        vm.stopPrank();
         pad = new DreggLaunchpad(IDeployerGate(address(gate)));
 
         vm.startPrank(admin);

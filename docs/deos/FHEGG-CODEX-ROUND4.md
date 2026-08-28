@@ -50,7 +50,7 @@ designated crux plus a load-bearing honesty correction, both verified against th
    confirmed `streaming_cert_telescopes` sums independent-LP gaps (`lp : Fin T → FlowLP`, no state
    coupling); the *state-coupled* frequent-batch telescoping with inventory potentials is genuinely
    NOT yet proven (this is codex's Q1.A next-theorem — a correctly-identified real gap).
-2. **The N-leg shielded-ring AIR exists** (`circuit-prove/src/shielded_ring_clearing_nleg_air.rs`,
+2. **The N-leg shielded-ring AIR historically existed** (the now-retired `shielded_ring_clearing_nleg_air.rs`,
    1129 lines) — the blanket "unbuilt ring AIR" in the launchpad residuals is stale; the real seams are
    full commitment semantics / deployed widths+VKs / reveal-nothing.
 3. **The constant-product graduation pool exists** (`DreggSolventPool.sol` + `GraduationPool.lean`) —
@@ -475,7 +475,7 @@ and the forbid-first vesting escrow + rolling exposure bond.
 *Provenance: full codex output `scratchpad/codex-round4.log`; curated final answer
 `scratchpad/codex-round4-answer.md`; **309,587 tokens**; codex-cli 0.144.1 / GPT-5.6-sol; exit 0. Brief:
 `docs/deos/FHEGG-CODEX-ROUND4-BRIEF.md`. HEAD deltas verified this pass: `metatheory/Market/StreamingCert.lean`
-(independent-batch composition), `circuit-prove/src/shielded_ring_clearing_nleg_air.rs` (1129 lines),
+(independent-batch composition), the retired `shielded_ring_clearing_nleg_air.rs` (1129 lines),
 `metatheory/Market/GraduationPool.lean` + `chain/contracts/launchpad/DreggSolventPool.sol`. Literature codex
 cited (flag for a proof pass, not re-verified line-by-line here): CHIMERA (ePrint 2018/758); PEGASUS (ePrint
 2020/1606); threshold FHE decryption security (ePrint 2024/116); BatchBoot (USENIX Security '26); Budish–

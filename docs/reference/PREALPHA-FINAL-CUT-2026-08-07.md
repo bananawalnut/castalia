@@ -292,8 +292,8 @@ Already half-enrolled (A1, A2 done), so the ceremony is a script run. But:
 |---|---|---|
 | D1 | **re-emit** — the committed pending descriptor is refused by the gate (§2) | `DeckDescentEmitMain.lean`, driven by `check-poag1-artifacts.sh --update` |
 | D2 | Lean: emit a **practice board family** (the 8 boards of `DeckDescent.boardTable`). Today `instance` carries no `boards` and there is no top-level `practice.boards`, so `app.js:634` cannot build a local oracle — and deriving the 8 boards from `shaft` in JavaScript would be the client inventing the game | `DeckDescentEmit.lean`; compare `salvage-lock.json`'s top-level `practice` block |
-| D3 | new `poa-web/src/deckdescent-runtime.js` — loader spec + practice oracle (~450 lines, on the salvage/relay pattern) | new file |
-| D4 | new `poa-web/src/deckdescent-controller.js` — presentation (~100 lines) | new file |
+| D3 | proposed `deckdescent-runtime.js` — loader spec + practice oracle (~450 lines, on the salvage/relay pattern) | never landed |
+| D4 | proposed `deckdescent-controller.js` — presentation (~100 lines) | never landed |
 | D5–D8 | `poag1.js` list, `game-rack.js:105` record, `mission-launcher.js:20` line, `app.js:634` branch | as above |
 
 Its shape is *already* right: 14,382 transitions with 282 `resolve` rows and the exact

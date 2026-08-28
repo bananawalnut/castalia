@@ -38,7 +38,7 @@ spend proof is checked against **that** root: `input.public_inputs(self.merkle_r
 `pis[pi::MERKLE_ROOT] = merkle_root` (`transfer.rs:91-95`, verified `transfer.rs:155`).
 
 That membership tree is an **arity-4 plain Poseidon2 Merkle tree** whose leaf is a **hiding** note
-commitment. From the spend circuit (`circuit-prove/src/shielded/spend_circuit.rs` module doc, mod.rs
+commitment. From the now-retired `spend_circuit.rs` module documentation (`mod.rs`
 `:26-40`):
 
 - membership: `parent = hash_fact(current, [sib0, sib1, sib2, position])` up to `merkle_root`;
@@ -218,7 +218,7 @@ shielded membership encoding, so spend proofs open against it directly, and its 
   to an M-in/K-out transfer is the grow-gate work.
 - **Membership pin.** The executor supplies `note_shielded.root8()` as `piCOMMITTED`. The connection of
   the spend leaf's `merkle_root` lane to a committed segment root already exists as a mechanism:
-  `prove_shielded_spend_root_binding_node_segmented` (`circuit-prove/src/shielded_spend_leaf_adapter.rs:594`)
+  `prove_shielded_spend_root_binding_node_segmented` (`shielded_spend_leaf_adapter.rs`, retired; former line 594)
   `connect`s the leg's `merkle_root` lane (lane 1) to a segment's commitments-root and re-exposes the
   segment so it *"folds into `aggregate_tree` like any per-turn segment leaf"* (`:570-578`); its negative
   pole `forged_merkle_root_does_not_fold` (`:817`) makes a mismatched root UNSAT. Point that connect
@@ -257,7 +257,7 @@ A dedicated accumulator (R1) is strictly cleaner.
 
 Route the transfer through a single Lean-authored clearing descriptor (generalize
 `ShieldedWholeNoteSwapSubstrate` to M-in/K-out, or the `shielded-ring-clear-2-endpoint-wide` endpoint
-descriptor, `circuit-prove/src/shielded_ring_clearing_air.rs:823`, width 1537 / PI 27) that proves
+descriptor, `shielded_ring_clearing_air.rs` (retired; former line 823, width 1537 / PI 27)) that proves
 membership + append + conservation + value-link in **one** proof, publishing pre/post kernel commitments
 that fold into the committed turn — making the whole thing **light-client-visible** (today shielded is
 node-operator-trust only, `#[cfg(feature="prover")]`, fail-closed on verify-only, `apply.rs:1834`).

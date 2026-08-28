@@ -72,7 +72,7 @@ Runtime surfaces that reach this implementation are:
 | `wasm/src/privacy.rs` | byte APIs for single proof and full-conservation proof production/verification |
 | `preflight/src/checks/privacy.rs` | one single-proof prove/verify health check |
 
-`circuit-prove/tests/shielded_transfer_m2a.rs`,
+the now-retired `shielded_transfer_m2a.rs` integration suite,
 `circuit-prove/tests/shielded_pool_m2b.rs`, Turn tests, and the `cell-crypto`
 unit suite are test consumers of the same implementation, not additional proof
 systems.
