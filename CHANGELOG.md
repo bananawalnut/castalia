@@ -18,5 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ### Fixed
 
 - Repaired root AIR, root-FRI, WASM release, and deployment verification gates — the permissionless membership node can be built and checked against the production proof and fail closed during install, restart, backup, and rollback operations.
+- Refreshed the Mina FRI-preamble protocol ratchets from the canonical seven-instance root and derived its opened-value permutation count instead of reporting the retired proof shape.
 - Seeded the upgradeable Groth16 verifier from the generated canonical settlement key, eliminating a stale copied key that broke proof attestation and cross-chain digest checks.
 - Kept documentation CI's Lean scan exhaustive without accidentally treating archived metatheory Markdown as live documentation.
