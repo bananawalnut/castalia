@@ -1347,7 +1347,7 @@ fn take_vec(bytes: &[u8], cursor: &mut usize, len: usize) -> Result<Vec<u8>, Baz
 ))]
 mod secure_fs {
     use super::{BazaarRestartError, File, Path};
-    use std::ffi::CString;
+    use std::ffi::{c_char, CString};
     use std::io;
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::ffi::OsStrExt;
@@ -1390,9 +1390,14 @@ mod secure_fs {
     const ELOOP: i32 = 62;
 
     unsafe extern "C" {
-        fn openat(dirfd: i32, path: *const i8, flags: i32, mode: u32) -> i32;
-        fn renameat(olddirfd: i32, oldpath: *const i8, newdirfd: i32, newpath: *const i8) -> i32;
-        fn unlinkat(dirfd: i32, path: *const i8, flags: i32) -> i32;
+        fn openat(dirfd: i32, path: *const c_char, flags: i32, mode: u32) -> i32;
+        fn renameat(
+            olddirfd: i32,
+            oldpath: *const c_char,
+            newdirfd: i32,
+            newpath: *const c_char,
+        ) -> i32;
+        fn unlinkat(dirfd: i32, path: *const c_char, flags: i32) -> i32;
         fn geteuid() -> u32;
         fn flock(fd: i32, operation: i32) -> i32;
     }

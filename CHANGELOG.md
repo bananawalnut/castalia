@@ -21,6 +21,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ### Fixed
 
+- Declared secure restart-store syscall paths with the platform C `char` type,
+  fixing the AArch64 Linux build where `CString::as_ptr()` is `*const u8`
+  while retaining the same ABI on x86-64 and Darwin.
 - Made clean Mina tier-2 runs produce the terminal AIR proof before the FRI
   braid consumes it, re-recorded the query-row measurements for the canonical
   derived root geometry, and replaced a stale negative-index sibling falsifier
