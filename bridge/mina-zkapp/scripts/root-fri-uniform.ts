@@ -61,12 +61,11 @@ import {
 // ---------------------------------------------------------------------------
 // LEG 19 — THE WALK COMPILES ONCE PER POSITION, NOT ONCE PER SLICE.
 //
-// `docs/MINA-FACING-TERMINAL-OPTIONS.md` §5.1 measured the deployed walk at 839
-// slices ⇒ 839 compiles ⇒ 839 verification keys, and 12.6 hours of compile at
-// the FRI legs' own measured 53.6 s. It also measured the planner's output —
-// `[45,45,45,45,44,…]` — and named the redundancy without drawing it.
+// The deployed walk now measures 1,785 slices ⇒ 1,785 compiles ⇒ 1,785
+// verification keys if every cut is baked into a distinct program name. The
+// planner's repeated query blocks expose the redundancy directly.
 //
-// This leg draws it. The 19 query blocks are checked to be IDENTICAL (segments,
+// This leg draws it. The 38 query blocks are checked to be IDENTICAL (segments,
 // modelled rows, and committed lane reads after the per-query shift), the cuts
 // are forced onto one repeated grid, and the step index and query index become
 // WITNESSES pinned by the chain instead of constants baked into a program name.
@@ -778,7 +777,7 @@ async function main() {
   // -----------------------------------------------------------------------
   // [1] The homogeneity, CHECKED.
   // -----------------------------------------------------------------------
-  console.log('[1] the walk is a head and nineteen identical query blocks — checked, not assumed');
+  console.log(`[1] the walk is a head and ${K.numQueries} identical query blocks — checked, not assumed`);
   const h = assertHomogeneous(c.w, c.op, c.ft, L);
   ok(
     `${fmt(L.headSegs)} head segments (${fmt(h.headRows)} modelled rows), then ${K.numQueries} ` +
@@ -867,10 +866,12 @@ async function main() {
   // argument §3.27's twin makes. A run proves a prefix; the joins this leg
   // actually changes — a block's LAST position handing on to the NEXT query's
   // position 0, and the current-query register moving with it — do not occur
-  // until instance 46, and the terminal seal not until 820. Running every
-  // boundary here costs seconds and checks all 820.
+  // until the first block boundary, and the terminal seal not until the last
+  // slice. Running every boundary here costs seconds and checks the full plan.
   // -----------------------------------------------------------------------
-  console.log('\n[3b] all 820 boundaries, out of circuit — every join, not the ones a run reaches');
+  console.log(
+    `\n[3b] all ${fmt(c.plan.totalSlices)} boundaries, out of circuit — every join, not the ones a run reaches`,
+  );
   {
     const order = chainOrder(c);
     const root = keyList(c).root;
@@ -901,7 +902,7 @@ async function main() {
     if (seal !== prevOut) fail('the terminal seal is not what the last slice emits');
     ok(
       `every one of ${fmt(order.length)} slice instances enters exactly the boundary its ` +
-        'predecessor emits, across all 19 query blocks and both joins the deployed chain does not ' +
+        `predecessor emits, across all ${K.numQueries} query blocks and both joins the deployed chain does not ` +
         'have — the current-query register moves with the block, and the chain closes on the seal',
     );
 
@@ -958,10 +959,10 @@ async function main() {
   // -----------------------------------------------------------------------
   // [4] The uniformity cost, MEASURED.
   // ── THE TIER-0 STOP ───────────────────────────────────────────────────────
-  //  ⚑ [3b] IS THE INSTRUMENT, AND IT HAS ALREADY RUN. It walked all 820
-  //  boundaries in seconds; that is where all 19 block-to-block joins were
-  //  found broken — first observable at instance 46, sealed at 820, so any
-  //  affordable proof run below would have been green and wrong. Everything
+  //  ⚑ [3b] IS THE INSTRUMENT, AND IT HAS ALREADY RUN. It walked every
+  //  boundary in seconds; that is where all block-to-block joins were checked,
+  //  including the first observable block transition and the terminal seal, so
+  //  any affordable proof prefix below would have been green and incomplete. Everything
   //  from [4] on spawns child processes that compile Kimchi circuits.
   if (belowTier(1)) {
     tierStop(
@@ -1361,14 +1362,14 @@ async function main() {
 /** Recorded on the run that first produced them. A zero prints instead of
  *  comparing. */
 const RATCHET = {
-  headSegs: 36,
-  blockSegs: 593,
+  headSegs: 41,
+  blockSegs: 571,
   headSlices: 3,
-  blockSlices: 43,
-  totalSlices: 820,
-  distinctPrograms: 46,
-  deployedSlices: 839,
-  friChunks: 138,
+  blockSlices: 41,
+  totalSlices: 1_561,
+  distinctPrograms: 44,
+  deployedSlices: 1_785,
+  friChunks: 253,
 };
 
 const phase =

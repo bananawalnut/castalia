@@ -176,7 +176,7 @@ export type WalkHash = {
    *      transcript against p3's own recorded sponge states, lane by lane, after
    *      every permutation. What has no oracle is the ROOT's batch-STARK
    *      preamble AT PASTA: the observe/sample order over seven instances, the
-   *      25 public values, the 64 cumulative sums, the 2,630 opened values, and
+   *      public values, cumulative sums, the 2,746 opened values, and
    *      the ζ and LogUp challenges it must reproduce. dregg mints no
    *      Pasta-hashed ROOT, so that script would be checked against nothing.
    *
@@ -483,8 +483,8 @@ export type RealRootFri = {
  * no next-row main or preprocessed value, so their main and preprocessed
  * matrices are opened at ζ ALONE — one point, not two. Their PERMUTATION
  * matrices are opened at both, because a LogUp running sum always reads the
- * next row. A census that multiplies every width by two gets 2,798; the proof
- * says 2,630, and the shape is therefore taken from `inputRounds` rather than
+ * next row. A census that multiplies every current width by two gets 3,022; the proof
+ * says 2,746, and the shape is therefore taken from `inputRounds` rather than
  * derived from a table of widths.
  *
  * ⚑ AND THE ROUND ORDER IS THE PROOF'S. `main`, `quotient_chunk`,
@@ -1112,7 +1112,7 @@ export type Segment =
   /** ⚑ THE PERMUTATION ROUND'S BRIDGE TO THE AIR HALF, paid ONCE for the whole
    *  walk: extension permutation columns `[from, to)` of one (matrix, point) of
    *  the permutation round, each asserted to be `Σ_j f_{4k+j}(ζ)·X^j` over the
-   *  four base components the PCS opened. Without it those 512 opened values
+   *  four base components the PCS opened. Without it those 576 opened values
    *  are authenticated by the FRI walk and connected to nothing the AIR read. */
   | { t: 'permBind'; mat: number; point: number; from: number; to: number; rows: number }
   /** The chain lands on the final polynomial. */
@@ -1125,7 +1125,7 @@ export type Segment =
    *  is opened at, and the LogUp challenges the AIR chain folds its permutation
    *  constraints with. Asserting the derivation reproduces them is what makes
    *  the transcript's inputs load-bearing: bend ANY absorbed value — a public
-   *  value, a cumulative sum, a commitment lane, one of the 2,630 opened values
+   *  value, a cumulative sum, a commitment lane, one of the 2,746 opened values
    *  — and `ζ` moves, and this segment refuses.
    *
    *  Without it a bent input would produce a perfectly self-consistent wrong
@@ -1205,7 +1205,7 @@ export type PreambleSource = {
  * COMMITMENT THE BRAID CARRIES. The public values are `expose_claim|public[i]`
  * and the cumulative sums are `<table>|perm_value[i]` — both `dagDigest` lanes,
  * both read by the AIR half; the four round commitments are `ft.inputCommit`,
- * the lanes the walk's own Merkle roots close against; the 2,630 opened values
+ * the lanes the walk's own Merkle roots close against; the 2,746 opened values
  * resolve through the same `OpenedPlan` the DEEP quotient uses. There is no
  * fresh witness anywhere in the derivation, which is the property that makes it
  * a derivation.
@@ -1635,11 +1635,11 @@ export function segmentWalk(
   //
   // ⚑ THIS IS §3.14 RESIDUAL 1. Without this block the walk's first segment
   // reads `ft.chalState` — a WITNESS, covered by `friDigest` and by nothing
-  // else. A prover who picks it picks FRI's α, all 16 βs and all 19 query
-  // indices, and the whole 11,303-segment walk then authenticates a transcript
+  // else. A prover who picks it picks FRI's α, all 17 βs and all 38 query
+  // indices, and the whole 21,739-segment walk then authenticates a transcript
   // nobody forced. With it, the entering state is the all-zero sponge of
   // `DuplexChallenger::new` — a literal — driven by the root's own commitments,
-  // public values, cumulative sums and 2,630 opened values.
+  // public values, cumulative sums and 2,746 opened values.
   if (opts.preamble) {
     const ops = preambleOps(shape, opts.preamble, H);
     challengerRun(
@@ -1702,7 +1702,7 @@ export function segmentWalk(
   // records carries `output_buffer = sponge_state[..8]`. So FRI's own `alpha` is
   // drawn by POPPING that buffer, with NO permutation, and a simulation that
   // duplexes first draws α from a state one permutation ahead — and then every
-  // β, the PoW sample and all 19 query indices with it. This was measured, not
+  // β, the PoW sample and all 38 query indices with it. This was measured, not
   // reasoned: the first slice to reach the 16-bit grind refused, because the
   // low bits of a sample from the wrong permutation are not zero.
   //  ⚑ The entering buffer is LIVE either way: the preamble ends on a rate
@@ -2119,8 +2119,8 @@ export function segmentReads(
  * here" — which was established for the AIR DAG's carry, bounded by a cut width
  * of 102, and is NOT established for this walk, whose carry spread is 6.5x.
  * `npm run cost-gate` phase [5] runs a dynamic program over this exact carry
- * function: at the deployed 50,000-row budget both give **839 slices**, and the
- * DP recovers 260,065 rows of carry (2.8%) at the same count. So greedy costs
+ * function: at the deployed 50,000-row budget both give **1,785 slices**, and the
+ * DP recovers 639,301 rows of carry (2.5%) at the same count. So greedy costs
  * nothing in slices at this budget — which is a measurement, and it is the
  * reason to keep the greedy planner rather than the borrowed sentence.
  *

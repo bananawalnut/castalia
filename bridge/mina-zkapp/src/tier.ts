@@ -6,14 +6,14 @@
  * `--self-test` was ~6.5 hours — 56% of the entire default `local-gates.sh`
  * budget for one directory. And the arc's actual defects were not found by any
  * of it: they were found by CHEAP EXHAUSTIVE OUT-OF-CIRCUIT DIFFERENTIALS.
- *   * the braid's twin walks 11,303 segments in seconds and found four defects
+ *   * the braid's twin walks 21,739 segments in seconds and found four defects
  *     that "would each have compiled and proved cleanly for as far as any
  *     affordable run reaches" — a full output buffer on entry, `sample_bits`
  *     taking the low bits, `alpha_pow` starting at one, an undefined path
  *     direction;
- *   * the uniform-walk checker walks 820 boundaries and found ALL NINETEEN
- *     block-to-block joins broken — first observable at instance 46, sealed at
- *     820, so "any affordable proof run would have been green and wrong".
+ *   * the uniform-walk checker now walks all 1,561 boundaries; its earlier
+ *     820-boundary geometry found all nineteen then-present block joins broken,
+ *     which is why every current boundary remains an out-of-circuit gate.
  * The cheap tier is therefore not a compromise. It is, on this directory's own
  * record, the BETTER INSTRUMENT, and this module is what lets a leg run it
  * without paying for the Pickles compiles that follow it.

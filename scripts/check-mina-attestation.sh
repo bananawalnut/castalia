@@ -483,15 +483,15 @@ run_mconstr()   { ( cd "$1" && npm run --silent merkle-constraints ); }
 #
 #   tier 1  the default 4-slice budget. 7 of 8 falsifiers attributed; `one
 #           Merkle sibling bent` is reported NOT ATTRIBUTABLE WITHIN BUDGET,
-#           because no cut below 11 closes a round its own siblings feed. That is
+#           because no cut below 13 closes a round its own siblings feed. That is
 #           the outcome, stated, not a pass.
-#   tier 2  FRIBRAID_LIMIT=12, which reaches cut 11 — the first cut in the whole
-#           839-slice plan that can attribute a bent sibling — and the floor goes
-#           to 8, so the eighth falsifier cannot silently stop firing. Costs
-#           about twice tier 1's braid, which is nothing in a tier measured in
-#           hours.
+#   tier 2  FRIBRAID_LIMIT=14, which reaches cut 13 — the first cut in the whole
+#           1,785-slice plan that can attribute a bent sibling — and the floor
+#           goes to 8, so the eighth falsifier cannot silently stop firing. Costs
+#           about three times tier 1's braid, which is still a bounded sample in
+#           a tier measured in hours.
 #
-# 330 of the plan's 839 cuts can attribute that bend; 489 carry a sibling. The
+# 609 of the plan's 1,785 cuts can attribute that bend; 934 carry a sibling. The
 # leg's `[2c]` censuses that at tier 0 in milliseconds.
 # ⚑ THE BRAID AT TIER 0, FOR THE ONE INJECTION AIMED AT ITS CUT-RULE CENSUS. The
 # self-test forces MINA_TIER=2 so that a fault in code a cheap run never reaches
@@ -502,7 +502,7 @@ run_mconstr()   { ( cd "$1" && npm run --silent merkle-constraints ); }
 run_braid_cut() { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" MINA_TIER=0 npm run --silent root-fri-braid ); }
 run_braid() {
   if [ "${MINA_TIER:-0}" -ge 2 ]; then
-    ( cd "$1" && DREGG_REPO_ROOT="$ROOT" FRIBRAID_LIMIT=12 FRIBRAID_MIN_ATTRIBUTED=8 \
+    ( cd "$1" && DREGG_REPO_ROOT="$ROOT" FRIBRAID_LIMIT=14 FRIBRAID_MIN_ATTRIBUTED=8 \
         npm run --silent root-fri-braid )
   else
     ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-fri-braid )
@@ -745,7 +745,7 @@ if [ "$MODE" = "headline" ]; then
     n_con="$(printf '%s' "$con_out" | grep -c '✓')"; n_t0=$((n_t0+n_con))
     grep -q 'reproduce the commitments p3 emitted' <<<"$con_out" \
       || die "the four-round input phase was never put to the committed proof's own commitments"
-    grep -q "REFUSED at all 76 openings: a FLAT depth-22 path" <<<"$con_out" \
+    grep -Eq "REFUSED at all [0-9,]+ openings: a FLAT depth-[0-9]+ path" <<<"$con_out" \
       || die "the flat-path bend was not refused — the mixed-height injection is not being tested"
     grep -q 'equal p3' <<<"$con_out" \
       || die "the four-round DEEP quotient was never compared against p3's reduced openings"

@@ -456,13 +456,13 @@ function cost(bound: Ctx, unbound: Ctx) {
 
 /**
  * ⚑ PRICED AGAINST THE CURRENT SHAPE, NOT §3.28's. A sibling landed
- * `bfdc935a5` while the braid ran: the 839 slices are 43 shapes repeated 19
- * times, so query-aligned cuts give **820 instances from 46 distinct
- * programs**. The compile side of §3.28's 17.4-hour figure is stale, and a
+ * `bfdc935a5` while the braid ran: the current 1,785 deployed slices collapse
+ * under query-aligned cuts to **1,561 instances from 44 distinct programs**.
+ * The compile side of §3.28's old figure is stale, and a
  * preamble priced against it would be stale twice.
  *
  * The preamble is entirely HEAD — it is absorbed once, not once per query — so
- * the 19 query blocks are untouched and every new slice is a head slice.
+ * the query blocks are untouched and every new slice is a head slice.
  */
 function uniformCost(shape: any, meta: PreambleMeta) {
   console.log('\n[3b] THE QUERY-ALIGNED PRICE — against `bfdc935a5`, not §3.28\n');
@@ -495,7 +495,9 @@ function uniformCost(shape: any, meta: PreambleMeta) {
     `    ⇒ delta               +${b.inst - a.inst} instances, +${b.prog - a.prog} distinct programs, ` +
       `+${fmt(b.rows - a.rows)} rows (${(((b.rows - a.rows) / a.rows) * 100).toFixed(1)}%)`,
   );
-  ok('the 19 query blocks are UNCHANGED — the preamble is absorbed once, not once per query');
+  ok(
+    `the ${shape.knobs.numQueries} query blocks are UNCHANGED — the preamble is absorbed once, not once per query`,
+  );
 
   //  How compressible the new head is, measured rather than asserted.
   const wp = segmentWalk(shape, { preamble: meta });

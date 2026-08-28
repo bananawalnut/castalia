@@ -198,8 +198,8 @@ function chunksRead(u: UnifiedDag, from: number, to: number, chunkSize: number):
  * spread, so "there is no such cliff here" was never established over there. It
  * is now MEASURED rather than inherited: `npm run cost-gate` phase [5] runs a
  * dynamic program over the FRI walk's own carry function and reports the
- * difference. At the deployed 50,000-row budget it is ZERO slices (839 both
- * ways) and 260,065 rows of carry, so the conclusion survives — but it survives
+ * difference. At the deployed 50,000-row budget it is ZERO slices (1,785 both
+ * ways) and 639,301 rows of carry, so the conclusion survives — but it survives
  * on the FRI lane's own number, not on this sentence about a different object.
  */
 export function planRootAirChain(

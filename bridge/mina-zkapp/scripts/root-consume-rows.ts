@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { Bool, Cache, Field, Provable, ZkProgram } from 'o1js';
-import { BABYBEAR_HASH, PASTA_HASH, PICKLES, slicesAt } from '../src/CostModel.js';
+import {
+  BABYBEAR_HASH,
+  MEASURED_ROOT_GEOMETRY,
+  PASTA_HASH,
+  PICKLES,
+  slicesAt,
+} from '../src/CostModel.js';
 import {
   assertProofDataInRange,
   deepMatricesOf,
@@ -272,7 +278,7 @@ for (const col of COLS) {
 }
 ok(
   `paid ONCE per proof, not per query: ${fmt(ONCE[0])} rows at BabyBear and ${fmt(ONCE[1])} at Pasta — ` +
-    `the ${fmt(2630 * 4)} opened lanes range-checked plus ${verifyPlan(BB_SH).pointScales.length - 1} ` +
+    `the ${fmt(MEASURED_ROOT_GEOMETRY.censusPerQuery * 4)} opened lanes range-checked plus ${verifyPlan(BB_SH).pointScales.length - 1} ` +
     'constant multiplies for the next-row points. Hash-independent, and it is in the totals below',
 );
 

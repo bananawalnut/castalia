@@ -143,7 +143,7 @@ console.log(
 );
 console.log(
   `      it OMITS the permutation round (${MEASURED_ROOT_GEOMETRY.censusByRound.permutation} terms) ` +
-    `and CHARGES 168 terms the proof does not have (matrices opened at ζ alone).`,
+    `and CHARGES 276 terms the proof does not have (matrices opened at ζ alone).`,
 );
 
 // ===========================================================================

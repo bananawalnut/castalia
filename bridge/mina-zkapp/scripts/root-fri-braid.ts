@@ -939,7 +939,7 @@ async function main() {
 
   // ── THE TIER-0 STOP ───────────────────────────────────────────────────────
   //  ⚑ EVERYTHING ABOVE IS THE INSTRUMENT THAT FOUND THIS LEG'S DEFECTS, and
-  //  everything below is the one that did not. [2b] walks all 11,303 segments
+  //  everything below is the one that did not. [2b] walks all 21,739 segments
   //  against p3's own numbers in seconds; [3]-[8] compile Pickles circuits for
   //  minutes to prove a PREFIX of the same walk. Four defects — a full output
   //  buffer on entry, `sample_bits` on the low bits, `alpha_pow` starting at
@@ -1254,7 +1254,7 @@ async function main() {
   console.log(
     `    EXTRAPOLATED, and it is an extrapolation: ${fmt(c.plan.slices.length)} slices × ` +
       `${perSlice.toFixed(0)}s = ${((c.plan.slices.length * perSlice) / 3600).toFixed(1)} hours ` +
-      'serial, for the whole 19-query walk',
+      `serial, for the whole ${K.numQueries}-query walk`,
   );
   console.log(`    wall clock for this leg: ${secs(T0)}`);
 
@@ -1285,11 +1285,11 @@ async function main() {
 /** Recorded on the run that first produced them. A zero prints instead of
  *  comparing. */
 const RATCHET = {
-  segments: 11_303,
-  slices: 839,
+  segments: 21_739,
+  slices: 1_785,
   deepTerms: MEASURED_ROOT_GEOMETRY.censusPerQuery,
-  airBound: 1_236,
-  friLanes: 33_062,
+  airBound: MEASURED_ROOT_GEOMETRY.airCoveredPerQuery,
+  friLanes: 63_631,
 };
 
 const phase =

@@ -27,25 +27,25 @@ import type { RealRootFri } from './RootFriWalk.js';
 //
 // This module is the bridge: it reads `root_fri_instance.rs`'s emitted object —
 // dregg's committed whole-history root proof, four rounds, five matrix heights,
-// a 2,630-term DEEP census — into a `DreggProofShape` the generalised assembly
+// a 2,746-term DEEP census — into a `DreggProofShape` the generalised assembly
 // takes, at EITHER hash.
 //
 // ⚑ WHAT IS REAL AND WHAT IS RE-HASHED, SAID BEFORE ANY NUMBER IS QUOTED,
 // because the honest answer is three-valued and the dishonest one is a headline.
 //
 //   REAL, at both hashes: the four PCS rounds and their 35 matrices; the five
-//   log heights [22, 21, 16, 9, 6] and therefore the mixed-height injection
-//   schedule; every opened row (1,427 base lanes a query); every opened
-//   evaluation (2,630 extension values); every opening point; the 19 query
-//   indices; ζ, α, the FRI α, the 16 βs and the final polynomial; the roll-in
+//   log heights [20, 19, 13, 7, 3] and therefore the mixed-height injection
+//   schedule; every opened row (1,511 base lanes a query); every opened
+//   evaluation (2,746 extension values); every opening point; the 38 query
+//   indices; ζ, α, the FRI α, the 17 βs and the final polynomial; the roll-in
 //   schedule. All of it is read off `.fullchain/real-root-fri.json` and none of
 //   it is synthesised.
 //
 //   RE-HASHED, at Pasta ONLY: the MMCS digests — the four round commitments,
-//   the 16 commit-phase commitments, and every path sibling. dregg's root
+//   the 17 commit-phase commitments, and every path sibling. dregg's root
 //   commits with Poseidon2-over-BabyBear. A Pasta-hashed root is a RE-MINT
 //   (`DreggMinaConfig`), not a re-read, and minting one is a Rust prove run over
-//   a 2^22 batch. So `rehash` recomputes the commitments THIS proof's own
+//   a 2^20 batch. So `rehash` recomputes the commitments THIS proof's own
 //   openings imply under the Pasta suite, deriving each sibling from the
 //   BabyBear sibling it stands in for. Nothing is invented — every Pasta digest
 //   is a function of the committed proof's own bytes — but it is a re-hash and
@@ -272,7 +272,7 @@ export function rootValues(real: RealRootFri): RootValues {
 //
 // ⚑ THIS IS THE FALSIFIER'S HOME AND IT RUNS IN MILLISECONDS. Every real defect
 // in this arc came from an out-of-circuit differential — four silent wrongs
-// across 11,303 segments, all 19 block-joins broken across 820 boundaries. A
+// across 21,739 segments, all 38 block-joins checked across 1,561 uniform boundaries. A
 // four-round mixed-height opening has four NEW ways to be silently wrong (the
 // injection level, the injection ORDER, which matrices seed the leaf, and which
 // index bits the level consumes) and every one of them compiles, proves, and
@@ -559,14 +559,14 @@ export function rehash(
  * ⚑ WHAT MOVES AND WHAT DOES NOT, and the split is exactly `rehash`'s. The
  * MMCS digests move, because a Pasta-hashed root is a RE-MINT. Nothing else
  * does: every opened row, every opened evaluation, every opening point, the
- * nineteen query indices, ζ, α, the FRI α, the sixteen βs, the final polynomial
+ * 38 query indices, ζ, α, the FRI α, the 17 βs, the final polynomial
  * and every commit-phase sibling are BabyBear values that `DreggMinaConfig`
  * does not touch — it changes the HASH field and leaves `Val = BabyBear`,
  * `Challenge = EF4` alone.
  *
  * ⚠ AND IT IS A RE-HASH, LABELLED. `kind` is suffixed so a record that has been
  * through here can never be mistaken for one dregg minted. dregg mints no
- * Pasta-hashed root; minting one is a Rust prove run over a 2^22 batch.
+ * Pasta-hashed root; minting one is a Rust prove run over a 2^20 batch.
  */
 export function rehashRealRootFri(
   real: RealRootFri,
