@@ -196,7 +196,47 @@ ignore = [
                 os.environ["SOURCE_DATE_EPOCH"] = old_epoch
         self.assertEqual(result["spdxVersion"], "SPDX-2.3")
         self.assertEqual({p["name"] for p in result["packages"]}, {"dregg-node", "serde"})
+        self.assertEqual(result["name"], "dregg-node-linux-x86_64")
         self.assertEqual(result["creationInfo"]["created"], "1970-01-01T00:00:00Z")
+
+    def test_spdx_labels_arm64_and_separates_its_namespace(self):
+        metadata = {
+            "packages": [
+                {
+                    "id": "root 1",
+                    "name": "dregg-node",
+                    "version": "1",
+                    "license": "MIT",
+                    "source": None,
+                },
+            ],
+            "resolve": {"nodes": [{"id": "root 1", "dependencies": []}]},
+        }
+        x86 = spdx.build_sbom(metadata, "dregg-node", "x86_64-unknown-linux-gnu")
+        arm = spdx.build_sbom(metadata, "dregg-node", "aarch64-unknown-linux-gnu")
+        self.assertEqual(arm["name"], "dregg-node-linux-aarch64")
+        self.assertNotEqual(arm["documentNamespace"], x86["documentNamespace"])
+        with self.assertRaisesRegex(ValueError, "unsupported bootstrap SBOM target"):
+            spdx.build_sbom(metadata, "dregg-node", "mips-unknown-linux-gnu")
+
+    def test_release_sidecars_are_portable_and_publication_rechecks_provenance(self):
+        workflow = (ROOT / ".github/workflows/castalia-bootstrap-node.yml").read_text()
+        self.assertIn(
+            'cd release-assets\n'
+            '              sha256sum "dregg-node-linux-$arch" > '
+            '"dregg-node-linux-$arch.sha256"',
+            workflow,
+        )
+        self.assertNotIn(
+            'sha256sum "release-assets/dregg-node-linux-$arch" >', workflow
+        )
+        for check in (
+            ".revision == $revision",
+            ".build.target == $target",
+            ".binary.sha256 == $binary_sha",
+            ".sbom.sha256 == $sbom_sha",
+        ):
+            self.assertIn(check, workflow)
 
     def test_provenance_rejects_marshal_only_status(self):
         with tempfile.TemporaryDirectory() as directory:

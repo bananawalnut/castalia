@@ -596,6 +596,7 @@ jobs:
             python3 scripts/cargo_metadata_to_spdx.py \
               --metadata "${RUNNER_TEMP}/cargo-metadata.json" \
               --root-package dregg-node \
+              --target x86_64-unknown-linux-gnu \
               --output "$OUT/dregg-node.spdx.json"
           python3 scripts/write_bootstrap_provenance.py \
             --binary "$OUT/dregg-node" \
@@ -775,6 +776,7 @@ jobs:
             python3 scripts/cargo_metadata_to_spdx.py \
               --metadata "${RUNNER_TEMP}/cargo-metadata.json" \
               --root-package dregg-node \
+              --target aarch64-unknown-linux-gnu \
               --output "$OUT/dregg-node.spdx.json"
           python3 scripts/write_bootstrap_provenance.py \
             --binary "$OUT/dregg-node" \
@@ -931,10 +933,41 @@ jobs:
           mkdir -p release-assets
           for arch in x86_64 aarch64; do
             cp "artifact/$arch/dregg-node" "release-assets/dregg-node-linux-$arch"
-            sha256sum "release-assets/dregg-node-linux-$arch" > \
-              "release-assets/dregg-node-linux-$arch.sha256"
             cp "artifact/$arch/provenance.json" "release-assets/provenance-linux-$arch.json"
             cp "artifact/$arch/dregg-node.spdx.json" "release-assets/dregg-node-linux-$arch.spdx.json"
+            if [ "$arch" = x86_64 ]; then
+              target="x86_64-unknown-linux-gnu"
+            else
+              target="aarch64-unknown-linux-gnu"
+            fi
+            binary_sha="$(sha256sum "release-assets/dregg-node-linux-$arch" | awk 'NR == 1 { print $1 }')"
+            sbom_sha="$(sha256sum "release-assets/dregg-node-linux-$arch.spdx.json" | awk 'NR == 1 { print $1 }')"
+            jq -e \
+              --arg artifact "castalia-bootstrap-node-linux-$arch" \
+              --arg revision "$GITHUB_SHA" \
+              --arg target "$target" \
+              --arg binary_sha "$binary_sha" \
+              --arg sbom_sha "$sbom_sha" '
+                .artifact == $artifact and
+                .revision == $revision and
+                .build.target == $target and
+                .binary.sha256 == $binary_sha and
+                .sbom.sha256 == $sbom_sha and
+                .stateProducer == "lean" and
+                .leanProducer == true and
+                .federationMode == "solo" and
+                .build.requireLean == true
+              ' "release-assets/provenance-linux-$arch.json"
+            jq -e \
+              --arg name "dregg-node-linux-$arch" '
+                .spdxVersion == "SPDX-2.3" and
+                .name == $name and
+                (.packages | length) > 0
+              ' "release-assets/dregg-node-linux-$arch.spdx.json"
+            (
+              cd release-assets
+              sha256sum "dregg-node-linux-$arch" > "dregg-node-linux-$arch.sha256"
+            )
           done
           gh release create "$RELEASE_TAG" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \

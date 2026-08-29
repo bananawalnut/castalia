@@ -11,6 +11,12 @@ import os
 from pathlib import Path
 
 
+SUPPORTED_TARGET_ARCHES = {
+    "x86_64-unknown-linux-gnu": "x86_64",
+    "aarch64-unknown-linux-gnu": "aarch64",
+}
+
+
 def spdx_id(package_id: str) -> str:
     digest = hashlib.sha256(package_id.encode("utf-8")).hexdigest()[:20]
     return f"SPDXRef-Package-{digest}"
@@ -22,7 +28,14 @@ def created_at() -> str:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def build_sbom(metadata: dict, root_name: str) -> dict:
+def build_sbom(
+    metadata: dict,
+    root_name: str,
+    target: str = "x86_64-unknown-linux-gnu",
+) -> dict:
+    if target not in SUPPORTED_TARGET_ARCHES:
+        raise ValueError(f"unsupported bootstrap SBOM target: {target}")
+    target_arch = SUPPORTED_TARGET_ARCHES[target]
     packages_by_id = {package["id"]: package for package in metadata["packages"]}
     resolve = metadata.get("resolve") or {}
     nodes = {node["id"]: node for node in resolve.get("nodes", [])}
@@ -90,13 +103,13 @@ def build_sbom(metadata: dict, root_name: str) -> dict:
                 )
 
     revision = os.environ.get("GITHUB_SHA", "unknown")
-    namespace_seed = f"{root_name}:{revision}:{len(packages)}"
+    namespace_seed = f"{root_name}:{revision}:{target}:{len(packages)}"
     namespace = hashlib.sha256(namespace_seed.encode("utf-8")).hexdigest()
     return {
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
-        "name": f"{root_name}-linux-x86_64",
+        "name": f"{root_name}-linux-{target_arch}",
         "documentNamespace": f"https://dregg.zenith-research.ca/spdx/{namespace}",
         "creationInfo": {
             "created": created_at(),
@@ -111,10 +124,13 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--root-package", required=True)
+    parser.add_argument(
+        "--target", required=True, choices=sorted(SUPPORTED_TARGET_ARCHES)
+    )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     metadata = json.loads(args.metadata.read_text())
-    sbom = build_sbom(metadata, args.root_package)
+    sbom = build_sbom(metadata, args.root_package, args.target)
     args.output.write_text(json.dumps(sbom, indent=2, sort_keys=True) + "\n")
 
 
