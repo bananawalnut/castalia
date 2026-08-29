@@ -44,6 +44,13 @@ jq -e '
 ' "$JOIN_REQUEST" >/dev/null
 
 API_ROOT="https://${DREGG_HOSTNAME}"
+FACTORY_ID="7ad3af1ba0e83ad560a881780295706073c1a0c9fe8656310051f62444903554"
+PROGRAM_ID="6c37adae385c40894127e766deb9aff54e4cd01b0ccf01aff1ac7c12e24441fd"
+TOKEN_ID="7f66eec85e99cd49ef3c8d733b8c489defe0a721f03fb2c3dd4bea04b1710d1f"
+FIELD_MAGIC="000000000000000000000000000000000000000000000000324d454d54534143"
+FIELD_ZERO="0000000000000000000000000000000000000000000000000000000000000000"
+FIELD_ONE="0000000000000000000000000000000000000000000000000000000000000001"
+FIELD_TWO="0000000000000000000000000000000000000000000000000000000000000002"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
 
@@ -74,29 +81,28 @@ assert_cell() {
   jq -e \
     --arg id "$MEMBERSHIP_CELL_ID" \
     --arg owner "$OWNER_PUBLIC_KEY" \
-    --arg commitment "$STATE_COMMITMENT" '
-      .found == true and
-      .id == $id and
-      .publicKey == $owner and
-      .stateCommitment == $commitment and
-      .capabilityCount == 0 and
-      .numCapabilities == 0 and
-      .hasDelegate == false and
-      .hasDelegation == false and
-      (.capabilities | length) == 0
-    ' "$output" >/dev/null
+    --arg commitment "$STATE_COMMITMENT" \
+    --arg token "$TOKEN_ID" \
+    --arg magic "$FIELD_MAGIC" \
+    --arg zero "$FIELD_ZERO" \
+    --arg one "$FIELD_ONE" \
+    --arg two "$FIELD_TWO" \
+    -f "$SCRIPT_DIR/verify-membership-cell.jq" \
+    "$output" >/dev/null
 }
 
 FIRST_RESPONSE="$WORK_DIR/first.json"
 post_join "$FIRST_RESPONSE"
-jq -e '
+jq -e \
+  --arg factory "$FACTORY_ID" \
+  --arg program "$PROGRAM_ID" '
   .version == 2 and
   .state == "active" and
   .generation == 0 and
   (.membershipCellId | test("^[0-9a-f]{64}$")) and
   (.ownerPublicKey | test("^[0-9a-f]{64}$")) and
-  (.factoryId | test("^[0-9a-f]{64}$")) and
-  (.programId | test("^[0-9a-f]{64}$")) and
+  .factoryId == $factory and
+  .programId == $program and
   (.stateCommitment | test("^[0-9a-f]{64}$")) and
   (.created | type == "boolean")
 ' "$FIRST_RESPONSE" >/dev/null

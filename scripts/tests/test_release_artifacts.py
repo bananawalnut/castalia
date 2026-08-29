@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -8,6 +9,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+MEMBERSHIP_FILTERS = (
+    ROOT / "deploy/aws-free-plan/verify-membership-cell.jq",
+    ROOT / "deploy/oci/verify-membership-cell.jq",
+)
 
 
 def load(name: str, relative: str):
@@ -65,7 +70,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             "capability_tombstones": [],
         }
 
-    def verify_membership_cell(self, cell):
+    def verify_membership_cell(self, cell, membership_filter=MEMBERSHIP_FILTERS[0]):
         return subprocess.run(
             [
                 "jq", "-e",
@@ -77,7 +82,7 @@ class ReleaseArtifactTests(unittest.TestCase):
                 "--arg", "zero", field_hex(0),
                 "--arg", "one", field_hex(1),
                 "--arg", "two", field_hex(2),
-                "-f", str(ROOT / "deploy/oci/verify-membership-cell.jq"),
+                "-f", str(membership_filter),
             ],
             input=json.dumps(cell),
             text=True,
@@ -85,11 +90,44 @@ class ReleaseArtifactTests(unittest.TestCase):
             check=False,
         )
 
-    def test_oci_soak_accepts_exact_snake_case_membership_cell(self):
-        result = self.verify_membership_cell(self.membership_cell())
-        self.assertEqual(result.returncode, 0, result.stderr)
+    def test_deployment_soaks_accept_exact_snake_case_membership_cell(self):
+        self.assertEqual(
+            MEMBERSHIP_FILTERS[0].read_bytes(),
+            MEMBERSHIP_FILTERS[1].read_bytes(),
+            "AWS and OCI membership-cell verification drifted",
+        )
+        for membership_filter in MEMBERSHIP_FILTERS:
+            with self.subTest(membership_filter=membership_filter):
+                result = self.verify_membership_cell(
+                    self.membership_cell(), membership_filter
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_oci_soak_rejects_noncanonical_membership_cells(self):
+    def test_deployment_soak_constants_match_canonical_membership_vector(self):
+        vector = json.loads(
+            (ROOT / "docs/vectors/castalia-permissionless-membership-v2.vector.json")
+            .read_text()
+        )
+        for soak in (
+            ROOT / "deploy/aws-free-plan/soak-membership.sh",
+            ROOT / "deploy/oci/soak-membership.sh",
+        ):
+            source = soak.read_text()
+            for variable, key in (
+                ("FACTORY_ID", "factoryId"),
+                ("PROGRAM_ID", "programId"),
+                ("TOKEN_ID", "tokenId"),
+            ):
+                with self.subTest(soak=soak, variable=variable):
+                    match = re.search(
+                        rf'^{variable}="([0-9a-f]{{64}})"$',
+                        source,
+                        re.MULTILINE,
+                    )
+                    self.assertIsNotNone(match, f"missing canonical {variable}")
+                    self.assertEqual(match.group(1), vector[key])
+
+    def test_deployment_soaks_reject_noncanonical_membership_cells(self):
         mutations = {}
 
         camel_case = self.membership_cell()
@@ -116,10 +154,11 @@ class ReleaseArtifactTests(unittest.TestCase):
         delegation["has_delegation"] = True
         mutations["delegation"] = delegation
 
-        for name, cell in mutations.items():
-            with self.subTest(name=name):
-                result = self.verify_membership_cell(cell)
-                self.assertNotEqual(result.returncode, 0)
+        for membership_filter in MEMBERSHIP_FILTERS:
+            for name, cell in mutations.items():
+                with self.subTest(membership_filter=membership_filter, name=name):
+                    result = self.verify_membership_cell(cell, membership_filter)
+                    self.assertNotEqual(result.returncode, 0)
 
     def test_audit_ignore_parser_does_not_scrape_comments(self):
         source = '''
