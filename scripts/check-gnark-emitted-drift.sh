@@ -10,6 +10,19 @@ trap 'rm -rf "$GENERATED"' EXIT
 export DREGG_GNARK_EMITTED_DIR="$GENERATED"
 
 cd "$ROOT/metatheory"
+# The generators live under scripts/, outside the Lake library roots. `lean
+# --run` therefore compiles only the script itself and expects every imported
+# library module to have an existing `.olean`. Descriptor CI happens to build
+# many of these modules, but not the complete Gnark generator closure (most
+# notably InputOpenBatchEmit), so relying on that incidental build graph makes
+# this gate fail before it can produce a drift verdict. Build the five public
+# generator roots explicitly; Lake supplies and caches their transitive closure.
+lake build \
+  Dregg2.Circuit.Emit.GnarkVerifier.InputOpenBatchEmit \
+  Dregg2.Circuit.Emit.GnarkVerifier.SelectorEmit \
+  Dregg2.Circuit.Emit.GnarkVerifier.MerkleEmit \
+  Dregg2.Circuit.Emit.GnarkVerifier.FriFoldEmit \
+  Dregg2.Circuit.Emit.GnarkVerifier.QueryPowEmit
 lake env lean --run scripts/gen_gnark_emitted_templates.lean
 lake env lean --run scripts/gen_merkle_templates.lean
 lake env lean --run scripts/gen_fri_fold_template.lean
