@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,7 +23,104 @@ provenance = load("write_bootstrap_provenance", "scripts/write_bootstrap_provena
 audit_ignores = load("audit_ignore_ids", "scripts/audit_ignore_ids.py")
 
 
+def field_hex(value: int) -> str:
+    return f"{value:064x}"
+
+
 class ReleaseArtifactTests(unittest.TestCase):
+    def membership_cell(self):
+        return {
+            "found": True,
+            "id": "11" * 32,
+            "public_key": "22" * 32,
+            "token_id": "33" * 32,
+            "state_commitment": "44" * 32,
+            "program_kind": "Cases",
+            "program": {
+                "kind": "Cases",
+                "cases": [{
+                    "guard": {"kind": "Always"},
+                    "constraints": [
+                        {"kind": "Immutable", "index": index}
+                        for index in range(16)
+                    ],
+                }],
+            },
+            "fields": [
+                field_hex(3_624_629_473_532_657_987),
+                field_hex(2),
+                field_hex(1),
+                *[field_hex(0) for _ in range(9)],
+                field_hex(1),
+                field_hex(0),
+                field_hex(0),
+                field_hex(0),
+            ],
+            "capability_count": 0,
+            "num_capabilities": 0,
+            "has_delegate": False,
+            "has_delegation": False,
+            "delegate": None,
+            "capabilities": [],
+            "capability_tombstones": [],
+        }
+
+    def verify_membership_cell(self, cell):
+        return subprocess.run(
+            [
+                "jq", "-e",
+                "--arg", "id", "11" * 32,
+                "--arg", "owner", "22" * 32,
+                "--arg", "token", "33" * 32,
+                "--arg", "commitment", "44" * 32,
+                "--arg", "magic", field_hex(3_624_629_473_532_657_987),
+                "--arg", "zero", field_hex(0),
+                "--arg", "one", field_hex(1),
+                "--arg", "two", field_hex(2),
+                "-f", str(ROOT / "deploy/oci/verify-membership-cell.jq"),
+            ],
+            input=json.dumps(cell),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_oci_soak_accepts_exact_snake_case_membership_cell(self):
+        result = self.verify_membership_cell(self.membership_cell())
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_oci_soak_rejects_noncanonical_membership_cells(self):
+        mutations = {}
+
+        camel_case = self.membership_cell()
+        camel_case["publicKey"] = camel_case.pop("public_key")
+        mutations["camel-case wire projection"] = camel_case
+
+        wrong_token = self.membership_cell()
+        wrong_token["token_id"] = "55" * 32
+        mutations["wrong token"] = wrong_token
+
+        mutable = self.membership_cell()
+        mutable["program"]["cases"][0]["constraints"][7]["kind"] = "Range"
+        mutations["mutable field program"] = mutable
+
+        changed_field = self.membership_cell()
+        changed_field["fields"][12] = f"{2:064x}"
+        mutations["non-active field"] = changed_field
+
+        capability = self.membership_cell()
+        capability["capability_count"] = 1
+        mutations["capability"] = capability
+
+        delegation = self.membership_cell()
+        delegation["has_delegation"] = True
+        mutations["delegation"] = delegation
+
+        for name, cell in mutations.items():
+            with self.subTest(name=name):
+                result = self.verify_membership_cell(cell)
+                self.assertNotEqual(result.returncode, 0)
+
     def test_audit_ignore_parser_does_not_scrape_comments(self):
         source = '''
 [advisories]
