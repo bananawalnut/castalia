@@ -2524,6 +2524,15 @@ jobs:
           git cat-file -e "$BASE_SHA^{commit}"
           DRIFT_TAXONOMY_BASE_REF="$BASE_SHA" bash scripts/check-descriptor-drift.sh
 
+      # The Go settlement wrap consumes a second family of Lean-emitted JSON artifacts.
+      # Several tests once landed while their generated Merkle/fold/selector files remained
+      # ignored and uncommitted, so the first clean CI checkout failed at runtime. Re-emit into
+      # an empty directory: comparing both names and bytes catches missing, obsolete, and drifted
+      # outputs without modifying the checkout being graded.
+      - name: Gnark replay artifacts Lean↔JSON drift gate
+        if: ${{ !cancelled() && steps.mathlib.outcome == 'success' }}
+        run: bash scripts/check-gnark-emitted-drift.sh
+
   # ══════════════════════════════════════════════════════════════════════════════════════════
   # ⚑ THE ABSENCE OF A VERDICT IS NOT A PASS (2026-08-08).
   #

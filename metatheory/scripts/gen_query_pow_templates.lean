@@ -29,18 +29,22 @@ This is NOT part of `lake build` (it lives under scripts/, outside the globbed l
 Regenerate with, from the metatheory/ directory:
 
     lake env lean --run scripts/gen_query_pow_templates.lean
+
+Set `DREGG_GNARK_EMITTED_DIR` to redirect output for CI drift comparison.
 -/
 import Dregg2.Circuit.Emit.GnarkVerifier.QueryPowEmit
 import Dregg2.Circuit.Emit.GnarkVerifier.EmitJson
 
 open Dregg2.Circuit.Emit.GnarkVerifier
 
-def emitOne (n : Nat) : IO Unit := do
+def emitOne (dir : String) (n : Nat) : IO Unit := do
   let json := emitGnarkJson (emitQueryPow n)
-  let path := s!"../chain/gnark/emitted/query_pow_n{n}.json"
+  let path := s!"{dir}/query_pow_n{n}.json"
   IO.FS.writeFile path json
   IO.println s!"query_pow_n{n}: wrote {json.length} bytes to {path}"
 
 def main : IO Unit := do
-  emitOne 0
-  emitOne deployedPowBits
+  let dir := (← IO.getEnv "DREGG_GNARK_EMITTED_DIR").getD "../chain/gnark/emitted"
+  IO.FS.createDirAll dir
+  emitOne dir 0
+  emitOne dir deployedPowBits

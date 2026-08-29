@@ -16,6 +16,8 @@ Regenerate with, from the metatheory/ directory:
 
     lake env lean --run scripts/gen_selectors_witness.lean
 
+Set `DREGG_GNARK_EMITTED_DIR` to redirect output for CI drift comparison.
+
 The Go test then loads these fixtures, classifies the template's free-witness set
 (Template.ClassifyVars), binds ζ + the free witnesses, and checks the replay solves
 {isFirstRow,isLastRow,isTransition} bit-exact against computeStarkSelectorsRef — and
@@ -40,8 +42,10 @@ def renderWitness (l : List Fr) : String :=
   "[" ++ String.intercalate "," (l.map (fun x => toString x.val)) ++ "]"
 
 def main : IO Unit := do
+  let dir := (← IO.getEnv "DREGG_GNARK_EMITTED_DIR").getD "../chain/gnark/emitted"
+  IO.FS.createDirAll dir
   for db in apexShrinkShape.degreeBits.eraseDups do
     let s := honestAssigns db
-    let path := s!"../chain/gnark/emitted/selectors_witness_db{db}.json"
+    let path := s!"{dir}/selectors_witness_db{db}.json"
     IO.FS.writeFile path (renderWitness s)
     IO.println s!"db{db}: wrote {s.length} honest witness values to {path}"

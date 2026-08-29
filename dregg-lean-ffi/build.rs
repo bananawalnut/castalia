@@ -4590,10 +4590,12 @@ fn main() {
     // to this crate's own targets only. The cross-crate propagation is exactly what the
     // shadow harness needs to resolve `dregg_ffi_init` / `dregg_exec_full_forest_auth_str`.
     //
-    // The shim is linked `+whole-archive` so its single bridge object survives the final
-    // `-Wl,-dead_strip` regardless of archive-member ordering (the empirical fix for the
-    // earlier `Undefined symbols` link failures). `+whole-archive` is a link-LIB modifier,
-    // so it propagates too.
+    // We suppress cc's automatic `rustc-link-lib` directive (`cargo_metadata(false)`) and emit
+    // the platform-specific directive below. macOS keeps the empirical `+whole-archive`
+    // workaround: under `-Wl,-dead_strip` with `-nodefaultlibs`, ld64 otherwise drops the shim's
+    // single object before recording the binary's undefined `dregg_ffi_init` /
+    // `dregg_exec_full_forest_auth_str` references. Linux instead bundles the shim with the Lean
+    // closure so GNU ld can close the archive's internal dependency chain.
     shim.cargo_metadata(false);
     shim.compile("dregg_ffi_shim");
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -4608,8 +4610,9 @@ fn main() {
     // mechanism. The standalone differential bins each carry `use dregg_lean_ffi as _;` to force
     // the rlib edge so they inherit these propagated directives.
     //
-    // The shim is linked `+whole-archive` so its single bridge object survives the final
-    // `-Wl,-dead_strip` regardless of archive-member ordering (the empirical link-failure fix).
+    // The non-Linux shim is linked `+whole-archive` so its single bridge object survives the
+    // final `-Wl,-dead_strip` regardless of archive-member ordering. Linux keeps the shim bundled
+    // with the closure instead; both are link-LIB modifiers and preserve downstream propagation.
     let _ = shim_archive;
     // BOTH the shim AND the spliced Lean archive resolve from `OUT_DIR` (the per-build working
     // copy of `libdregg_lean.a`, seeded from the git-tracked seed and then spliced/GC'd HERE).
@@ -4617,7 +4620,18 @@ fn main() {
     // git-tracked seed would (a) reintroduce the wrong-feature-set race this split closes and
     // (b) link a non-GC'd (full-closure) archive. One search root for our static libs: OUT_DIR.
     println!("cargo:rustc-link-search=native={}", out_dir.display());
-    println!("cargo:rustc-link-lib=static:+whole-archive=dregg_ffi_shim");
+    // GNU ld is single-pass across archives. `+whole-archive` makes rustc pass this shim as a
+    // separate archive AFTER `libdregg_lean_ffi.rlib`; on aarch64 that introduces the shim's
+    // `initialize_Dregg2_*` / `dregg_*` undefined references only after ld has already scanned
+    // the bundled Lean members, so it cannot go backwards to resolve them. Keep the shim bundled
+    // with the Lean closure on Linux: an rlib's archive index can repeatedly select its own
+    // members until the shim/closure dependency chain is closed. Retain the whole-archive
+    // workaround on non-Linux targets (most importantly macOS ld64's `-dead_strip` behaviour).
+    if target_os == "linux" {
+        println!("cargo:rustc-link-lib=static:+bundle=dregg_ffi_shim");
+    } else {
+        println!("cargo:rustc-link-lib=static:+whole-archive=dregg_ffi_shim");
+    }
     // Under the runtime trim, link the SEPARATE trimmed archive (`libdregg_lean_trim.a`); otherwise
     // the full verified closure (`libdregg_lean.a`). The trimmed archive holds the same verified
     // executor objects (the `dregg_*` exports + their runtime-function closure), only without the

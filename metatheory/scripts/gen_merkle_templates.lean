@@ -21,6 +21,8 @@ This is NOT part of `lake build` (it lives under scripts/, outside the globbed
 libs). Regenerate with, from the metatheory/ directory:
 
     lake env lean --run scripts/gen_merkle_templates.lean
+
+Set `DREGG_GNARK_EMITTED_DIR` to redirect output for CI drift comparison.
 -/
 import Dregg2.Circuit.Emit.GnarkVerifier.MerkleEmit
 import Dregg2.Circuit.Emit.GnarkVerifier.EmitJson
@@ -32,8 +34,10 @@ open Dregg2.Circuit.Emit.GnarkVerifier
 def merkleDepths : List Nat := commitMerkleDepths apexShrinkShape
 
 def main : IO Unit := do
+  let dir := (← IO.getEnv "DREGG_GNARK_EMITTED_DIR").getD "../chain/gnark/emitted"
+  IO.FS.createDirAll dir
   for d in merkleDepths do
     let json := emitGnarkJson (Merkle.merklePathData d)
-    let path := s!"../chain/gnark/emitted/merkle_path_bn254_d{d}.json"
+    let path := s!"{dir}/merkle_path_bn254_d{d}.json"
     IO.FS.writeFile path json
     IO.println s!"d{d}: wrote {json.length} bytes to {path}"
