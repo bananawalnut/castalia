@@ -11212,7 +11212,12 @@ mod tests {
         // the visible rotation is fine ONLY BECAUSE the panel is communal and
         // unattributed. If anything attributable is ever hung off this panel,
         // the rotation must leave this surface.
+        // Castalia permissionless membership is deliberately public: the join route accepts only
+        // a v2 owner-key proof-of-possession and returns the immutable public membership cell. It
+        // exposes no PoA instance, secret, wallet key, bearer session, or list endpoint; malformed
+        // and unsigned requests fail before issuance.
         let expected = [
+            "castalia_membership",
             "poa_galley_api",
             "poa_holding_api",
             "poa_records_api",
@@ -11800,7 +11805,7 @@ mod tests {
     //      any arm of the producer — or re-introducing a hand-rolled twin in the
     //      gate — flips that variant's observed class and reds this test by name.
     //
-    // Cross-check worth stating: the 29 / 5 / 3 split below is EXACTLY the
+    // Cross-check worth stating: the 29 / 5 / 4 split below is EXACTLY the
     // Descriptor / NamedResidual / RefusedResidual split of
     // `circuit/tests/effect_enum_descriptor_residual_gate.rs`, arrived at from the
     // other end (that gate reads descriptor rungs; this one runs the projector). A
@@ -12150,7 +12155,7 @@ mod tests {
             },
         },
 
-        // ── The 2 RefusedResiduals: the PQ identity authority plane has no AIR row.
+        // ── The 4 RefusedResiduals: the PQ-identity and shielding authority planes have no AIR rows.
         // The payloads are ARBITRARY BYTES, not a real ML-DSA keypair, and that is
         // safe here because the refusal is decided on the VARIANT before any
         // primitive is touched — minting a real key would drag `dregg-pq`'s
@@ -12247,13 +12252,13 @@ mod tests {
             mismatched.len(),
             mismatched.join("\n  ")
         );
-        // The 29/5/3 split mirrors the Descriptor/NamedResidual/RefusedResidual split
+        // The 29/5/4 split mirrors the Descriptor/NamedResidual/RefusedResidual split
         // of `circuit/tests/effect_enum_descriptor_residual_gate.rs`. Pinning it here
         // makes a verb SILENTLY changing posture (a residual quietly gaining or losing
         // a producer arm) red rather than invisible.
         assert_eq!(
             counts,
-            (29, 5, 3),
+            (29, 5, 4),
             "attestable / no-actor-transition / refused split moved; reconcile against \
              effect_enum_descriptor_residual_gate.rs before editing the pin"
         );

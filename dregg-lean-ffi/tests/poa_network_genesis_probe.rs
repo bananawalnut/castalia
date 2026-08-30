@@ -17,10 +17,10 @@ const CONFIG_FILE: &str = include_str!("fixtures/poa-network-genesis-config-v1.j
 const CANON_FILE: &str = include_str!("fixtures/poa-network-genesis-canon-v1.json");
 
 // ⚠ MOVED 2026-08-27 by the multi-game wire cutover (`059f62db3`): `GameConfigWire.toJson`
-// now begins every standalone config with its required `"game":"signal"` discriminator. The
+// now begins every standalone config with its required `"game":"signal-triangulation"` discriminator. The
 // canonical config/input/output fixtures beside this file were re-frozen together. The Canon
 // hash did not move because the empty genesis state is game-independent.
-const CONFIG_SHA256: &str = "4ee9c9f9dd197163509075239fc6c397df6c8fd22bad55d5ee1aabcf7b82cfed";
+const CONFIG_SHA256: &str = "f3766c7f34cdc9ff17b128f9abf1ce489f1a0dd9dd7f590764ce0056cd248a1c";
 const CANON_SHA256: &str = "f770d6bd6fd3fe09ec7c2fe882b74aa655c4ce6687f1a01e02e4faa468ba6181";
 
 fn fixture(bytes: &'static str) -> &'static str {
