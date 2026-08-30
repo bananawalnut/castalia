@@ -194,6 +194,14 @@ pub enum NodeEvent {
 #[derive(Clone)]
 pub struct NodeState {
     inner: Arc<RwLock<NodeStateInner>>,
+    /// Serializes the permissionless Castalia membership check-and-issue path.
+    ///
+    /// The deterministic cell ID prevents duplicate ledger state, but without
+    /// this gate two concurrent requests can both observe an absent cell and
+    /// both report `created: true` while finalization is still in flight. Keep
+    /// the gate outside `NodeStateInner` so it can be held across finalization
+    /// without holding the node's global state lock.
+    castalia_membership_join_gate: Arc<tokio::sync::Mutex<()>>,
     /// Broadcast channel for real-time events (WebSocket push).
     events_tx: broadcast::Sender<NodeEvent>,
     /// Optional gossip handle (set after federation sync starts).
@@ -1145,6 +1153,12 @@ pub struct CipherclerkStatus {
 }
 
 impl NodeState {
+    pub(crate) async fn lock_castalia_membership_join(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        Arc::clone(&self.castalia_membership_join_gate)
+            .lock_owned()
+            .await
+    }
+
     /// Create a new NodeState from a data directory path and peer list.
     ///
     /// Uses the default key file name "node.key" in the data directory.
@@ -1510,6 +1524,7 @@ impl NodeState {
                 // None when mirroring is off. See `NodeStateInner::mirror_committed_record`.
                 pg_mirror: None,
             })),
+            castalia_membership_join_gate: Arc::new(tokio::sync::Mutex::new(())),
             events_tx,
             gossip: Arc::new(RwLock::new(None)),
             prove_pool: Arc::new(RwLock::new(None)),
@@ -1709,6 +1724,7 @@ impl NodeState {
                 // None when mirroring is off. See `NodeStateInner::mirror_committed_record`.
                 pg_mirror: None,
             })),
+            castalia_membership_join_gate: Arc::new(tokio::sync::Mutex::new(())),
             events_tx,
             gossip: Arc::new(RwLock::new(None)),
             prove_pool: Arc::new(RwLock::new(None)),

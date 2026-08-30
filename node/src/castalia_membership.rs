@@ -337,6 +337,12 @@ async fn post_membership(
     Json(request): Json<JoinRequest>,
 ) -> Result<Json<JoinResponse>, JoinError> {
     let owner = verify_join_request(&request)?;
+    // The cell address is deterministic, but finalization is asynchronous. A
+    // join-only gate makes the absent-check and finalized result one logical
+    // operation, so simultaneous retries cannot both claim they created it.
+    // Signature verification stays outside the gate to avoid serializing bad
+    // requests, and the global state lock is never held across finalization.
+    let _join_guard = state.lock_castalia_membership_join().await;
     let membership_id = permissionless_membership_cell_id(owner);
     let s = state.write().await;
 

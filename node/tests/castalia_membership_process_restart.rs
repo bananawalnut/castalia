@@ -3,6 +3,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -531,10 +532,49 @@ fn permissionless_v2_join_is_idempotent_and_survives_production_solo_restart() {
         assert_eq!(status["state_producer"], "lean");
         assert_eq!(status["lean_producer"], true);
     }
-    let (first_wire, first_join) = join_membership(http, &join_body);
-    assert!(
-        first_wire.contains("200 OK"),
-        "first join failed: {first_wire}"
+    let simultaneous = thread::scope(|scope| {
+        let barrier = Arc::new(Barrier::new(3));
+        let first_barrier = Arc::clone(&barrier);
+        let second_barrier = Arc::clone(&barrier);
+        let first_body = join_body.as_slice();
+        let second_body = join_body.as_slice();
+        let first = scope.spawn(move || {
+            first_barrier.wait();
+            join_membership(http, first_body)
+        });
+        let second = scope.spawn(move || {
+            second_barrier.wait();
+            join_membership(http, second_body)
+        });
+        barrier.wait();
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    for (wire, _) in &simultaneous {
+        assert!(wire.contains("200 OK"), "simultaneous join failed: {wire}");
+    }
+    assert_eq!(
+        simultaneous
+            .iter()
+            .filter(|(_, response)| response["created"] == true)
+            .count(),
+        1,
+        "exactly one simultaneous request must create the deterministic cell"
+    );
+    let first_join = simultaneous
+        .iter()
+        .find_map(|(_, response)| (response["created"] == true).then_some(response))
+        .expect("one simultaneous request created the membership");
+    let simultaneous_retry = simultaneous
+        .iter()
+        .find_map(|(_, response)| (response["created"] == false).then_some(response))
+        .expect("the simultaneous retry observed the existing membership");
+    assert_eq!(
+        simultaneous_retry["membershipCellId"],
+        first_join["membershipCellId"]
+    );
+    assert_eq!(
+        simultaneous_retry["stateCommitment"],
+        first_join["stateCommitment"]
     );
     assert_eq!(first_join["created"], true);
     assert_eq!(first_join["version"], 2);
