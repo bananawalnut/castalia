@@ -547,6 +547,15 @@ jobs:
           toolchain: nightly
       - uses: Swatinem/rust-cache@v2
 
+      # Every native `--release` build that reaches dregg-lean-ffi is a production-mode
+      # build: build.rs requires current-source verified Lean evidence and refuses the
+      # marshal-only archive. The prove teeth compile three release test binaries, so they
+      # must hydrate the same content-key-matched seed as `lean-hard-mode` below. Keeping
+      # the shared action required (its default) fails here with the exact missing asset
+      # instead of letting every test abort later and making the execution floor look like
+      # a feature-discovery failure.
+      - uses: ./.github/actions/lean-seed
+
       # EXPLICIT TARGETS, PLUS A DISCOVERY FLOOR. `binding-teeth` learned both halves the
       # hard way and this job inherits them:
       #
