@@ -9,7 +9,7 @@ model work only. It touches NO deployed descriptor, VK, wire format, or the froz
 **SUBSTRATE, said out loud (house law #1):** the shielded spend circuit and every commitment /
 nullifier / value-binding scheme here is **Lean-authored AIR**. The Lean module *is* the constraint
 author; Rust only fills traces and calls the emitted object. Where a scheme is currently authored in
-Rust (`circuit-prove/src/shielded/spend_circuit.rs`), that is **house-law-#1 DEBT** and a Lean-port
+Rust (the now-retired `spend_circuit.rs`), that is **house-law-#1 DEBT** and a Lean-port
 target — never a foundation to extend.
 
 ---

@@ -22,7 +22,7 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str =
+const EMITTED_DESCRIPTOR_JSON: &str =
     include_str!("../../circuit/descriptors/by-name/poseidon2-hash-arity2.json");
 
 const IN0: usize = 0;
@@ -58,7 +58,7 @@ fn honest_trace(a: BabyBear, b: BabyBear) -> (Vec<Vec<BabyBear>>, BabyBear) {
 /// The pin `IN1 == PI[1]` (col 1 -> pi_index 1) is violated -> UNSAT. Untested by the shipped gate.
 #[test]
 fn forged_in1_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let a = BabyBear::new(1001);
     let b = BabyBear::new(2002);
     let (trace, digest) = honest_trace(a, b);

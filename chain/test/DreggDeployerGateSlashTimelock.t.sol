@@ -22,8 +22,9 @@ contract DreggDeployerGateSlashTimelockTest is Test {
     uint256 constant MIN_BOND = 10 ether;
 
     function setUp() public {
-        vm.prank(admin);
+        vm.startPrank(admin);
         gate = new DreggDeployerGate(admin, MIN_BOND);
+        vm.stopPrank();
 
         // Separate the operational slasher from governance (production posture).
         vm.prank(admin);

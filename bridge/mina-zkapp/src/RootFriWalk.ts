@@ -8,9 +8,9 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 // seal is braided INTO.
 //
 // ⚑ WHAT THIS IS FOR. The AIR half is closed at real geometry: seven slices,
-// seven processes, all 10,417 DAG nodes and all 1,093 constraints over dregg's
+// seven processes, all 10,689 DAG nodes and all 1,129 constraints over dregg's
 // committed root proof, ending in `airTerminalSeal(dagDigest, digest(acc), 7)` —
-// and `acc` is verifier-computable as `Σ_T acc_T · α^(1093 − b_T)`. That seal
+// and `acc` is verifier-computable as `Σ_T acc_T · α^(1129 − b_T)`. That seal
 // says the AIR's closing equalities hold **at the opened values the chain was
 // handed**. It says nothing about whether those opened values are the ones
 // dregg committed to. Authenticating them is the FRI walk, and the two halves
@@ -21,7 +21,7 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 // looks like it proves: the AIR half folds one set of numbers, the FRI half
 // authenticates another, and nothing says they are the same set. The braid is
 // therefore built on ONE column commitment. `dagDigest` — the AIR chain's own
-// chunked commitment over its 1,602 extension values — is carried across the
+// chunked commitment over its 1,702 extension values — is carried across the
 // seal into the FRI slices, and every DEEP-quotient term whose `f(z)` the AIR
 // legend names is READ OUT OF THOSE CHUNKS rather than witnessed again. A FRI
 // half that authenticated different numbers would re-derive a different
@@ -29,14 +29,14 @@ import { BABYBEAR_HASH, HashPrice, LANE_COST, PASTA_HASH } from './CostModel.js'
 //
 // ⚑ WHAT THE AIR LEGEND DOES NOT COVER, MEASURED RATHER THAN ASSUMED. The AIR
 // reads only the columns it constrains. Measured against the proof's own opened
-// set: **1,748 of the 2,630 opened values (66.5%) are lanes of the AIR chain's
-// assignment**, and the other 882 — the main and preprocessed columns the AIR
-// never touches, plus all 56 quotient-chunk openings — go under a second,
+// set: **1,288 of the 2,746 opened values (46.9%) are lanes of the AIR chain's
+// assignment**, and the other 1,458 — the permutation and quotient openings
+// that need their own binding, plus columns the AIR never names — go under a second,
 // FRI-side commitment (`friDigest`). Both are in the boundary; only the first is
 // shared with the AIR half, and `planOpenedValues` reports the ratio so the
 // claim is a number rather than a word.
 //
-// ⚑ 2,630, NOT 2,286 — AND THE CORRECTION GOES BOTH WAYS. §3.15 prices the DEEP
+// ⚑ 2,746, NOT 2,286 — AND THE CORRECTION GOES BOTH WAYS. §3.15 prices the DEEP
 // quotient at `940·2 + 175·2 + 7·2·4 = 2,286`. Two things are wrong with that
 // and they pull in opposite directions. It omits the PERMUTATION round entirely
 // (the root's seven instances carry 64 extension permutation columns = 512
@@ -176,7 +176,7 @@ export type WalkHash = {
    *      transcript against p3's own recorded sponge states, lane by lane, after
    *      every permutation. What has no oracle is the ROOT's batch-STARK
    *      preamble AT PASTA: the observe/sample order over seven instances, the
-   *      25 public values, the 64 cumulative sums, the 2,630 opened values, and
+   *      public values, cumulative sums, the 2,746 opened values, and
    *      the ζ and LogUp challenges it must reproduce. dregg mints no
    *      Pasta-hashed ROOT, so that script would be checked against nothing.
    *
@@ -483,8 +483,8 @@ export type RealRootFri = {
  * no next-row main or preprocessed value, so their main and preprocessed
  * matrices are opened at ζ ALONE — one point, not two. Their PERMUTATION
  * matrices are opened at both, because a LogUp running sum always reads the
- * next row. A census that multiplies every width by two gets 2,798; the proof
- * says 2,630, and the shape is therefore taken from `inputRounds` rather than
+ * next row. A census that multiplies every current width by two gets 3,022; the proof
+ * says 2,746, and the shape is therefore taken from `inputRounds` rather than
  * derived from a table of widths.
  *
  * ⚑ AND THE ROUND ORDER IS THE PROOF'S. `main`, `quotient_chunk`,
@@ -1112,7 +1112,7 @@ export type Segment =
   /** ⚑ THE PERMUTATION ROUND'S BRIDGE TO THE AIR HALF, paid ONCE for the whole
    *  walk: extension permutation columns `[from, to)` of one (matrix, point) of
    *  the permutation round, each asserted to be `Σ_j f_{4k+j}(ζ)·X^j` over the
-   *  four base components the PCS opened. Without it those 512 opened values
+   *  four base components the PCS opened. Without it those 576 opened values
    *  are authenticated by the FRI walk and connected to nothing the AIR read. */
   | { t: 'permBind'; mat: number; point: number; from: number; to: number; rows: number }
   /** The chain lands on the final polynomial. */
@@ -1125,7 +1125,7 @@ export type Segment =
    *  is opened at, and the LogUp challenges the AIR chain folds its permutation
    *  constraints with. Asserting the derivation reproduces them is what makes
    *  the transcript's inputs load-bearing: bend ANY absorbed value — a public
-   *  value, a cumulative sum, a commitment lane, one of the 2,630 opened values
+   *  value, a cumulative sum, a commitment lane, one of the 2,746 opened values
    *  — and `ζ` moves, and this segment refuses.
    *
    *  Without it a bent input would produce a perfectly self-consistent wrong
@@ -1205,7 +1205,7 @@ export type PreambleSource = {
  * COMMITMENT THE BRAID CARRIES. The public values are `expose_claim|public[i]`
  * and the cumulative sums are `<table>|perm_value[i]` — both `dagDigest` lanes,
  * both read by the AIR half; the four round commitments are `ft.inputCommit`,
- * the lanes the walk's own Merkle roots close against; the 2,630 opened values
+ * the lanes the walk's own Merkle roots close against; the 2,746 opened values
  * resolve through the same `OpenedPlan` the DEEP quotient uses. There is no
  * fresh witness anywhere in the derivation, which is the property that makes it
  * a derivation.
@@ -1635,11 +1635,11 @@ export function segmentWalk(
   //
   // ⚑ THIS IS §3.14 RESIDUAL 1. Without this block the walk's first segment
   // reads `ft.chalState` — a WITNESS, covered by `friDigest` and by nothing
-  // else. A prover who picks it picks FRI's α, all 16 βs and all 19 query
-  // indices, and the whole 11,303-segment walk then authenticates a transcript
+  // else. A prover who picks it picks FRI's α, all 17 βs and all 38 query
+  // indices, and the whole 21,739-segment walk then authenticates a transcript
   // nobody forced. With it, the entering state is the all-zero sponge of
   // `DuplexChallenger::new` — a literal — driven by the root's own commitments,
-  // public values, cumulative sums and 2,630 opened values.
+  // public values, cumulative sums and 2,746 opened values.
   if (opts.preamble) {
     const ops = preambleOps(shape, opts.preamble, H);
     challengerRun(
@@ -1702,7 +1702,7 @@ export function segmentWalk(
   // records carries `output_buffer = sponge_state[..8]`. So FRI's own `alpha` is
   // drawn by POPPING that buffer, with NO permutation, and a simulation that
   // duplexes first draws α from a state one permutation ahead — and then every
-  // β, the PoW sample and all 19 query indices with it. This was measured, not
+  // β, the PoW sample and all 38 query indices with it. This was measured, not
   // reasoned: the first slice to reach the 16-bit grind refused, because the
   // low bits of a sample from the wrong permutation are not zero.
   //  ⚑ The entering buffer is LIVE either way: the preamble ends on a rate
@@ -2119,8 +2119,8 @@ export function segmentReads(
  * here" — which was established for the AIR DAG's carry, bounded by a cut width
  * of 102, and is NOT established for this walk, whose carry spread is 6.5x.
  * `npm run cost-gate` phase [5] runs a dynamic program over this exact carry
- * function: at the deployed 50,000-row budget both give **839 slices**, and the
- * DP recovers 260,065 rows of carry (2.8%) at the same count. So greedy costs
+ * function: at the deployed 50,000-row budget both give **1,785 slices**, and the
+ * DP recovers 639,301 rows of carry (2.5%) at the same count. So greedy costs
  * nothing in slices at this budget — which is a measurement, and it is the
  * reason to keep the greedy planner rather than the borrowed sentence.
  *

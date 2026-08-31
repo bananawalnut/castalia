@@ -37,7 +37,7 @@
 //! ANYTHING is written:
 //!
 //! 1. `verify_recursive_batch_proof_with_config` runs p3's OWN `verify_batch` on the loaded
-//!    root under `ir2_leaf_wrap_config()` — the full FRI/PCS verification, with p3 sampling
+//!    root under `turn_chain_root_config()` — the full FRI/PCS verification, with p3 sampling
 //!    its own `alpha`/`zeta`. It must accept.
 //! 2. This binary's HAND-REPLAYED transcript then re-derives `alpha`, `zeta` and the
 //!    per-instance permutation challenges, rebuilds the seven AIRs, and evaluates the closing
@@ -109,7 +109,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::time::Instant;
 
-use dregg_circuit_prove::ivc_turn_chain::{WholeChainProofBytes, ir2_leaf_wrap_config};
+use dregg_circuit_prove::ivc_turn_chain::{WholeChainProofBytes, turn_chain_root_config};
 use dregg_circuit_prove::plonky3_recursion_impl::recursive::{
     DreggRecursionConfig, verify_recursive_batch_proof_with_config,
 };
@@ -534,7 +534,7 @@ fn main() {
     );
 
     // ---- STEP 1: p3's OWN verifier accepts, with p3's OWN challenges --------
-    let config = ir2_leaf_wrap_config();
+    let config = turn_chain_root_config();
     let t_verify = Instant::now();
     verify_recursive_batch_proof_with_config(&root, &config)
         .unwrap_or_else(|e| panic!("the committed root does NOT verify: {e}"));

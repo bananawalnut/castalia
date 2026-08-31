@@ -62,7 +62,7 @@ shielded_ring_fused_clears` adds the **fusion** clause `LegFused` (the matcher's
 `offerAmount` ARE a spent note's `asset`/`value`), with the load-bearing tooth
 `legA_not_fused` (the un-fused demo leg does NOT satisfy it) and `fusedRing` non-vacuity.
 
-**BUILT.** `circuit-prove/src/shielded_ring_clearing_air.rs` — the 2-leg, tight-cycle
+**HISTORICALLY BUILT.** The now-retired `shielded_ring_clearing_air.rs` was the 2-leg, tight-cycle
 ring-clearing apex. Enforces in-AIR: fusion gates (`offer_asset==asset`, `offer_amount==value`),
 the `CycleValid` 2-cycle edges, the tight amount match (`offer_amount[k]==want_min[(k+1)%2]`),
 distinct nullifiers (`nf₀!=nf₁` via inverse witness), Pedersen conservation, and the value-binding
@@ -70,7 +70,7 @@ recompute anchoring fusion to the spent note under Poseidon2 CR. The apex `conne
 real `prove_shielded_spend_leaf_with_claim`. Teeth tested: non-conserving, wraparound-mint,
 out-of-range, double-spend, mis-fusion, mismatched-fold — all UNSAT.
 
-**BUILT (N-leg + partial fill).** `circuit-prove/src/shielded_ring_clearing_nleg_air.rs` — the
+**HISTORICALLY BUILT (N-leg + partial fill).** The now-retired `shielded_ring_clearing_nleg_air.rs` was the
 variable-length-cycle generalization, with the **partial-fill inequality**
 `want_min[i] ≤ offer_amount[(i+1) mod N]` enforced in-AIR by the borrow-sub range compare (the
 circuit twin of `Dregg2.Bignum.le_iff`), pairwise-distinct nullifiers across all N legs, the same

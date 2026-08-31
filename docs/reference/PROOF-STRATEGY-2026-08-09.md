@@ -908,7 +908,7 @@ An honest list, because the brief asked for one.
   tree has an incompatible header (a lane is mid-rebuild), so §0.3's zero-producer claim rests on the
   textual sweep — every non-comment mention read in both trees — not on the environment walk. Re-run it
   once the olean is current; it is the first thing S7 should be pointed at.
-- Whether `metatheory/Dregg2/Metatheory/OptimisticAdjudication.lean:401`
+- Whether `metatheory/Metatheory/OptimisticAdjudication.lean:401`
   (`theorem all_honest (i : Bool) : CF.Honest i := fun h => h`) is a `P → P` in disguise or intended
   given `CF.Honest`'s definition. Flagged, not read.
 </content>

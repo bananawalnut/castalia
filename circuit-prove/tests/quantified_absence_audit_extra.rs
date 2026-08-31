@@ -40,7 +40,8 @@ const PI_ACC0: usize = 0;
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/quantified-absence.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/quantified-absence.json");
 
 fn limbs(e: ExtElem) -> [BabyBear; 4] {
     e.0
@@ -113,7 +114,7 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pv: &[BabyBear])
 /// gate were vacuous/structurally wrong, this would be ACCEPTED.
 #[test]
 fn forged_product_limb2_bites_c2_limb2() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     // non-vacuity: honest accepts.
@@ -143,7 +144,7 @@ fn forged_product_limb2_bites_c2_limb2() {
 /// boundary is pinned on every limb, not just limb 0.
 #[test]
 fn forged_acc_all_limb3_bites_boundary_limb3() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (elem, w, v, alpha) = fixture();
     let (row, acc_all) = honest_row(elem, w, v, alpha);
     let trace = trace_of(&row);

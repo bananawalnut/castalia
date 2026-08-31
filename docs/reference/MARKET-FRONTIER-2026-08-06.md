@@ -101,7 +101,7 @@ The Lean fix is done and axiom-clean:
 
 It is **not routed to Rust**. Confirmed: `grep` for `@[export]` in the emit/discharge files → none; the
 deployed verifier uses the **hand-written Rust AIR** `shielded_spend_descriptor()`
-(`circuit-prove/src/shielded/spend_circuit.rs:270`, width 20, 3 PIs, no committed-root pin), *not* the
+(retired `spend_circuit.rs`, former line 270, width 20, 3 PIs, no committed-root pin), *not* the
 Lean-pinned descriptor. `spend_circuit.rs` is itself the Rust-AIR debt house-law #1 targets.
 
 **Why the fix is ember-gated (this corrects the dev-plan's "AUTONOMOUS-ish — confirm").** Two couplings,

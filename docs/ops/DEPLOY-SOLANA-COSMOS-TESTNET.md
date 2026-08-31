@@ -179,7 +179,7 @@ lift those into a ~40-line `examples/deploy_settle.rs` binary that:
    dev VK hash. `genesis_root` = the fixture's `genesis_root`
    `[421210617,1637814550,431291584,1953496675,369364366,1006647231,1866996710,48274474]`;
    `vk_hash` = `dregg_solana_settlement::settlement_vk_digest()`
-   (= `vk::VK_DIGEST` = `0xcfda612f472e998d1f1bad1bf545ec5b39ca99b64db94e46edf2e8d3790a37cc`).
+   (= `vk::VK_DIGEST` = `0x76b2bb3853d336f49f411393585a05ee7441798d4f2c8561a01b6061b69ad11d`).
    ⚑ FLAG DAY 2026-07-28: this was `dev_ceremony_vk_hash()` =
    `keccak256("dregg-settlement-vk-dev-setup")` =
    `0x18f57474785bdd93ff7feb573dfadff69516035997115f2854c93f0f31e1ff76` — a hash of a
@@ -361,7 +361,7 @@ BROADCAST →    --label dregg-settlement --admin <osmo1...> $TXFLAGS
 `init_msg` shape (`cosmos-settlement/src/msg.rs::InstantiateMsg`): `genesis_root`
 = the fixture's 8 genesis lanes (pinned anchor; the first settle must chain from
 it); `verifying_key_hash` = the cross-chain `VK_DIGEST`
-`0xcfda612f...790a37cc` above — 32 bytes of hex, `0x` prefix optional,
+`0x76b2bb38...69ad11d` above — 32 bytes of hex, `0x` prefix optional,
 case-insensitive (the comparison is over BYTES, not over the string).
 
 ⚑ **FLAG DAY 2026-07-30 — this value is now MANDATORY, not advisory.** This

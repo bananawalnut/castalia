@@ -252,7 +252,7 @@ The deployed bridge-mint carrier is the felt-domain **single `mint_hash` digest*
   "regen landed, drift PASS." The flip `BridgeBindingFromFold.lean` supersedes `BridgeBackingAttack`.
 
 The 26-limb full-fidelity binding survives only as the **fold leaf**
-`circuit-prove/src/bridge_leaf_adapter.rs` (PIs 0..25, the recursion-side re-prove of the
+the now-retired `bridge_leaf_adapter.rs` (PIs 0..25, the recursion-side re-prove of the
 foreign note-spend), NOT as a deployed-descriptor 46→72 widening. PR#23's Part-B bare-tuple
 exposure was correctly dropped as superseded by the fold-witnessed mint_hash binding
 (consistent with `HORIZONLOG.md:55-74`, `BridgeBackingAttack.lean:11/84` single-`mint_hash`

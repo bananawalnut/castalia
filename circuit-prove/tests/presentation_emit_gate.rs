@@ -20,7 +20,7 @@
 //! The descriptor is AUTHORED in Lean
 //! (`metatheory/Dregg2/Circuit/Emit/PresentationEmit.lean`, `presentationFreshnessDesc`) and its
 //! wire string is byte-pinned there (`emitVmJson2` `#guard`). This test READS those EXACT bytes
-//! ([`GOLDEN_JSON`]) and:
+//! ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust builder — a byte drift on either side
@@ -72,7 +72,7 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str =
+const EMITTED_DESCRIPTOR_JSON: &str =
     include_str!("../../circuit/descriptors/by-name/presentation-freshness.json");
 
 // --- Trace column layout (must match `PresentationEmit.lean` §1). ---
@@ -257,7 +257,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], public: &[BabyBe
 /// semantics), and has exactly the expected shape.
 #[test]
 fn presentation_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -289,7 +290,7 @@ fn presentation_emit_decodes_to_hand_built() {
 /// A range-only descriptor commits main + byte/range table (no chip, no mem/map).
 #[test]
 fn honest_fresh_token_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let trace = trace_for(1000, 1500); // diff = 500, hi = p/2 − 500, both in range
     let public = pis_for(1000);
     let proof = prove_vm_descriptor2(&desc, &trace, &public, &MemBoundaryWitness::default(), &[])
@@ -309,7 +310,7 @@ fn honest_fresh_token_proves_and_verifies() {
 /// can fail; the refusal is asserted to name the range mechanism.
 #[test]
 fn expired_token_refuses_on_diff_range() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     // non-vacuity: the honest fresh token is ACCEPTED.
     assert!(
         !rejects(&desc, &trace_for(1000, 1500), &pis_for(1000)),
@@ -336,7 +337,7 @@ fn expired_token_refuses_on_diff_range() {
 /// express: it distinguishes the real non-power-of-two bound `≤ p/2` from the loose `< 2^30`.
 #[test]
 fn just_expired_token_refuses_on_hi_range() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     // verifier 1, not_after = p/2 + 2 ⇒ diff = p/2 + 1 (in [0,2^30)), hi = -1 = p-1 (out of range).
     let verifier = 1u32;
     let not_after = HALF_P + 2;
@@ -369,7 +370,7 @@ fn just_expired_token_refuses_on_hi_range() {
 /// ranges pass. ONLY the diff-binding gate `diff − not_after + verifier == 0` is violated → rejected.
 #[test]
 fn inconsistent_diff_refuses_on_binding_gate() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let mut trace = trace_for(1000, 1500); // correct diff = 500
     for row in &mut trace {
         row[DIFF] = BabyBear::new(600); // should be 500; in range, but breaks the binding gate
@@ -387,7 +388,7 @@ fn inconsistent_diff_refuses_on_binding_gate() {
 /// `pi[0]` (112) → the summary copy is violated at verify → rejected.
 #[test]
 fn forged_summary_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let trace = trace_for(1000, 1500);
     // non-vacuity: the honest summary PIs are accepted.
     assert!(!rejects(&desc, &trace, &pis_for(1000)));
@@ -405,7 +406,7 @@ fn forged_summary_pi_refuses() {
 /// reads is bound to the witness, so an attacker cannot claim a different verifier height.
 #[test]
 fn forged_verifier_height_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let trace = trace_for(1000, 1500);
     assert!(!rejects(&desc, &trace, &pis_for(1000)));
     let mut forged = pis_for(1000);

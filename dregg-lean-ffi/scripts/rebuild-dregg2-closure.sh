@@ -42,7 +42,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 META="$ROOT/metatheory"
 ARCH="$ROOT/dregg-lean-ffi/libdregg_lean.a"
 OBJDIR="${DREGG_RESPLICE_OBJDIR:-${TMPDIR:-/tmp}/dregg2_closure_objs}"
-NCPU="$(sysctl -n hw.logicalcpu 2>/dev/null || nproc)"
+NCPU="${DREGG_LEANC_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || nproc 2>/dev/null || echo 1)}"
 KEEP_BACKUP=0
 if [ "${1:-}" = "--keep-backup" ]; then KEEP_BACKUP=1; fi
 

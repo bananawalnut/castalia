@@ -56,7 +56,7 @@ const WORK = process.env.FRIBRAID_WORKDIR ?? resolve(process.cwd(), '.fullchain'
 const FRI = (n: string) => resolve(WORK, `fri-${n}`);
 const BUDGET = Number(process.env.FRIBRAID_BUDGET ?? 50_000);
 const CHUNK = Number(process.env.FRIBRAID_CHUNK ?? 256);
-/** ⚑ HOW MANY OF THE 835 SLICES THIS RUN ACTUALLY PROVES. There is no budget in
+/** ⚑ HOW MANY OF THE 1,785 SLICES THIS RUN ACTUALLY PROVES. There is no budget in
  *  which all of them are proved today — the leg reports the MEASURED rate and
  *  the extrapolation separately, and never quotes the second as the first. */
 const LIMIT = Number(process.env.FRIBRAID_LIMIT ?? 4);
@@ -68,26 +68,26 @@ const LIMIT = Number(process.env.FRIBRAID_LIMIT ?? 4);
 const REUSE = process.env.FRIBRAID_REUSE === '1';
 
 // ── THE CUT-RULE FIGURES, RECORDED ───────────────────────────────────────────
-// Measured 2026-07-30 on the deployed 839-slice plan at the root's real
+// Re-measured 2026-08-27 on the deployed 1,785-slice plan after the root's real
+// geometry moved to degree bits [10,10,17,16,4,16,0] and 1,129 AIR constraints.
 // geometry. `[2c]` re-measures and compares them on EVERY run including tier 0,
 // and `recorded-constants.tsv` pins them, so neither the measurement nor the
 // figure can move alone.
 /** Cuts in the full plan that CONSUME at least one witnessed Merkle sibling. */
-const RECORDED_CUTS_WITH_AUX = 489;
+const RECORDED_CUTS_WITH_AUX = 934;
 /** …and of those, the ones that also CLOSE the round their FIRST sibling feeds
  *  — the only cuts at which a bent sibling has something to fail against. */
-const RECORDED_CUTS_ATTRIBUTING = 330;
+const RECORDED_CUTS_ATTRIBUTING = 609;
 /** The `block9` shape: carries siblings, contains a closer, and that closer is
- *  for a DIFFERENT round or sits BEFORE the siblings. ZERO on this geometry —
- *  which is a property of the DEPLOYED SLICING, not of the rule. If the slicing
- *  changes and this shape appears, the figure drifts and the leg goes red. */
-const RECORDED_CUTS_STRAY_CLOSER = 0;
+ *  for a DIFFERENT round or sits BEFORE the siblings. The count is a property
+ *  of the DEPLOYED SLICING, not of the rule; drift makes the leg go red. */
+const RECORDED_CUTS_STRAY_CLOSER = 18;
 /** The first cut that can attribute a bent sibling. `FRIBRAID_LIMIT` must reach
  *  past it for `[5]`'s `auxBent` row to be more than a stated reason. */
-const RECORDED_FIRST_ATTRIBUTING_CUT = 11;
+const RECORDED_FIRST_ATTRIBUTING_CUT = 13;
 /** How many of `[5]`'s eight falsifiers are ATTRIBUTABLE at the cut the default
  *  budget can reach. Seven: every one but `auxBent`, whose first attributing cut
- *  is slice 11 and this run proves four. */
+ *  is slice 13 and this run proves four. */
 const RECORDED_SPLICES_ATTRIBUTED = 7;
 
 /** ⚑ THE SPLICE CUT IS PART OF THE EXPERIMENT, NOT OF THE BUDGET. `[5]` chooses
@@ -939,7 +939,7 @@ async function main() {
 
   // ── THE TIER-0 STOP ───────────────────────────────────────────────────────
   //  ⚑ EVERYTHING ABOVE IS THE INSTRUMENT THAT FOUND THIS LEG'S DEFECTS, and
-  //  everything below is the one that did not. [2b] walks all 11,303 segments
+  //  everything below is the one that did not. [2b] walks all 21,739 segments
   //  against p3's own numbers in seconds; [3]-[8] compile Pickles circuits for
   //  minutes to prove a PREFIX of the same walk. Four defects — a full output
   //  buffer on entry, `sample_bits` on the low bits, `alpha_pow` starting at
@@ -1254,7 +1254,7 @@ async function main() {
   console.log(
     `    EXTRAPOLATED, and it is an extrapolation: ${fmt(c.plan.slices.length)} slices × ` +
       `${perSlice.toFixed(0)}s = ${((c.plan.slices.length * perSlice) / 3600).toFixed(1)} hours ` +
-      'serial, for the whole 19-query walk',
+      `serial, for the whole ${K.numQueries}-query walk`,
   );
   console.log(`    wall clock for this leg: ${secs(T0)}`);
 
@@ -1285,11 +1285,11 @@ async function main() {
 /** Recorded on the run that first produced them. A zero prints instead of
  *  comparing. */
 const RATCHET = {
-  segments: 11_303,
-  slices: 839,
+  segments: 21_739,
+  slices: 1_785,
   deepTerms: MEASURED_ROOT_GEOMETRY.censusPerQuery,
-  airBound: 1_236,
-  friLanes: 33_062,
+  airBound: MEASURED_ROOT_GEOMETRY.airCoveredPerQuery,
+  friLanes: 63_631,
 };
 
 const phase =

@@ -61,7 +61,7 @@ light client checks:
 
 So a pure light client witnesses *that a credit happened*, not *that a valid foreign spend backs it* nor
 *that the nullifier was consumed exactly once in-proof*. The full-fidelity binding AIR
-(`circuit/src/bridge_action_witness.rs`, 18 green teeth) and the recursive foreign-spend verify exist but are
+(the now-retired `bridge_action_witness.rs`, 18 green teeth) and the recursive foreign-spend verify exist but are
 **not folded into the deployed effect-vm VK** — that fold is the named residual in §4 (the in-circuit
 foreign-proof VK epoch). The Solana mirror does **not** use `Effect::BridgeMint`; the Solana path uses
 plain `Effect::Mint` over the committed mirror ledger (§3).
@@ -180,7 +180,7 @@ This is a bridge-layer + new-cell-shape change, not a kernel-verb change — it 
 This is the one genuine remaining gap (the under-wired-circuit catalog's G1, the highest
 soundness-value money primitive). It is **scrupulously named in-code, not a hidden hole**: the Lean
 descriptor `EffectVmEmitBridgeMint` flags the foreign attestation as its **HONEST BOUNDARY**, and the
-binding AIR (`circuit/src/bridge_action_witness.rs`) exists, is sound+complete in Lean
+binding AIR (the now-retired `bridge_action_witness.rs`) exists, is sound+complete in Lean
 (`metatheory/Dregg2/Crypto/Bridge.lean`, `#assert_axioms`-clean under the named `extractable` carrier),
 and carries 18 green adversarial teeth — but it is a **standalone sidecar, not folded into the deployed
 effect-vm VK**.

@@ -19849,32 +19849,62 @@ pub async fn bootstrap_from_checkpoint(
     peer_url: &str,
     self_key: ed25519_dalek::SigningKey,
     quorum_threshold: usize,
+    trusted_blocklace_hash: &[u8; 32],
+    trusted_ledger_root: &[u8; 32],
 ) -> Option<(
     dregg_blocklace::finality::Blocklace,
     Vec<(dregg_cell::CellId, dregg_cell::Cell)>,
 )> {
-    use dregg_blocklace::finality::CheckpointData;
-
     info!(peer = %peer_url, "attempting checkpoint-based bootstrap");
 
     let url = format!("{}/api/blocklace/checkpoint", peer_url);
     let resp_bytes = fetch_checkpoint_http(&url).await?;
     let checkpoint_resp: BlocklaceCheckpointResponse = serde_json::from_slice(&resp_bytes).ok()?;
 
+    let restored = restore_checkpoint_response(
+        &checkpoint_resp,
+        self_key,
+        quorum_threshold,
+        trusted_blocklace_hash,
+        trusted_ledger_root,
+    )?;
+    info!(peer = %peer_url, height = checkpoint_resp.height, "checkpoint bootstrap complete");
+    Some(restored)
+}
+
+/// Restore a peer checkpoint under an independently retained checkpoint/root pair.
+///
+/// The response hashes detect transport corruption only. Because the peer supplies
+/// both payloads and hashes, they are not membership authority. The mandatory
+/// checkpoint digest and ledger root must arrive together through a separately
+/// authenticated finality or continuity channel.
+fn restore_checkpoint_response(
+    checkpoint_resp: &BlocklaceCheckpointResponse,
+    self_key: ed25519_dalek::SigningKey,
+    quorum_threshold: usize,
+    trusted_blocklace_hash: &[u8; 32],
+    trusted_ledger_root: &[u8; 32],
+) -> Option<(
+    dregg_blocklace::finality::Blocklace,
+    Vec<(dregg_cell::CellId, dregg_cell::Cell)>,
+)> {
+    use dregg_blocklace::finality::CheckpointData;
+
     let blocklace_compressed = hex_decode_var(&checkpoint_resp.blocklace)?;
     let blocklace_bytes = decompress_checkpoint_data(&blocklace_compressed)?;
-
     let actual_hash = *blake3::hash(&blocklace_bytes).as_bytes();
+    if &actual_hash != trusted_blocklace_hash {
+        return None;
+    }
     let expected_hash = hex_decode_var(&checkpoint_resp.blocklace_hash)?;
     if actual_hash.as_slice() != expected_hash.as_slice() {
-        warn!(peer = %peer_url, "blocklace checkpoint hash mismatch");
         return None;
     }
 
     let checkpoint_data: CheckpointData = match postcard::from_bytes(&blocklace_bytes) {
         Ok(data) => data,
         Err(e) => {
-            warn!(peer = %peer_url, error = %e, "failed to deserialize blocklace checkpoint");
+            warn!(error = %e, "failed to deserialize blocklace checkpoint");
             return None;
         }
     };
@@ -19894,20 +19924,19 @@ pub async fn bootstrap_from_checkpoint(
     ) {
         Ok(lace) => lace,
         Err(e) => {
-            warn!(peer = %peer_url, error = %e, "failed to restore blocklace from checkpoint");
+            warn!(error = %e, "failed to restore blocklace from checkpoint");
             return None;
         }
     };
     let consensus_time_policy = match consensus_time_policy_v1_from_env() {
         Ok(policy) => policy,
         Err(error) => {
-            warn!(peer = %peer_url, error = %error, "checkpoint bootstrap lacks consensus-time-v1 deployment coordinate");
+            warn!(error = %error, "checkpoint bootstrap lacks consensus-time-v1 deployment coordinate");
             return None;
         }
     };
     if let Err(error) = blocklace.restore_consensus_time_v1(consensus_time_policy) {
         warn!(
-            peer = %peer_url,
             error = %error,
             "peer checkpoint is incompatible with the local consensus-time-v1 flag day"
         );
@@ -19916,32 +19945,86 @@ pub async fn bootstrap_from_checkpoint(
 
     let ledger_compressed = hex_decode_var(&checkpoint_resp.ledger)?;
     let ledger_bytes = decompress_checkpoint_data(&ledger_compressed)?;
-
     let actual_ledger_hash = *blake3::hash(&ledger_bytes).as_bytes();
     let expected_ledger_hash = hex_decode_var(&checkpoint_resp.ledger_hash)?;
     if actual_ledger_hash.as_slice() != expected_ledger_hash.as_slice() {
-        warn!(peer = %peer_url, "ledger snapshot hash mismatch");
         return None;
     }
 
     let cells: Vec<(dregg_cell::CellId, dregg_cell::Cell)> =
-        match postcard::from_bytes(&ledger_bytes) {
-            Ok(cells) => cells,
-            Err(e) => {
-                warn!(peer = %peer_url, error = %e, "failed to deserialize ledger snapshot");
-                return None;
-            }
-        };
-
-    info!(
-        peer = %peer_url,
-        height = checkpoint_resp.height,
-        blocks = checkpoint_data.blocks.len(),
-        cells = cells.len(),
-        "checkpoint bootstrap complete"
-    );
+        postcard::from_bytes(&ledger_bytes).ok()?;
+    let mut ledger = dregg_cell::Ledger::new();
+    for (id, cell) in &cells {
+        if *id != cell.id() || ledger.contains(id) || ledger.insert_cell(cell.clone()).is_err() {
+            return None;
+        }
+    }
+    if &dregg_persist::canonical_ledger_root(&ledger) != trusted_ledger_root {
+        return None;
+    }
 
     Some((blocklace, cells))
+}
+
+#[cfg(test)]
+mod checkpoint_bootstrap_authority_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_peer_ledger_not_matching_independently_trusted_root() {
+        let producer_key = ed25519_dalek::SigningKey::from_bytes(&[0x41; 32]);
+        let checkpoint = dregg_blocklace::finality::Blocklace::new(producer_key, 1).checkpoint();
+        let blocklace_bytes = postcard::to_stdvec(&checkpoint).unwrap();
+        let ledger_bytes =
+            postcard::to_stdvec(&Vec::<(dregg_cell::CellId, dregg_cell::Cell)>::new()).unwrap();
+        let response = BlocklaceCheckpointResponse {
+            height: 0,
+            blocklace: hex_encode(&compress_checkpoint_data(&blocklace_bytes)),
+            ledger: hex_encode(&compress_checkpoint_data(&ledger_bytes)),
+            blocklace_hash: hex_encode(blake3::hash(&blocklace_bytes).as_bytes()),
+            ledger_hash: hex_encode(blake3::hash(&ledger_bytes).as_bytes()),
+        };
+
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x42; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                blake3::hash(&blocklace_bytes).as_bytes(),
+                &[0xA5; 32],
+            )
+            .is_none(),
+            "a peer-consistent ledger hash must not substitute for an independently trusted root"
+        );
+
+        let trusted_empty_root = dregg_persist::canonical_ledger_root(&dregg_cell::Ledger::new());
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x43; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                &[0xB6; 32],
+                &trusted_empty_root,
+            )
+            .is_none(),
+            "a peer-consistent checkpoint hash must not substitute for the independently trusted digest"
+        );
+
+        let consumer_key = ed25519_dalek::SigningKey::from_bytes(&[0x44; 32]);
+        assert!(
+            restore_checkpoint_response(
+                &response,
+                consumer_key,
+                1,
+                blake3::hash(&blocklace_bytes).as_bytes(),
+                &trusted_empty_root,
+            )
+            .is_some(),
+            "an authenticated blocklace plus an exact independently trusted ledger root should bootstrap"
+        );
+    }
 }
 
 async fn fetch_checkpoint_http(url: &str) -> Option<Vec<u8>> {
@@ -20474,6 +20557,7 @@ fn build_federation_receipt(
 /// Folds each cell's id + state-hash into a domain-separated BLAKE3 hash,
 /// sorted lexicographically by cell id for determinism. This is the
 /// `merkle_root` field carried in [`dregg_types::AttestedRoot`].
+
 /// The COMPLETE set of cell ids whose CONTENT differs between two ledgers — the
 /// A1 off-lock execution path's authoritative touched set.
 ///
@@ -20596,8 +20680,30 @@ pub(crate) fn provision_transfer_destinations(
     ledger: &mut dregg_cell::Ledger,
     call_forest: &dregg_turn::CallForest,
 ) {
+    // A transfer may fund a cell born by another effect in the same atomic
+    // forest. Pre-provisioning that deterministic id as a remote stub would
+    // make the real creation collide and reject the whole turn.
+    let created_ids: std::collections::HashSet<dregg_cell::CellId> = call_forest
+        .total_effects()
+        .into_iter()
+        .filter_map(|effect| match effect {
+            dregg_turn::Effect::CreateCell {
+                public_key,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(public_key, token_id)),
+            dregg_turn::Effect::CreateCellFromFactory {
+                owner_pubkey,
+                token_id,
+                ..
+            } => Some(dregg_cell::CellId::derive_raw(owner_pubkey, token_id)),
+            _ => None,
+        })
+        .collect();
+
     for effect in call_forest.total_effects() {
         if let dregg_turn::Effect::Transfer { from, to, .. } = effect
+            && !created_ids.contains(to)
             && ledger.get(to).is_none()
         {
             // THE STUB'S ASSET IS THE MOVED ASSET, AND IT COMES FROM THE LOCAL
@@ -20625,6 +20731,55 @@ pub(crate) fn provision_transfer_destinations(
                 dregg_cell::Cell::remote_stub_with_id_pk_token_balance(*to, [0u8; 32], token_id, 0);
             let _ = ledger.insert_cell(stub);
         }
+    }
+}
+
+#[cfg(test)]
+mod transfer_destination_provisioning_tests {
+    use super::provision_transfer_destinations;
+    use dregg_cell::{CellId, CellMode, FactoryCreationParams, Ledger};
+    use dregg_sdk::AgentCipherclerk;
+    use dregg_turn::Effect;
+    use zeroize::Zeroizing;
+
+    #[test]
+    fn factory_created_transfer_destination_is_not_preprovisioned_as_stub() {
+        let clerk = AgentCipherclerk::from_key_bytes(Zeroizing::new([0x19; 32]));
+        let issuer = clerk.cell_id("default");
+        let owner_pubkey = [0x51; 32];
+        let token_id = [0x72; 32];
+        let child = CellId::derive_raw(&owner_pubkey, &token_id);
+        let params = FactoryCreationParams {
+            mode: CellMode::Hosted,
+            program_vk: Some([0x41; 32]),
+            initial_fields: Vec::new(),
+            initial_caps: Vec::new(),
+            owner_pubkey,
+        };
+        let mut turn = clerk.create_from_factory(
+            issuer,
+            [0x31; 32],
+            owner_pubkey,
+            token_id,
+            params,
+            &[0x91; 32],
+        );
+        turn.call_forest.roots[0]
+            .action
+            .effects
+            .push(Effect::Transfer {
+                from: issuer,
+                to: child,
+                amount: 1,
+            });
+        let mut ledger = Ledger::new();
+
+        provision_transfer_destinations(&mut ledger, &turn.call_forest);
+
+        assert!(
+            ledger.get(&child).is_none(),
+            "factory birth must own creation of its deterministic child id"
+        );
     }
 }
 

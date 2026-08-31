@@ -12,7 +12,7 @@ The one-line thesis: **dregg is the only stack that holds all three at once — 
 and a built multi-asset shielded pool — so it can offer the *whole* auction family proof-carrying and
 private-where-it-matters, from a $5 sealed-bid NFT to a private multilateral DEX. Every incumbent has one
 leg; none has the fold.** The ring-clearing apex circuit is BUILT at both the 2-leg and the N-leg size
-(`circuit-prove/src/shielded_ring_clearing_air.rs`, `shielded_ring_clearing_nleg_air.rs`); the named seams
+(the now-retired `shielded_ring_clearing_air.rs` and `shielded_ring_clearing_nleg_air.rs`); the named seams
 between it and a running private auction live in `docs/deos/SHIELDED-DREX-ASSURANCE-ROADMAP.md` — the
 reveal-nothing ZK theorem (the crux), the PQ value-commitment cutover, and the deployed-VK fold + app
 integration. This doc maps the family, grades each mechanism, and names the build ladder.
@@ -119,7 +119,7 @@ is the OCIP trust-grade spine (`DREGGFI-VISION.md §1`) — every badge carries 
   without learning a single amount. **Grade: PROVED spec + BUILT circuit (2-leg and N-leg).** The two
   layers are FUSED on both sides: `Market/LedgerRealizationExt.lean:312` `shielded_ring_fused_clears` welds
   the matcher's committed `offerAsset`/`offerAmount` to the spent note's `asset`/`value` (`LegFused`), and
-  the circuit enforces the fusion IN-AIR — `circuit-prove/src/shielded_ring_clearing_air.rs` (2-leg tight
+  the circuit enforced the fusion IN-AIR in the now-retired `shielded_ring_clearing_air.rs` (2-leg tight
   cycle: the descriptor re-computes the Poseidon2 `value_binding` and the apex `connect`s it to the
   shielded-spend leaf's exposed lane; both-polarity tests — non-conserving / wraparound-mint / double-spend
   / mis-fused legs all UNSAT) and `shielded_ring_clearing_nleg_air.rs` (variable-length N-cycle + the
@@ -504,7 +504,7 @@ incumbent can make, backed by machinery that is, unusually, mostly already prove
 `docs/deos/DREGG-LAUNCHPAD-DESIGN.md` · `metatheory/Dregg2/Intent/SealedAuction.lean` ·
 `metatheory/Market/{Optimality,Fairness,Priced,ShieldedClearing,LedgerRealizationExt,Aggregation}.lean` ·
 `metatheory/Dregg2/Shielded/{ClaimRefinement,RealCrypto}.lean` · `circuit-prove/src/shielded/pool.rs` ·
-`circuit-prove/src/shielded_ring_clearing_air.rs` · `circuit-prove/src/shielded_ring_clearing_nleg_air.rs` ·
+retired `shielded_ring_clearing_air.rs` · retired `shielded_ring_clearing_nleg_air.rs` ·
 `starbridge-apps/{sealed-auction,gallery,tussle,compute-exchange,escrow-market}/` ·
 `chain/contracts/launchpad/DreggLaunchpad.sol` · `intent/src/solver.rs`.
 

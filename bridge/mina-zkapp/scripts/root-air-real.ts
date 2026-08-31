@@ -129,9 +129,9 @@ async function main() {
     `the dumper self-checks all ${real.instances.length} instances' closing equality against p3's ` +
       `own \`verify_batch\` BEFORE emitting — a drifted transcript replay is a red, not a JSON`,
   );
-  if (real.degreeBits.join(',') !== '10,10,16,15,3,16,0')
-    fail(`degree_bits ${real.degreeBits} is not §1.2's [10,10,16,15,3,16,0] — a different root`);
-  ok("degree_bits is §1.2's [10, 10, 16, 15, 3, 16, 0] — the same root the document read");
+  if (real.degreeBits.join(',') !== '10,10,17,16,4,16,0')
+    fail(`degree_bits ${real.degreeBits} is not the deployed root's [10,10,17,16,4,16,0] — a different root`);
+  ok("degree_bits is the deployed root's [10, 10, 17, 16, 4, 16, 0]");
 
   const d = rootAirDag();
   const alpha = real.challenges.alpha.map((x) => BigInt(x));
@@ -274,7 +274,7 @@ async function main() {
   const nZetaBlind = blind.length;
   const RECORDED: [string, string, string][] = [
     ['the root proof VK fingerprint', real.vkFingerprint.slice(0, 16), '434f57d29eae85e1'],
-    ['degree_bits', real.degreeBits.join(','), '10,10,16,15,3,16,0'],
+    ['degree_bits', real.degreeBits.join(','), '10,10,17,16,4,16,0'],
     ['instances whose AIR check binds alpha', String(pairs.length - 0), '7'],
     ['instances whose AIR check does NOT bind zeta', String(nZetaBlind), '1'],
     ['alpha, limb 0', String(real.challenges.alpha[0]), '923772376'],

@@ -6,7 +6,7 @@
 bytes and supplies witnesses — it constructs no constraints. FIRST build lane of the
 ember-approved shielded Option-A redesign (`docs/DECISION-shielded-redesign-2026-07-20.md`,
 `docs/PLAN-shielded-apex-redesign-2026-07-20.md` §5): the deployed shielded-spend AIR
-(`circuit-prove/src/shielded/spend_circuit.rs:192` — `shielded_spend_descriptor()`, C1–C7b as
+(retired `spend_circuit.rs`, former line 192 — `shielded_spend_descriptor()`, C1–C7b as
 Rust `ConstraintExpr` data) is house-law-#1 DEBT, and its `merkle_root` PI is prover-supplied,
 pinned to nothing (seam **#15** = spend a note that was never created — theft/inflation).
 
@@ -22,7 +22,7 @@ encoding at `shielded_ring_clearing_nleg_air.rs:300-324`: arity-7 absorb
   filled by the EXECUTOR from the ledger (NEVER from the wire), and at the apex `connect`ed to
   the turn's committed commitments-root exactly as the already-built
   `prove_shielded_spend_root_binding_node_segmented`
-  (`circuit-prove/src/shielded_spend_leaf_adapter.rs:594`) binds claim lane 1;
+  (retired `shielded_spend_leaf_adapter.rs`, former line 594) binds claim lane 1;
 * the membership chain's final fold (`parent` on the last row) is PI-pinned to `pi[3]` — the
   tree the spend opens against IS the committed accumulator;
 * the `merkle_root` claim LANE (column 19, the `[nf, root, vb]` tuple slot the apex reads) is

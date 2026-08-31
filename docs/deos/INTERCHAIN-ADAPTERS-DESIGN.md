@@ -130,13 +130,13 @@ built over these pieces:
   the mint gate reads: `LockProofTrust::{StructureOnly, ConsensusVerified}`
   (`bridge/src/solana_trustless.rs:202`), `SnarkSystem::{Groth16Bn254, PlonkBn254,
   BindingOnly}` (`bridge/src/ethereum.rs:107`), the optimistic `Verdict::Fraud`
-  from `Watchtower::examine` (`bridge/src/midnight_gateway.rs:230`), and
+  from `Watchtower::examine` (retired `midnight_gateway.rs`, former line 230), and
   `FinalizedAttestation` committee quorum (`lightclient/src/lib.rs:598`).
 - `trait ProofVerifier` (`bridge/src/verifier.rs:111`) is the verification seam to
   add a foreign-ISM impl to; the RPC-transport trait family (`EthRpc`,
   `SolanaRpc`, `MinaRpc`, `SubstrateRpcClient`) is the observation seam.
 - `PortableActionBinding {nullifier, recipient, destination_federation, amount}`
-  (`bridge/src/action_binding.rs:78`) is the canonical full-fidelity cross-chain
+  (retired `action_binding.rs`, former line 78) is the canonical full-fidelity cross-chain
   payload the adapter carries.
 - **The single mint authority every inbound path already routes through:**
   `TurnExecutor::bridge_mint_against_lock` (`turn/src/executor/bridge_ledger.rs:261`)

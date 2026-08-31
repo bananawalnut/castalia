@@ -247,14 +247,18 @@ pub mod fold {
             )
             .expect("custom wide dispatch");
         assert!(
-            dpis.len() >= 54,
-            "custom leg PI vector must carry the 8-felt commitment slice at 46..53 (got {})",
+            dpis.len() >= CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN,
+            "custom leg PI vector must carry the {CUSTOM_COMMIT_LEN}-felt commitment slice at \
+             {CUSTOM_COMMIT_PI_LO}..{} (got {})",
+            CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN - 1,
             dpis.len()
         );
         assert_eq!(
-            &dpis[46..54],
+            &dpis[CUSTOM_COMMIT_PI_LO..CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN],
             &commit[..],
-            "custom leg must publish the claimed 8-felt commitment at PI 46..53"
+            "custom leg must publish the claimed {CUSTOM_COMMIT_LEN}-felt commitment at PI \
+             {CUSTOM_COMMIT_PI_LO}..{}",
+            CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN - 1
         );
         assert!(
             dpis.len() >= CUSTOM_PROGRAM_VK_PI_LO + DEPLOYED_CUSTOM_PROGRAM_VK_PI_LEN,

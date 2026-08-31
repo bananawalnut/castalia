@@ -3,7 +3,7 @@
 //! The aggregation descriptor is AUTHORED in Lean (`metatheory/Dregg2/Circuit/Emit/
 //! BilateralAggregationCompact.lean`, `bilateralAggDescriptorV3`) and its wire string is byte-pinned
 //! there (the `#guard emitVmJson2 bilateralAggDescriptorV3 == GOLDEN`). This test READS those EXACT
-//! bytes ([`GOLDEN_JSON`], byte-identical to `circuit/descriptors/dregg-bilateral-aggregation-v3.json`,
+//! bytes ([`EMITTED_DESCRIPTOR_JSON`], byte-identical to `circuit/descriptors/dregg-bilateral-aggregation-v3.json`,
 //! which `bilateral_aggregation_air.rs` `include_str!`s), and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
@@ -28,8 +28,6 @@
 //! are DELETED (both sides were prover-filled — they pinned nothing), and 13 identity-carry gates
 //! now force every row onto the published turn identity (`compact_identity_every_row`).
 
-use std::panic::AssertUnwindSafe;
-
 use dregg_circuit::descriptor_ir2::{
     EffectVmDescriptor2, MemBoundaryWitness, VmConstraint2, WindowExpr, WindowGateSpec,
     parse_vm_descriptor2, prove_vm_descriptor2, verify_vm_descriptor2,
@@ -50,7 +48,7 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str =
+const EMITTED_DESCRIPTOR_JSON: &str =
     include_str!("../../circuit/descriptors/dregg-bilateral-aggregation-v3.json");
 
 // --- Trace column layout (must match `BilateralAggregationCompact.lean` Sched.* / AggC.*). ---
@@ -84,11 +82,15 @@ fn pi_bind(row: VmRow, col: usize, pi_index: usize) -> VmConstraint2 {
     VmConstraint2::Base(VmConstraint::PiBinding { row, col, pi_index })
 }
 
-/// `boolGate c` — `gate (var c * (var c - 1))`.
+/// `boolGate c` after the canonical Lean normalizer expands `x * (x - 1)` into
+/// `1 * (x * x) + (-1) * x`.
 fn bool_gate(c: usize) -> VmConstraint2 {
-    VmConstraint2::Base(VmConstraint::Gate(LeanExpr::mul(
-        LeanExpr::Var(c),
-        LeanExpr::add(LeanExpr::Var(c), LeanExpr::Const(-1)),
+    VmConstraint2::Base(VmConstraint::Gate(LeanExpr::add(
+        LeanExpr::mul(
+            LeanExpr::Const(1),
+            LeanExpr::mul(LeanExpr::Var(c), LeanExpr::Var(c)),
+        ),
+        LeanExpr::mul(LeanExpr::Const(-1), LeanExpr::Var(c)),
     )))
 }
 
@@ -344,7 +346,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// shape (width 52, PI 23, 48 constraints, exactly 15 window gates, no tables).
 #[test]
 fn bilateral_aggregation_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -383,7 +386,7 @@ fn bilateral_aggregation_emit_decodes_to_hand_built() {
 /// and re-verifies against the 23-felt outer PI.
 #[test]
 fn honest_aggregation_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pi) = honest_single_agent();
     let proof = prove_vm_descriptor2(&desc, &trace, &pi, &MemBoundaryWitness::default(), &[])
         .expect("the honest bundle witness must prove");
@@ -394,7 +397,7 @@ fn honest_aggregation_proves_and_verifies() {
 /// The first/last-row `pi_binding` (col 0 == pi[0]) is violated → UNSAT.
 #[test]
 fn forged_turn_identity_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pi) = honest_single_agent();
     assert!(
         !rejects(&desc, &trace, &pi),
@@ -415,7 +418,7 @@ fn forged_turn_identity_pi_refuses() {
 /// (`next[0] - local[0] = forged - honest ≠ 0`) → UNSAT. This is the E8 strengthening.
 #[test]
 fn forged_middle_row_identity_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pi) = honest_single_agent();
     assert!(
         !rejects(&desc, &trace, &pi),
@@ -437,7 +440,7 @@ fn forged_middle_row_identity_refuses() {
 /// double-spend rejection.
 #[test]
 fn two_agent_cells_refuse() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (honest, honest_pi) = honest_single_agent();
     assert!(
         !rejects(&desc, &honest, &honest_pi),
@@ -456,7 +459,7 @@ fn two_agent_cells_refuse() {
 /// the last transition → UNSAT. The two-row cumulative primitive genuinely gates.
 #[test]
 fn forged_active_counter_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pi) = honest_single_agent();
     assert!(
         !rejects(&desc, &trace, &pi),

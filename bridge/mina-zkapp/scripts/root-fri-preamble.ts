@@ -7,6 +7,7 @@ import { digestOfLanes } from '../src/RootAirChain.js';
 import { belowTier, tierStop } from '../src/tier.js';
 import {
   AbsorbRef,
+  BABYBEAR_WALK_HASH,
   PreOp,
   PreambleMeta,
   RealRootFri,
@@ -432,6 +433,14 @@ function cost(bound: Ctx, unbound: Ctx) {
   console.log('\n[3] THE COST — what deriving the state adds to the walk\n');
   const pre = bound.w.segs.slice(0, bound.friFrom);
   const perms = pre.filter((s) => s.t === 'duplex' && s.perm).length;
+  const openedObservations = preambleOps(bound.shape, bound.meta).filter(
+    (op) => op.t === 'observe' && op.a.src === 'opened',
+  ).length;
+  const openedPerms = openedObservations / BABYBEAR_WALK_HASH.chalAbsorbRate;
+  if (!Number.isInteger(openedPerms))
+    fail(
+      `${openedObservations} opened-value lanes do not fill whole rate-${BABYBEAR_WALK_HASH.chalAbsorbRate} transcript blocks`,
+    );
   const preRows = pre.reduce((a, s) => a + s.rows, 0);
   const dRows = bound.w.totalRows - unbound.w.totalRows;
   const dSegs = bound.w.segs.length - unbound.w.segs.length;
@@ -448,7 +457,7 @@ function cost(bound: Ctx, unbound: Ctx) {
   //  §3.12 measured the FRI transcript alone at 62,637 rows / 23 permutations.
   console.log(
     `\n    for scale: the FRI transcript this authorises is 23 permutations (§3.12, 62,637 rows). ` +
-      `The preamble is ${(perms / 23).toFixed(0)}× that, and 1,315 of its ${fmt(perms)} permutations ` +
+      `The preamble is ${(perms / 23).toFixed(0)}× that, and ${fmt(openedPerms)} of its ${fmt(perms)} permutations ` +
       'are the opened-value absorb alone.',
   );
   return { perms, preRows, dRows };
@@ -456,13 +465,13 @@ function cost(bound: Ctx, unbound: Ctx) {
 
 /**
  * ⚑ PRICED AGAINST THE CURRENT SHAPE, NOT §3.28's. A sibling landed
- * `bfdc935a5` while the braid ran: the 839 slices are 43 shapes repeated 19
- * times, so query-aligned cuts give **820 instances from 46 distinct
- * programs**. The compile side of §3.28's 17.4-hour figure is stale, and a
+ * `bfdc935a5` while the braid ran: the current 1,785 deployed slices collapse
+ * under query-aligned cuts to **1,561 instances from 44 distinct programs**.
+ * The compile side of §3.28's old figure is stale, and a
  * preamble priced against it would be stale twice.
  *
  * The preamble is entirely HEAD — it is absorbed once, not once per query — so
- * the 19 query blocks are untouched and every new slice is a head slice.
+ * the query blocks are untouched and every new slice is a head slice.
  */
 function uniformCost(shape: any, meta: PreambleMeta) {
   console.log('\n[3b] THE QUERY-ALIGNED PRICE — against `bfdc935a5`, not §3.28\n');
@@ -495,7 +504,9 @@ function uniformCost(shape: any, meta: PreambleMeta) {
     `    ⇒ delta               +${b.inst - a.inst} instances, +${b.prog - a.prog} distinct programs, ` +
       `+${fmt(b.rows - a.rows)} rows (${(((b.rows - a.rows) / a.rows) * 100).toFixed(1)}%)`,
   );
-  ok('the 19 query blocks are UNCHANGED — the preamble is absorbed once, not once per query');
+  ok(
+    `the ${shape.knobs.numQueries} query blocks are UNCHANGED — the preamble is absorbed once, not once per query`,
+  );
 
   //  How compressible the new head is, measured rather than asserted.
   const wp = segmentWalk(shape, { preamble: meta });
@@ -818,23 +829,27 @@ async function main() {
 // ===========================================================================
 // THE RATCHET — 2% on rows, EXACT on the permutation count and the shape.
 //
-// ⚑ A SCHEDULE CHANGE THAT LANDS WITHIN 2% OF 3,575,411 STILL FAILS. §3.12's
+// ⚑ A SCHEDULE CHANGE THAT LANDS WITHIN 2% OF 3,739,690 STILL FAILS. §3.12's
 // rule: the row budget is an estimate and the permutation count is the protocol,
 // so the second is pinned exactly. The census figures are exact for the same
-// reason — 2,630 opened values and 64 cumulative sums are counts, not prices.
+// reason — the canonical root's opening census, 72 cumulative sums, and 33
+// public values are counts, not prices. The former 1,373-permutation / 1,374-
+// segment pins counted only the opened-value absorb and its seal; they omitted
+// the 63 permutations that bind the rest of the protocol transcript. `cost`
+// now derives and reports that 1,373 opened-only subtotal separately, while
+// these pins cover the complete seven-instance canonical production preamble.
+// The differential above independently reproduces p3's challenger state before
+// the corrected complete counts are accepted here.
 // ===========================================================================
 
 const RATCHET = {
-  permutations: 1373,
+  permutations: 1436,
   openedValues: MEASURED_ROOT_GEOMETRY.censusPerQuery,
-  cumulativeSums: 64,
-  publicValues: 25,
+  cumulativeSums: 72,
+  publicValues: 33,
   logUpChallenges: 2,
-  preambleSegments: 1374,
-  preambleRows: 3_575_411,
-  deployedSlices: 928,
-  uniformInstances: 905,
-  uniformPrograms: 131,
+  preambleSegments: 1437,
+  preambleRows: 3_739_690,
 };
 
 function ratchet(bound: Ctx, c: { perms: number; preRows: number }) {

@@ -57,13 +57,22 @@
 #     which pins that the gate's scope is `git ls-files` and not the filesystem — the fix for the
 #     untracked `headver/` scratch checkout being walked as source.
 #
+# ⚑ RE-COUNTED 2026-08-24: 23 binaries, 22 emit gates, 195 tests. Seven teeth were executing but
+# absent from this recorded expectation: the existing Law-1 grew-row/explain reconciliation pair,
+# the tuple-match, match-scrutinee, and nested-binding classifier teeth added with the nested-pattern
+# repair, and the existing effect-action forged-borrow/underflow refusals. Recording all seven makes
+# removal or silencing red instead of merely printing a stale-list note after the binary succeeds.
+#
 # crate	stem	test_path	expect
 #!EXPECT_GATE_FILES=23
 #!EXPECT_EMIT_GATES=22
-#!EXPECT_TESTS=188
+#!EXPECT_TESTS=195
 dregg-circuit-prove	law1_enforcement_gate	law1_no_new_rust_authored_constraints	run
 dregg-circuit-prove	law1_enforcement_gate	law1_no_new_rust_authored_air_accepts	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::destructuring_is_not_authoring	run
+dregg-circuit-prove	law1_enforcement_gate	teeth::tuple_match_destructuring_is_not_authoring	run
+dregg-circuit-prove	law1_enforcement_gate	teeth::tuple_match_scrutinee_construction_is_still_authoring	run
+dregg-circuit-prove	law1_enforcement_gate	teeth::nested_binding_destructuring_is_not_authoring	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::construction_is_authoring	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::the_fifth_assert_zero_dialect_is_visible	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::gpui_when_is_not_a_constraint	run
@@ -73,6 +82,8 @@ dregg-circuit-prove	law1_enforcement_gate	teeth::the_scope_reaches_outside_the_t
 dregg-circuit-prove	law1_enforcement_gate	teeth::the_scope_is_git_tracked_files_not_the_filesystem	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::cfg_test_sites_are_counted_and_merely_attributed	run
 dregg-circuit-prove	law1_enforcement_gate	teeth::cfg_any_test_feature_is_not_test_only	run
+dregg-circuit-prove	law1_enforcement_gate	teeth::a_grew_row_names_the_sites_not_just_the_delta	run
+dregg-circuit-prove	law1_enforcement_gate	teeth::the_explain_listing_reconciles_with_the_count	run
 dregg-circuit-prove	accumulator_nonrev_emit_gate	accumulator_nonrev_emit_decodes_to_hand_built	run
 dregg-circuit-prove	accumulator_nonrev_emit_gate	honest_non_revocation_proves_and_verifies	run
 dregg-circuit-prove	accumulator_nonrev_emit_gate	forged_accumulator_pi_refuses	run
@@ -135,6 +146,8 @@ dregg-circuit-prove	dfa_routing_emit_gate	perf_prove_verify_breakdown	ignored
 dregg-circuit-prove	effect_action_emit_gate	effect_action_emit_decodes_to_hand_built	run
 dregg-circuit-prove	effect_action_emit_gate	honest_burn_binding_proves_and_verifies	run
 dregg-circuit-prove	effect_action_emit_gate	honest_revoke_binding_proves_and_verifies	run
+dregg-circuit-prove	effect_action_emit_gate	burn_forged_borrow_refuses	run
+dregg-circuit-prove	effect_action_emit_gate	burn_underflow_refuses	run
 dregg-circuit-prove	effect_action_emit_gate	burn_forged_pi_limb_refuses	run
 dregg-circuit-prove	effect_action_emit_gate	burn_broken_subtraction_refuses	run
 dregg-circuit-prove	effect_action_emit_gate	burn_wrong_disclosure_flag_refuses	run

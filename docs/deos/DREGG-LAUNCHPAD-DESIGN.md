@@ -218,7 +218,7 @@ three honest grades:
   `shielded_ring_clears_real_crypto` (`Market/ShieldedClearing.lean`) retires the two toy stand-ins
   with a real two-generator Pedersen (binding = DLog) and a real Poseidon2 tree
   (`Dregg2.Shielded.RealCrypto`) — and the **deployed Rust ring AIR realizes the two-leg and N-leg
-  note-algebra layer** (`circuit-prove/src/shielded_ring_clearing_air.rs`,
+  note-algebra layer** (the now-retired `shielded_ring_clearing_air.rs`,
   `shielded_ring_clearing_nleg_air.rs`), constraining `MatchNode` offer/want to the spent note's
   asset/value (the `LegFused` fusion). The named remaining edge is the **endpoint-carrying outer
   descriptor** — the AIRs publish note-level claims only, not the eight-lane kernel endpoints /

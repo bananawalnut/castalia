@@ -30,7 +30,7 @@ import { MEASURED_CEILING } from '../src/PartitionSchedule.js';
 // PROOF.
 //
 // §3.24 proves the largest chain ONE process holds — three slices, 4,798 of
-// 10,417 nodes — and names the rest: "the full AIR chain is 7 slices and one
+// 10,689 nodes — and names the rest: "the full AIR chain is 7 slices and one
 // process carries 3 (a process-per-slice architecture is priced, not built)."
 // This leg builds it, and runs it on the values `root_air_instance.rs` decodes
 // out of `whole_history_proof.bin` rather than on an LCG instance.
@@ -55,7 +55,7 @@ import { MEASURED_CEILING } from '../src/PartitionSchedule.js';
 //
 //     acc_unified = Σ_T acc_T · α^(R − b_T)
 //
-// for tables T with root spans ending at b_T out of R = 1,093 — because the fold
+// for tables T with root spans ending at b_T out of R = 1,129 — because the fold
 // is Horner and the spans are contiguous. Every acc_T is p3's OWN per-instance
 // accumulator, which the root proof's own closing equality pins to its opened
 // quotient. So the terminal seal is not an internal number: a Mina-side verifier
@@ -575,8 +575,8 @@ async function main() {
     `    vk ${real.vkFingerprint.slice(0, 16)}...  ${real.numTurns} turns  ` +
       `degree_bits [${real.degreeBits.join(', ')}]`,
   );
-  if (real.degreeBits.join(',') !== '10,10,16,15,3,16,0')
-    fail(`degree_bits ${real.degreeBits} is not §1.2's [10,10,16,15,3,16,0] — a different root`);
+  if (real.degreeBits.join(',') !== '10,10,17,16,4,16,0')
+    fail(`degree_bits ${real.degreeBits} is not the deployed root's [10,10,17,16,4,16,0] — a different root`);
   const accFinal = side.accs[N];
   if (accFinal.every((x) => x === 0n)) fail('the accumulator after the chain is ZERO');
   const accStrs = side.accs.map((a: bigint[]) => a.join(','));
@@ -802,7 +802,7 @@ async function main() {
         `per-instance accumulators [${recomposed}] — the seal is an internal number`,
     );
   ok(
-    `the terminal accumulator IS Σ_T acc_T·α^(1093−b_T) over p3's OWN seven accumulators — so a ` +
+    `the terminal accumulator IS Σ_T acc_T·α^(1129−b_T) over p3's OWN seven accumulators — so a ` +
       `verifier holding dregg's root proof can compute the seal the chain seals to`,
   );
   const terminal = terminalOf(plan, side);
@@ -855,7 +855,7 @@ async function main() {
 
 /** ⚑ Recorded on the run that first produced them, at `BUDGET_PROVED`. A zero
  *  means "not yet recorded" and prints instead of comparing. */
-const RATCHET = { slices: 7, nodes: 10_417, constraints: 1_093, maxRows: 51_136, vks: 7, splices: 7 };
+const RATCHET = { slices: 7, nodes: 10_689, constraints: 1_129, maxRows: 50_477, vks: 7, splices: 7 };
 
 const phase =
   PHASE === 'slice'

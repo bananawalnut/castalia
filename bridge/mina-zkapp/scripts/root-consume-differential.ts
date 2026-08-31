@@ -22,8 +22,8 @@ import { MINA_TIER } from '../src/tier.js';
 //
 // ⚑ WHY THIS IS THE FIRST THING IN THE MERGE AND NOT THE LAST. Every real defect
 // in this arc came from a cheap exhaustive out-of-circuit differential: four
-// silent wrongs across the braid's 11,303 segments, all 19 block-joins broken
-// across the uniform walk's 820 boundaries, two transcript readings that "would
+// silent wrongs across the braid's now-21,739 segments, all block joins checked
+// across the uniform walk's now-1,561 boundaries, two transcript readings that "would
 // each have compiled and proved cleanly". Extending the consumer from two PCS
 // rounds to four adds FOUR new ways to be silently wrong, and every one of them
 // gives a beautiful row count:
@@ -74,6 +74,7 @@ console.log('[1] the shape the committed proof has, and the plan the assembly bu
 const SH = rootShapeOf(REAL, babyBearSuite);
 const PLAN = verifyPlan(SH);
 const V = rootValues(REAL);
+const totalInputOpenings = V.queryIndices.length * SH.batches.length;
 
 if (PLAN.nBatches === 4) ok('`verifyPlan` accepts FOUR input-phase batches — the `nBatches !== 2` throw is gone');
 else fail(`the plan has ${PLAN.nBatches} batches`);
@@ -106,8 +107,14 @@ assertGeometryMatchesProof({
 });
 ok("CostModel's `assertGeometryMatchesProof` reproduces the census AND the height list off this same object");
 
-if (PLAN.nRollIns === 4 && PLAN.totalRow === 1427)
-  ok(`4 roll-ins and ${fmt(PLAN.totalRow)} opened base lanes a query (940 + 56 + 175 + 256)`);
+const measuredBaseLanes = Object.values(MEASURED_ROOT_GEOMETRY.baseColsByRound).reduce(
+  (a, n) => a + n,
+  0,
+);
+if (PLAN.nRollIns === MEASURED_ROOT_GEOMETRY.heights.length - 1 && PLAN.totalRow === measuredBaseLanes)
+  ok(
+    `${PLAN.nRollIns} roll-ins and ${fmt(PLAN.totalRow)} opened base lanes a query, derived from CostModel's per-round widths`,
+  );
 else fail(`${PLAN.nRollIns} roll-ins, ${PLAN.totalRow} lanes`);
 
 // ===========================================================================
@@ -181,12 +188,16 @@ for (let q = 0; q < V.queryIndices.length; q++)
     }
   }
 
-if (openingsOk === 76)
+if (openingsOk === totalInputOpenings)
   ok(
-    `all ${openingsOk} openings (19 queries x 4 rounds, ${fmt(levelsWalked)} Merkle levels, ` +
-      '76 leaf sponges + 304 injected sponges) reproduce the commitments p3 emitted',
+    `all ${openingsOk} openings (${V.queryIndices.length} queries x ${SH.batches.length} rounds, ` +
+      `${fmt(levelsWalked)} Merkle levels, ${totalInputOpenings} leaf sponges + ` +
+      `${fmt(totalInputOpenings * PLAN.nRollIns)} injected sponges) reproduce the commitments p3 emitted`,
   );
-else fail(`${openingsOk}/76 openings reproduce the emitted commitment — ${firstDiverged.slice(0, 3).join('; ')}`);
+else
+  fail(
+    `${openingsOk}/${totalInputOpenings} openings reproduce the emitted commitment — ${firstDiverged.slice(0, 3).join('; ')}`,
+  );
 
 // ===========================================================================
 // [4] The four bends. Each must be REFUSED, at a named level.
@@ -230,7 +241,10 @@ function bentWalk(
 }
 
 const BENDS: { key: any; what: string; note?: string }[] = [
-  { key: 'noInject', what: 'a FLAT depth-22 path with no mixed-height injection at all — the two-round reading' },
+  {
+    key: 'noInject',
+    what: `a FLAT depth-${SH.logGlobalMaxHeight} path with no mixed-height injection at all — the two-round reading`,
+  },
   { key: 'injectSwapped', what: '`compress([digest, root])` instead of `compress([root, digest])` — a perfectly good tree, a different one' },
   { key: 'injectLate', what: 'every injection one level LATE (`top - 2 - lv`)' },
   { key: 'flatLeaf', what: "the leaf sponged over the WHOLE batch row rather than the tallest matrices' rows" },
@@ -293,9 +307,10 @@ for (let q = 0; q < V.queryIndices.length; q++) {
     else roBad.push(`query ${q} height ${theirs[i].logHeight}`);
   }
 }
-if (roOk === roTotal && roTotal === 95)
+const expectedReducedOpenings = V.queryIndices.length * MEASURED_ROOT_GEOMETRY.heights.length;
+if (roOk === roTotal && roTotal === expectedReducedOpenings)
   ok(
-    `all ${roTotal} reduced openings (19 queries x 5 heights) equal p3's — the alpha power ` +
+    `all ${roTotal} reduced openings (${V.queryIndices.length} queries x ${MEASURED_ROOT_GEOMETRY.heights.length} heights) equal p3's — the alpha power ` +
       'advances in ENCOUNTER order across all FOUR rounds, keyed by height',
   );
 else fail(`${roOk}/${roTotal} reduced openings agree — ${roBad.slice(0, 4).join('; ')}`);
@@ -318,7 +333,10 @@ else fail(`${roOk}/${roTotal} reduced openings agree — ${roBad.slice(0, 4).joi
 }
 
 const sched = (REAL as any).queries[0].rollIns.map((r: any) => r.afterRound);
-if (JSON.stringify(sched) === JSON.stringify([0, 5, 12, 15]))
+const derivedSchedule = MEASURED_ROOT_GEOMETRY.heights
+  .slice(1)
+  .map((h) => SH.logGlobalMaxHeight - 1 - h);
+if (JSON.stringify(sched) === JSON.stringify(derivedSchedule))
   ok(`the roll-in schedule DERIVED from the five heights is [${sched.join(', ')}] and is the emitted one`);
 else fail(`roll-in schedule ${sched.join(', ')}`);
 
@@ -326,7 +344,7 @@ else fail(`roll-in schedule ${sched.join(', ')}`);
 // [6] The commit phase, and then the RE-HASH at Pasta.
 // ===========================================================================
 
-console.log('\n[6] the commit-phase leaves, and the sixteen layers p3 committed');
+console.log(`\n[6] the commit-phase leaves, and the ${SH.knobs.layers} layers p3 committed`);
 
 let cpOk = 0;
 for (let q = 0; q < V.queryIndices.length; q++)
@@ -343,14 +361,16 @@ for (let q = 0; q < V.queryIndices.length; q++)
   }
 const cpTotal = V.queryIndices.length * SH.knobs.layers;
 if (cpOk === cpTotal)
-  ok(`all ${cpTotal} commit-phase openings (19 queries x 16 layers) reproduce p3's commitments from the EMITTED fold values`);
+  ok(
+    `all ${cpTotal} commit-phase openings (${V.queryIndices.length} queries x ${SH.knobs.layers} layers) reproduce p3's commitments from the EMITTED fold values`,
+  );
 else fail(`${cpOk}/${cpTotal} commit-phase openings reproduce the emitted commitment`);
 
 console.log('\n[7] the SAME code at the OTHER hash — the hash as a parameter, at four rounds');
 
 const REH = rehash(SH, V, pastaSuite);
 ok(
-  `the Pasta re-hash builds ONE root per round over a SPARSE tree of the 19 opened leaves ` +
+  `the Pasta re-hash builds ONE root per round over a SPARSE tree of the ${V.queryIndices.length} opened leaves ` +
     `(${fmt(REH.merges)} sibling slots supplied by another query rather than stood in for)`,
 );
 
@@ -367,8 +387,9 @@ for (let q = 0; q < V.queryIndices.length; q++)
     );
     if (r.root.every((x, i) => x === REH.inputCommits[ri][i])) pOk++;
   }
-if (pOk === 76) ok(`all 76 Pasta openings verify against the ONE re-hashed commitment per round`);
-else fail(`${pOk}/76 Pasta openings verify`);
+if (pOk === totalInputOpenings)
+  ok(`all ${totalInputOpenings} Pasta openings verify against the ONE re-hashed commitment per round`);
+else fail(`${pOk}/${totalInputOpenings} Pasta openings verify`);
 
 //  ⚠ AND THE PASTA COLUMN CANNOT GO RED ON ITS OWN. Re-deriving a commitment
 //  from an opening is a tautology; what would catch a broken walk is the
@@ -382,16 +403,18 @@ else fail(`${pOk}/76 Pasta openings verify`);
       const x = bentWalk(pastaSuite, REH, ri, q, 'noInject');
       if (!x.every((v2, i) => v2 === REH.inputCommits[ri][i])) refused++;
     }
-  if (refused === 76)
-    ok('the injection-dropping bend is REFUSED at all 76 Pasta openings too — the two suites refuse the same structure');
-  else fail(`the Pasta side refused the injection bend at only ${refused}/76 openings`);
+  if (refused === totalInputOpenings)
+    ok(
+      `the injection-dropping bend is REFUSED at all ${totalInputOpenings} Pasta openings too — the two suites refuse the same structure`,
+    );
+  else fail(`the Pasta side refused the injection bend at only ${refused}/${totalInputOpenings} openings`);
 }
 
 //  The structural identity is the actual claim "the hash is a parameter" makes.
 {
-  const bbLevels = 76 * SH.batches[0].pathDepth;
+  const bbLevels = totalInputOpenings * SH.batches[0].pathDepth;
   const pLevels = bbLevels;
-  const bbSponges = 76 + 76 * 4;
+  const bbSponges = totalInputOpenings * (1 + PLAN.nRollIns);
   if (bbLevels === pLevels)
     ok(
       `both suites walk the SAME ${fmt(bbLevels)} levels and the same ${fmt(bbSponges)} sponges over the ` +

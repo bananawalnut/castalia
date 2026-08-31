@@ -983,16 +983,27 @@ mod tests {
         assert_eq!(content(doc.graph()).to_marked_string(), "A1 B1 A2 B2");
         assert!(doc.commitment_matches_projection());
 
-        // The GLOBAL history is a genuine linear ledger fold: 4 commits, each
-        // receipt's pre-state == the previous receipt's post-state (the interleaved
-        // history is one consistent chain of ledger roots — the doc fold).
+        // The GLOBAL history preserves commit order across both editors. Receipt
+        // state anchors are agent-scoped, so an A receipt's post-state must not be
+        // compared with a B receipt's pre-state: both absorb the executor-global
+        // roots, but each commits a different agent cell. The per-agent chains
+        // above carry their own continuity proof; this history carries ordering.
         let hist = doc.history();
         assert_eq!(hist.len(), 4);
-        for i in 1..hist.len() {
-            assert_eq!(
-                hist[i].pre_state_hash,
-                hist[i - 1].post_state_hash,
-                "the doc fold is a continuous ledger history over all editors' edits"
+        assert_eq!(
+            hist.iter()
+                .map(TurnReceipt::receipt_hash)
+                .collect::<Vec<_>>(),
+            [ra1, rb1, ra2, rb2]
+                .iter()
+                .map(TurnReceipt::receipt_hash)
+                .collect::<Vec<_>>(),
+            "the global history retains the interleaved commit order"
+        );
+        for receipt in hist {
+            assert_ne!(
+                receipt.pre_state_hash, receipt.post_state_hash,
+                "each committed edit advances its agent-scoped state anchor"
             );
         }
     }

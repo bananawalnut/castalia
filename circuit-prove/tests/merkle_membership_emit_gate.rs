@@ -5,7 +5,7 @@
 //!
 //! The descriptor is AUTHORED in Lean (`metatheory/Dregg2/Circuit/Emit/MerkleMembershipEmit.lean`,
 //! `merkleMembershipDesc`) and its wire string is byte-pinned there (`emitVmJson2` `#guard`). This
-//! test READS those EXACT bytes ([`GOLDEN_JSON`]), and:
+//! test READS those EXACT bytes ([`EMITTED_DESCRIPTOR_JSON`]), and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust builder — a byte drift on either side
@@ -47,7 +47,7 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str =
+const EMITTED_DESCRIPTOR_JSON: &str =
     include_str!("../../circuit/descriptors/by-name/merkle-membership-depth2.json");
 
 // --- Trace column layout (must match `MerkleMembershipEmit.lean` §1). ---
@@ -211,7 +211,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// semantics), and has exactly the expected shape.
 #[test]
 fn merkle_membership_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -280,7 +281,7 @@ fn arity4_chip_lookup_is_hash_4_to_1() {
 /// and the proof re-verifies against the public root PI.
 #[test]
 fn honest_membership_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (leaf, s0, s1) = fixture();
     let (trace, root) = honest_trace(leaf, s0, s1);
     let proof = prove_vm_descriptor2(&desc, &trace, &[root], &MemBoundaryWitness::default(), &[])
@@ -293,7 +294,7 @@ fn honest_membership_proves_and_verifies() {
 /// pin (`PARENT1 == PI[0]`) is violated → UNSAT. A claimed root the leaf does not hash to is refused.
 #[test]
 fn forged_claimed_root_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (leaf, s0, s1) = fixture();
     let (trace, root) = honest_trace(leaf, s0, s1);
     // sanity: the honest trace with the RIGHT root is ACCEPTED (non-vacuity of the negative below).
@@ -313,7 +314,7 @@ fn forged_claimed_root_refuses() {
 /// claimed root → the root pin is UNSAT. THE MEMBERSHIP TOOTH: the leaf is bound to the root.
 #[test]
 fn tampered_leaf_keeping_root_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (leaf, s0, s1) = fixture();
     let (_, root) = honest_trace(leaf, s0, s1);
     let tampered_leaf = leaf + BabyBear::ONE;
@@ -334,7 +335,7 @@ fn tampered_leaf_keeping_root_refuses() {
 /// load-bearing (a forged co-path is refused).
 #[test]
 fn tampered_sibling_keeping_root_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (leaf, s0, s1) = fixture();
     let (_, root) = honest_trace(leaf, s0, s1);
     let mut s0_bad = s0;
@@ -353,7 +354,7 @@ fn tampered_sibling_keeping_root_refuses() {
 /// The chip binding itself is load-bearing (a lookup cannot name a fabricated hash output).
 #[test]
 fn forged_parent_digest_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (leaf, s0, s1) = fixture();
     let (mut trace, root) = honest_trace(leaf, s0, s1);
     for row in &mut trace {

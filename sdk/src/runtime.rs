@@ -1194,6 +1194,25 @@ impl AgentRuntime {
         self.executor.deploy_factory(descriptor)
     }
 
+    /// Deploy a factory with an exact full child program whose layered v2 VK
+    /// is recomputed and checked before registration.
+    pub fn deploy_factory_with_full_child_program_v2(
+        &mut self,
+        descriptor: dregg_cell::FactoryDescriptor,
+        program: dregg_cell::CellProgram,
+        air_fingerprint: [u8; 32],
+        verifier_fingerprint: dregg_cell::VerifierFingerprint,
+        proving_system_id: dregg_cell::ProvingSystemId,
+    ) -> Result<[u8; 32], dregg_cell::FactoryError> {
+        self.executor.deploy_factory_with_full_child_program_v2(
+            descriptor,
+            program,
+            air_fingerprint,
+            verifier_fingerprint,
+            proving_system_id,
+        )
+    }
+
     /// THE SWAP — toggle producer mode on this runtime (authority inversion).
     ///
     /// When enabled, [`Self::execute`] / [`Self::execute_turn`] route the committed state through

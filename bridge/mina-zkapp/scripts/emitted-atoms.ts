@@ -232,8 +232,8 @@ async function main() {
     rowsLin: 18,
     rowsCopy: 0,
     rowsFold: 48,
-    rowsWitnessPerCol: 26, // 41,659 / 1,602, EMITTED
-    totalRows: 275143,
+    rowsWitnessPerCol: 26, // 44,259 / 1,702, EMITTED
+    totalRows: 283527,
   };
 
   const out = {

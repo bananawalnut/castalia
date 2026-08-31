@@ -227,7 +227,7 @@ deployed light-client fold.
 | carrier | leaf | binding node | negative tooth | refute (BackingAttack) | BindingFromFold (positive)? | deployed-wired? |
 |---|---|---|---|---|---|---|
 | **custom** | `custom_leaf_adapter.rs:994/1179` | `joint_turn_recursive.rs:591` | `joint_turn_recursive.rs:1174` + integration `circuit-prove/tests/custom_binding_deployed_tooth.rs`, `custom_binding_production_path.rs` | — (superseded) | **YES** `CustomBindingFromFold.lean` (7 pins) | **YES** (buff-in-production) |
-| bridge | `bridge_leaf_adapter.rs:170/227` | `joint_turn_recursive.rs:797` | `bridge_leaf_adapter.rs:353` + `circuit-prove/tests/bridge_binding_mechanism.rs` | `BridgeBackingAttack.lean` (7) | no | no |
+| bridge | `bridge_leaf_adapter.rs:170/227` | `joint_turn_recursive.rs:797` | `bridge_leaf_adapter.rs:353` + retired `bridge_binding_mechanism.rs` integration suite | `BridgeBackingAttack.lean` (7) | no | no |
 | sovereign | `sovereign_leaf_adapter.rs:181/221` | `joint_turn_recursive.rs:898` | `sovereign_leaf_adapter.rs:375` | `SovereignBackingAttack.lean` (10) | no | no |
 | factory | `factory_leaf_adapter.rs:177/214` | `factory_leaf_adapter.rs:338` | `factory_leaf_adapter.rs:468/590` | `FactoryBackingAttack.lean` (12) | no | no |
 | hatchery | `hatchery_leaf_adapter.rs:176/214` | `hatchery_leaf_adapter.rs:343` | `hatchery_leaf_adapter.rs:477/595` | `HatcheryBackingAttack.lean` (8) | no | no |

@@ -5156,7 +5156,7 @@ mod tests {
     #[test]
     fn honest_cross_vat_cap_gated_transfer_publishes_the_forced_src() {
         use dregg_circuit::cap_root::{CAP_TREE_DEPTH, CanonicalCapTree, fold_bytes32};
-        use dregg_circuit::effect_vm::trace_rotated::CAP_OPEN_TB_PI_SRC;
+        use dregg_circuit::effect_vm::trace_rotated::{CAP_OPEN_TB_PI_COUNT, CAP_OPEN_TB_PI_SRC};
 
         // The actor (cap HOLDER) `A` and the cap's TARGET `src` cell `B` are DISTINCT
         // — this is the cross-vat shape (A spends a cap over B). We reuse the bearer
@@ -5351,12 +5351,17 @@ mod tests {
                 })
                 .expect("the wide TB member is in the deployed registry");
             let desc = parse_vm_descriptor2(json).expect("TB member parses");
+            assert_eq!(
+                desc.public_input_count,
+                CAP_OPEN_TB_PI_COUNT + 16,
+                "the wide carrier must add exactly its 16 commitment/VK exposure slots after the {CAP_OPEN_TB_PI_COUNT}-PI TB member; extra turn-identity slots must not reappear"
+            );
             let turn_pins: Vec<usize> = desc
                 .constraints
                 .iter()
                 .filter_map(|c| match c {
                     VmConstraint2::Base(VmConstraint::PiBinding { pi_index, .. })
-                        if (CAP_OPEN_TB_PI_SRC..CAP_OPEN_TB_PI_SRC + 3).contains(pi_index) =>
+                        if *pi_index == CAP_OPEN_TB_PI_SRC =>
                     {
                         Some(*pi_index)
                     }
@@ -5366,7 +5371,7 @@ mod tests {
             assert_eq!(
                 turn_pins,
                 vec![CAP_OPEN_TB_PI_SRC],
-                "the TB member must pin EXACTLY the src slot in the turn-identity window. Two more \
+                "the TB member must pin EXACTLY the src slot. Two more turn-identity \
                  pins lived at 47/48 until 2026-07-31, publishing `actor` and `dst` off columns no \
                  other constraint read — the prover chose both sides, so a light client reading \
                  them read the prover. If either reappears, check it is FORCED before believing it \

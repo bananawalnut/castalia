@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { BABYBEAR_HASH, PASTA_HASH, PICKLES } from '../src/CostModel.js';
+import { BABYBEAR_HASH, MEASURED_ROOT_GEOMETRY, PASTA_HASH, PICKLES } from '../src/CostModel.js';
 import {
   ARITH_PRICE,
   EXT_LANES,
@@ -107,8 +107,11 @@ for (const [name, e] of insts)
       `  ${String(fmt(e.terms)).padStart(7)}  ${pct(e.terms, TOTAL).padStart(6)}`,
   );
 
-if (TOTAL !== 2630) fail(`the census is ${TOTAL} and this leg was written against 2,630`);
-else ok('the census reproduces from the proof at 2,630');
+if (TOTAL !== MEASURED_ROOT_GEOMETRY.censusPerQuery)
+  fail(
+    `the census is ${TOTAL} and CostModel records ${MEASURED_ROOT_GEOMETRY.censusPerQuery}`,
+  );
+else ok(`the census reproduces from the proof at ${fmt(MEASURED_ROOT_GEOMETRY.censusPerQuery)}`);
 
 // ⚑ THE FACT THAT MAKES THE LEVER A LEVER: a DEEP term is priced per OPENED
 // VALUE and is independent of the matrix's HEIGHT. An 8-row table with 452
@@ -225,6 +228,13 @@ const scaleInstance = (s: FriShape, name: string, f: (m: MatrixSpec) => number):
   s.rounds.forEach((r) => r.matrices.forEach((m) => instanceOf(m) === name && (m.width = f(m))));
   return s;
 };
+const claimPermutation = shape.rounds
+  .find((r) => r.name === 'permutation')!
+  .matrices.find((m) => instanceOf(m) === 'expose_claim')!;
+const claimInteractions = claimPermutation.width / EXT_LANES;
+const totalInteractions = shape.rounds
+  .find((r) => r.name === 'permutation')!
+  .matrices.reduce((n, m) => n + m.width / EXT_LANES, 0);
 
 const levers: Lever[] = [
   {
@@ -254,16 +264,17 @@ const levers: Lever[] = [
     },
   },
   {
-    name: 'B. `expose_claim` re-laid as 25 rows x 1 lane rather than 1 row x 25 lanes',
+    name: `B. \`expose_claim\` re-laid as ${claimInteractions} rows x 1 lane rather than 1 row x ${claimInteractions} lanes`,
     why:
-      'One row, 25 claim lanes, and 25 lanes means 25 LogUp interactions means 25 extension\n' +
+      `One row, ${claimInteractions} claim lanes, and ${claimInteractions} lanes means ${claimInteractions} LogUp interactions means ${claimInteractions} extension\n` +
       '        running-sum columns opened at TWO points. Height is free in the DEEP quotient and\n' +
       '        width is not, so the cheap layout is the tall one.',
     edit: (s) => {
       const c = clone(s);
       c.rounds.forEach((r) =>
         r.matrices.forEach((m) => {
-          if (instanceOf(m) === 'expose_claim') m.width = Math.max(EXT_LANES, Math.round(m.width / 25));
+          if (instanceOf(m) === 'expose_claim')
+            m.width = Math.max(EXT_LANES, Math.round(m.width / claimInteractions));
         }),
       );
       return c;
@@ -302,7 +313,7 @@ const levers: Lever[] = [
     name: 'E. batch LogUp — one running sum per instance, not one per interaction',
     why:
       '`permutation_width = contexts.len()` in p3-batch-stark: literally one extension column\n' +
-      '        per interaction, and all 64 of the root’s are on ONE bus. Batching is a change to the\n' +
+      `        per interaction, and all ${totalInteractions} of the root’s are on ONE bus. Batching is a change to the\n` +
       '        UPSTREAM FORK, not a config knob — there is no batch parameter in p3-lookup.',
     edit: (s) => {
       const c = clone(s);
@@ -344,7 +355,8 @@ for (const L of levers) console.log(`\n      ${L.name}\n        ${L.why}`);
   s = dropInstance(s, 'poseidon2_perm/baby_bear_d4_w24');
   s.rounds.forEach((r) =>
     r.matrices.forEach((m) => {
-      if (instanceOf(m) === 'expose_claim') m.width = Math.max(EXT_LANES, Math.round(m.width / 25));
+      if (instanceOf(m) === 'expose_claim')
+        m.width = Math.max(EXT_LANES, Math.round(m.width / claimInteractions));
       if (instanceOf(m) !== 'Alu') return;
       if (r.name === 'main') m.width = 28;
       else if (r.name === 'preprocessed') m.width = 20;

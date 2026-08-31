@@ -13,7 +13,7 @@
 //
 //   1. `deployedShapeOf` forced `logHeight: 22` on every matrix and priced a
 //      2,286-term census, while the SAME document's §3.28 measured the root at
-//      FIVE heights (22, 21, 16, 9, 6) and a census of 2,630.
+//      FIVE heights (20, 19, 13, 7, 3) and a census of 2,746.
 //   2. `PartitionSchedule`'s chunk grouping (`misc, fold, open*`) and
 //      `DreggProofSchedule`'s (`input, fold, pub, open*, pow`) both feed
 //      `rootCommitDigest = Poseidon(digests)` and the only assertion checked the
@@ -306,13 +306,15 @@ export const PASTA_SPONGE_ALL_IN_PER_LANE = register({
  * measured the real object and it is wrong in two directions that do not
  * cancel:
  *
- *   * it OMITS the permutation round — 64 extension columns x 4 x 2 = 512 terms;
+ *   * it OMITS the permutation round — 72 extension columns x 4 x 2 = 576 terms;
  *   * it ASSUMES two opening points everywhere, which the proof refuses. `Const`,
  *     `Public`, `recompose` and `expose_claim` reference no next-row main or
- *     preprocessed value, so those matrices are opened at ζ alone — 168 terms
+ *     preprocessed value, so those matrices are opened at ζ alone — 276 terms
  *     §3.15 charges and the proof does not have.
  *
- * A census that multiplies every width by two gets 2,798; the proof says 2,630.
+ * Re-measured 2026-08-28 after the production root moved to seven real AIR
+ * tables: a census that multiplies every width by two gets 3,022; the proof
+ * says 2,746.
  *
  * ⚑ AND THE HEIGHTS ARE NOT FLAT. The root's committed matrices sit at FIVE
  * distinct heights, so `MerkleTreeMmcs::verify_batch` compresses a shorter
@@ -325,26 +327,26 @@ export const MEASURED_ROOT_GEOMETRY = {
    *  `open_input`. MEASURED off `.fullchain/real-root-fri.json`. */
   censusPerQuery: register({
     key: 'deep-terms/query@root',
-    value: 2630,
+    value: 2746,
     site: 'CostModel.MEASURED_ROOT_GEOMETRY.censusPerQuery',
     provenance: 'MEASURED',
     source:
-      '§3.28, read off `.fullchain/real-root-fri.json` by `RootFriWalk.deepTermCensus`: ' +
-      'main 1,768 + quotient_chunk 56 + preprocessed 294 + permutation 512',
+      'read off `.fullchain/real-root-fri.json` by `RootFriWalk.deepTermCensus` on 2026-08-28: ' +
+      'main 1,800 + quotient_chunk 56 + preprocessed 314 + permutation 576',
   }),
   /** Per round, MEASURED. */
-  censusByRound: { main: 1768, quotient_chunk: 56, preprocessed: 294, permutation: 512 } as const,
+  censusByRound: { main: 1800, quotient_chunk: 56, preprocessed: 314, permutation: 576 } as const,
   /** The committed matrix log-heights, DESCENDING. MEASURED. */
-  heights: [22, 21, 16, 9, 6] as const,
+  heights: [20, 19, 13, 7, 3] as const,
   /** `log_global_max_height` — the tallest, and the input-phase path depth. */
-  logGlobalMaxHeight: 22,
+  logGlobalMaxHeight: 20,
   /** Base columns committed per round, MEASURED. */
-  baseColsByRound: { main: 940, quotient_chunk: 56, preprocessed: 175, permutation: 256 } as const,
+  baseColsByRound: { main: 972, quotient_chunk: 56, preprocessed: 195, permutation: 288 } as const,
   /** Of the census, how many are lanes of the AIR chain's own column
    *  commitment. MEASURED by `planOpenedValues`. */
-  airCoveredPerQuery: 1236,
+  airCoveredPerQuery: 1288,
   /** Bridged to the AIR by `permBind` — paid ONCE, not per query. */
-  permBindPerProof: 512,
+  permBindPerProof: 576,
 } as const;
 
 /**

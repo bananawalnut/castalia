@@ -454,11 +454,15 @@ EMPTY world, so it renders `"discovered_relics":[]` and holds no relic id at all
 the check working: re-deriving it reproduced `f770d6bd…` byte-for-byte, which is what says
 the recomputation below changed only what the namespace actually touched.
 
-Recomputed over the exact UTF-8 bytes Lean emits, by `python3 hashlib` and by Node
-`crypto.createHash("sha256")` independently — agreeing, and neither of them
-`sha256Wire?`. -/
+⚠ RE-PINNED A FOURTH TIME on 2026-08-27 for the multi-game wire cutover of
+`059f62db3`. `GameConfigWire.toJson` now emits the required `"game":"signal-triangulation"`
+discriminator first, so the canonical config bytes and only their hash moved. The
+genesis Canon remains game-independent and its hash is unchanged.
+
+Recomputed over the exact UTF-8 bytes Lean emits, by `shasum -a 256` and by the
+Lean-owned `sha256Wire?` fixture gate — two independent implementations agreeing. -/
 abbrev FIXTURE_CONFIG_SHA256 : String :=
-  "522cb2c079ec217acc778011c1a7d89a4e5ec2a2f4ea305846c6d20eaadeefd1"
+  "f3766c7f34cdc9ff17b128f9abf1ce489f1a0dd9dd7f590764ce0056cd248a1c"
 abbrev FIXTURE_CANON_SHA256 : String :=
   "f770d6bd6fd3fe09ec7c2fe882b74aa655c4ce6687f1a01e02e4faa468ba6181"
 

@@ -3018,14 +3018,23 @@ impl PersistentStore {
     /// ledger/commit-log.
     pub fn recovered_block_cursor(&self) -> Result<u64> {
         let cursor = self.commit_cursor()?;
-        if cursor == 0 {
-            return Ok(0);
-        }
-        match self.commit_record_at(cursor - 1)? {
+        match cursor
+            .checked_sub(1)
+            .map(|ordinal| self.commit_record_at(ordinal))
+            .transpose()?
+            .flatten()
+        {
             Some(rec) => Ok(rec.block_executed_up_to),
+            None if self.commit_compacted_floor()? == cursor => {
+                let read_txn = self.db.begin_read()?;
+                let meta = read_txn.open_table(tables::METADATA)?;
+                Ok(meta
+                    .get(tables::META_SNAPSHOT_BASE_BLOCK_CURSOR)?
+                    .map(|guard| guard.value())
+                    .unwrap_or(0))
+            }
             None => Err(StoreError::Integrity(format!(
-                "recovered_block_cursor: cursor {cursor} but no record at {}",
-                cursor - 1
+                "recovered_block_cursor: cursor {cursor} has neither a live head record nor a compacted snapshot baseline"
             ))),
         }
     }
@@ -3040,10 +3049,27 @@ impl PersistentStore {
     /// equal the root the committing node recorded.
     pub fn recovered_ledger_root(&self) -> Result<Option<[u8; 32]>> {
         let cursor = self.commit_cursor()?;
-        if cursor == 0 {
+        if let Some(record) = cursor
+            .checked_sub(1)
+            .map(|ordinal| self.commit_record_at(ordinal))
+            .transpose()?
+            .flatten()
+        {
+            return Ok(Some(record.ledger_root));
+        }
+        if self.commit_compacted_floor()? != cursor {
             return Ok(None);
         }
-        Ok(self.commit_record_at(cursor - 1)?.map(|r| r.ledger_root))
+        let read_txn = self.db.begin_read()?;
+        let meta = read_txn.open_table(tables::METADATA_BYTES)?;
+        let Some(bytes) = meta.get(tables::META_SNAPSHOT_BASE_ROOT)? else {
+            return Ok(None);
+        };
+        let bytes = bytes.value();
+        let root: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| StoreError::Integrity("snapshot baseline root is not 32 bytes".into()))?;
+        Ok(Some(root))
     }
 
     /// The finalized HEIGHT the node converged to: the `height` of the last
@@ -3053,10 +3079,22 @@ impl PersistentStore {
     /// must be refused.
     pub fn recovered_head_height(&self) -> Result<Option<u64>> {
         let cursor = self.commit_cursor()?;
-        if cursor == 0 {
+        if let Some(record) = cursor
+            .checked_sub(1)
+            .map(|ordinal| self.commit_record_at(ordinal))
+            .transpose()?
+            .flatten()
+        {
+            return Ok(Some(record.height));
+        }
+        if self.commit_compacted_floor()? != cursor {
             return Ok(None);
         }
-        Ok(self.commit_record_at(cursor - 1)?.map(|r| r.height))
+        let read_txn = self.db.begin_read()?;
+        let meta = read_txn.open_table(tables::METADATA)?;
+        Ok(meta
+            .get(tables::META_SNAPSHOT_BASE_HEIGHT)?
+            .map(|guard| guard.value()))
     }
 
     /// The last-writer-wins overlay of cell post-states committed since the most

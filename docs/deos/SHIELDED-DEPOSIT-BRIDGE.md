@@ -75,7 +75,7 @@ real public-chain token attestation, produced by Ethereum itself.
 
 **EXISTS — the holding→leaf adapters.**
 `circuit-prove/src/mpt_holding_leaf.rs` lifts an MPT-proven holding into a circuit
-leaf; `circuit-prove/src/bridge_leaf_adapter.rs` is the cross-chain bridge leaf.
+leaf; the now-retired `bridge_leaf_adapter.rs` was the cross-chain bridge leaf.
 These are the in-circuit carriers a deposit proof would ride.
 
 **EXISTS (model) — the custody invariant.**
@@ -144,7 +144,7 @@ double-spend, the pool provably undrainable beyond its live notes.
   range gadget (no wraparound mint).
 
 **EXISTS — the circuit realization.**
-`circuit-prove/src/shielded/spend_circuit.rs` (membership + nullifier + the C7
+The now-retired `spend_circuit.rs` (membership + nullifier + the C7
 value-binding, `hash_fact(value,[asset_type,randomness,0])`), `pool.rs` (multi-
 asset pool transfer), `transfer.rs`, `attest.rs` (ZK attestations over hidden cell
 state). All run through the production hiding uni-STARK (`prove_dsl_zk`,
@@ -170,7 +170,7 @@ search), `cert.rs` (`CertF` primal-dual certificate + `check`).
 `circuit-prove/src/cert_f_air.rs` — the Cert-F check as a real BabyBear+FRI STARK;
 the witness `(f, π, s)` (the private flows) lives only in the trace under the
 hiding PCS, and the only public value exposed is the cleared volume `wᵀf`.
-`circuit-prove/src/shielded_ring_clearing_air.rs` / `_nleg_air.rs` — the shielded
+The retired `shielded_ring_clearing_air.rs` / `shielded_ring_clearing_nleg_air.rs` pair formed the shielded
 ring-clearing AIR.
 
 **EXISTS — the no-viewer MPC.**

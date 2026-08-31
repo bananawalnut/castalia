@@ -47,7 +47,9 @@
 //! against it without trusting the server. The joiner supplies the trusted root
 //! to [`PersistentStore::apply_snapshot_verified`].
 
+use redb::ReadableTable;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 use dregg_cell::{Cell, Ledger};
 
@@ -64,6 +66,13 @@ pub struct SnapshotHead {
     /// it had applied (= the next free commit ordinal). A joiner that bootstraps
     /// from `checkpoint ⊕ overlay` is now current as of this many turns.
     pub commit_cursor: u64,
+    /// Finalized height of the complete head ledger.
+    #[serde(default)]
+    pub height: u64,
+    /// Exact identities of every turn-carrying block subsumed by this snapshot. Identity, not a
+    /// numeric tau-order prefix, is load-bearing for no-double-apply under mid-prefix insertion.
+    #[serde(default)]
+    pub applied_turn_block_ids: Vec<[u8; 32]>,
     /// The blocklace block-level high-water mark of the head turn
     /// (`CommitRecord::block_executed_up_to`): where a joiner resumes block
     /// processing. 0 if the snapshot carries no post-checkpoint turn.
@@ -236,8 +245,20 @@ impl PersistentStore {
             )));
         }
 
+        let mut applied_turn_block_ids = self.commit_log_block_ids()?;
+        applied_turn_block_ids.sort_unstable();
+        applied_turn_block_ids.dedup();
+        let commit_cursor = self.commit_cursor()?;
+        if applied_turn_block_ids.len() as u64 != commit_cursor {
+            return Err(StoreError::Integrity(format!(
+                "ship_snapshot: commit cursor {commit_cursor} but {} unique applied-turn block ids",
+                applied_turn_block_ids.len()
+            )));
+        }
         let head = SnapshotHead {
-            commit_cursor: self.commit_cursor()?,
+            commit_cursor,
+            height: self.recovered_head_height()?.unwrap_or(base_height),
+            applied_turn_block_ids,
             block_executed_up_to: self.recovered_block_cursor()?,
         };
 
@@ -320,33 +341,155 @@ impl PersistentStore {
         self.apply_snapshot(snapshot)
     }
 
-    /// Apply a shipped snapshot AND rebuild this store's durable state from it:
-    /// install the checkpoint, replace the cell-by-id overlay and the commit
-    /// head pointers so the joiner's own future recovery reconstructs the same
-    /// ledger. The ledger is verified against `claimed_root` first (fail-closed),
-    /// then committed, then the secondary index is rebuilt to agree with the new
-    /// state.
+    /// Apply a shipped snapshot and atomically replace this store's recovery authority with the
+    /// complete verified head ledger. The caller must independently pin BOTH the ledger root and
+    /// exact head coordinates; neither value may be learned from the untrusted snapshot server.
     ///
     /// Returns the reconstructed [`Ledger`] (the in-memory live state the node
     /// runs with) on success.
     ///
-    /// NOTE: this installs the checkpoint + a single synthetic commit head; the
-    /// joiner does not gain the shipping node's full per-turn commit log (it does
-    /// not need it — `checkpoint ⊕ overlay` is the finalized state). The
-    /// cell-by-id index is rebuilt from the overlay so `lookup_cell` works.
-    pub fn install_snapshot(&self, snapshot: &Snapshot, trusted_root: &[u8; 32]) -> Result<Ledger> {
+    /// The verified complete ledger is installed as a full checkpoint at `trusted_head.height`;
+    /// all prior turns are represented by `commit_cursor == compacted_floor`, and every live-log
+    /// secondary index is cleared to an empty post-checkpoint delta.
+    pub fn install_snapshot(
+        &self,
+        snapshot: &Snapshot,
+        trusted_root: &[u8; 32],
+        trusted_head: &SnapshotHead,
+    ) -> Result<Ledger> {
+        if snapshot.head != *trusted_head {
+            return Err(StoreError::Integrity(
+                "install_snapshot: snapshot head does not match caller-pinned head".into(),
+            ));
+        }
+        if trusted_head.height < snapshot.overlay_base_height
+            || snapshot
+                .checkpoint
+                .as_ref()
+                .is_some_and(|checkpoint| checkpoint.height > trusted_head.height)
+        {
+            return Err(StoreError::Integrity(
+                "install_snapshot: head height precedes its checkpoint/overlay base".into(),
+            ));
+        }
+        let unique_turn_ids: BTreeSet<_> = trusted_head.applied_turn_block_ids.iter().collect();
+        if trusted_head.applied_turn_block_ids.len() as u64 != trusted_head.commit_cursor
+            || unique_turn_ids.len() != trusted_head.applied_turn_block_ids.len()
+        {
+            return Err(StoreError::Integrity(
+                "install_snapshot: pinned applied-turn identity set is not unique and cursor-complete"
+                    .into(),
+            ));
+        }
         // 1. Verify against the trusted root BEFORE mutating any durable state.
         let ledger = self.apply_snapshot_verified(snapshot, trusted_root)?;
 
-        // 2. Install the checkpoint (if any) durably.
-        if let Some(cp) = &snapshot.checkpoint {
-            self.store_ledger_checkpoint_snapshot(cp)?;
-        }
-
-        // 3. Install the cell-by-id overlay so post-checkpoint cells resolve.
-        self.install_overlay_into_cell_index(&snapshot.overlay)?;
+        // 2. Atomically install the complete verified head as a compacted
+        // recovery baseline. This also replaces every secondary index.
+        self.install_snapshot_baseline(&ledger, snapshot)?;
 
         Ok(ledger)
+    }
+
+    fn install_snapshot_baseline(&self, ledger: &Ledger, snapshot: &Snapshot) -> Result<()> {
+        let checkpoint = crate::ledger_store::ledger_to_checkpoint(ledger, snapshot.head.height);
+        let checkpoint_bytes = postcard::to_stdvec(&checkpoint)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        let write_txn = self.db.begin_write()?;
+        {
+            macro_rules! clear_u64_table {
+                ($definition:expr) => {{
+                    let mut table = write_txn.open_table($definition)?;
+                    let keys: Vec<_> = table
+                        .iter()?
+                        .filter_map(|entry| entry.ok().map(|entry| entry.0.value().to_owned()))
+                        .collect();
+                    for key in keys {
+                        table.remove(key)?;
+                    }
+                }};
+            }
+            macro_rules! clear_hash_table {
+                ($definition:expr) => {{
+                    let mut table = write_txn.open_table($definition)?;
+                    let keys: Vec<[u8; 32]> = table
+                        .iter()?
+                        .filter_map(|entry| entry.ok().map(|entry| *entry.0.value()))
+                        .collect();
+                    for key in keys {
+                        table.remove(&key)?;
+                    }
+                }};
+            }
+            macro_rules! clear_bytes_table {
+                ($definition:expr) => {{
+                    let mut table = write_txn.open_table($definition)?;
+                    let keys: Vec<Vec<u8>> = table
+                        .iter()?
+                        .filter_map(|entry| entry.ok().map(|entry| entry.0.value().to_vec()))
+                        .collect();
+                    for key in keys {
+                        table.remove(key.as_slice())?;
+                    }
+                }};
+            }
+
+            clear_u64_table!(crate::tables::LEDGER_CHECKPOINTS);
+            clear_u64_table!(crate::tables::COMMIT_LOG);
+            clear_hash_table!(crate::tables::IDX_RECEIPT_BY_HASH);
+            clear_hash_table!(crate::tables::IDX_TURN_BY_HASH);
+            clear_bytes_table!(crate::tables::IDX_TURN_BY_HEIGHT_CREATOR);
+            clear_hash_table!(crate::tables::IDX_CELL_BY_ID);
+            clear_hash_table!(crate::tables::COMMIT_COMPACTED_BLOCK_IDS);
+
+            let mut compacted_ids =
+                write_txn.open_table(crate::tables::COMMIT_COMPACTED_BLOCK_IDS)?;
+            for block_id in &snapshot.head.applied_turn_block_ids {
+                compacted_ids.insert(block_id, ())?;
+            }
+
+            let mut blocklace_meta = write_txn.open_table(crate::tables::BLOCKLACE_META)?;
+            blocklace_meta.remove(crate::tables::BLOCKLACE_EXECUTED_IDS_KEY)?;
+            let executed_up_to = snapshot.head.block_executed_up_to.to_le_bytes();
+            blocklace_meta.insert(
+                crate::tables::BLOCKLACE_EXECUTED_UP_TO_KEY,
+                executed_up_to.as_slice(),
+            )?;
+
+            let mut checkpoints = write_txn.open_table(crate::tables::LEDGER_CHECKPOINTS)?;
+            checkpoints.insert(snapshot.head.height, checkpoint_bytes.as_slice())?;
+
+            let mut metadata = write_txn.open_table(crate::tables::METADATA)?;
+            metadata.insert(
+                crate::tables::META_LATEST_LEDGER_CHECKPOINT_HEIGHT,
+                snapshot.head.height,
+            )?;
+            metadata.insert(
+                crate::tables::META_COMMIT_CURSOR,
+                snapshot.head.commit_cursor,
+            )?;
+            metadata.insert(
+                crate::tables::META_COMMIT_COMPACTED,
+                snapshot.head.commit_cursor,
+            )?;
+            metadata.insert(
+                crate::tables::META_SNAPSHOT_BASE_HEIGHT,
+                snapshot.head.height,
+            )?;
+            metadata.insert(
+                crate::tables::META_SNAPSHOT_BASE_BLOCK_CURSOR,
+                snapshot.head.block_executed_up_to,
+            )?;
+
+            let mut metadata_bytes = write_txn.open_table(crate::tables::METADATA_BYTES)?;
+            metadata_bytes.insert(
+                crate::tables::META_SNAPSHOT_BASE_ROOT,
+                snapshot.claimed_root.as_slice(),
+            )?;
+        }
+        write_txn.commit()?;
+        Ok(())
     }
 }
 
@@ -483,6 +626,54 @@ mod tests {
     }
 
     #[test]
+
+    fn install_snapshot_replaces_stale_index_entries_absent_from_entire_snapshot() {
+        let shipper = PersistentStore::open_in_memory().unwrap();
+        let live = cell(0x41, 900);
+        let mut authoritative = Ledger::new();
+        authoritative.insert_cell(live.clone()).unwrap();
+        shipper.checkpoint_ledger(&authoritative, 10).unwrap();
+
+        let snapshot = shipper.ship_snapshot(0).unwrap();
+        assert!(snapshot.overlay.is_empty());
+
+        // This cell was deleted before the shipped checkpoint. Consequently it
+        // is absent from both the checkpoint and the post-checkpoint tombstones.
+        let stale = cell(0x42, 901);
+        let stale_id = stale.id();
+        let joiner = PersistentStore::open_in_memory().unwrap();
+        joiner
+            .install_overlay_into_cell_index(&[CellOverlayOp::Upsert(stale)])
+            .expect("seed stale reused-joiner index");
+        joiner
+            .persist_executed_block_ids(&[dregg_blocklace::finality::BlockId([0xee; 32])])
+            .expect("seed stale execution identity");
+        assert!(joiner.lookup_cell(&stale_id).unwrap().is_some());
+
+        let mut installed = joiner
+            .install_snapshot(&snapshot, &snapshot.claimed_root, &snapshot.head)
+            .expect("install authoritative snapshot");
+        assert_eq!(installed.root(), authoritative.root());
+        assert!(installed.get(&stale_id).is_none());
+        assert!(
+            joiner.lookup_cell(&stale_id).unwrap().is_none(),
+            "snapshot installation must replace, not merge, the reusable cell index"
+        );
+        assert!(
+            joiner.lookup_cell(&live.id()).unwrap().is_none(),
+            "head-checkpoint cells must not masquerade as post-checkpoint log deltas"
+        );
+        let (_, checkpoint) = joiner
+            .load_latest_ledger_checkpoint()
+            .unwrap()
+            .expect("installed head checkpoint");
+        assert_eq!(checkpoint.get(&live.id()), Some(&live));
+        assert!(checkpoint.get(&stale_id).is_none());
+        assert!(joiner.load_executed_block_ids().unwrap().is_empty());
+        assert!(joiner.verify_index_agrees_with_log().unwrap().ok());
+    }
+
+    #[test]
     fn tampered_overlay_fails_the_root_check() {
         let store = PersistentStore::open_in_memory().unwrap();
         commit_turns(&store, &[(1, 100, 1), (2, 200, 2), (3, 300, 3)]);
@@ -588,6 +779,32 @@ mod tests {
     }
 
     #[test]
+    fn install_snapshot_rejects_unpinned_head_coordinates_before_writes() {
+        let shipper = PersistentStore::open_in_memory().unwrap();
+        commit_turns(&shipper, &[(1, 100, 1), (2, 200, 2)]);
+        let snapshot = shipper.ship_snapshot(0).unwrap();
+        let trusted_root = snapshot.claimed_root;
+        let trusted_head = snapshot.head.clone();
+
+        for mutate in [
+            |head: &mut SnapshotHead| head.height += 1,
+            |head: &mut SnapshotHead| head.commit_cursor += 1,
+            |head: &mut SnapshotHead| head.block_executed_up_to += 1,
+            |head: &mut SnapshotHead| head.applied_turn_block_ids[0][0] ^= 0xff,
+        ] {
+            let mut hostile = snapshot.clone();
+            mutate(&mut hostile.head);
+            let joiner = PersistentStore::open_in_memory().unwrap();
+            assert!(matches!(
+                joiner.install_snapshot(&hostile, &trusted_root, &trusted_head),
+                Err(StoreError::Integrity(_))
+            ));
+            assert!(joiner.load_latest_ledger_checkpoint().unwrap().is_none());
+            assert_eq!(joiner.commit_cursor().unwrap(), 0);
+        }
+    }
+
+    #[test]
     fn install_snapshot_makes_a_joiner_recover_the_same_ledger() {
         // Shipping node builds state + a checkpoint.
         let shipper = PersistentStore::open_in_memory().unwrap();
@@ -613,21 +830,70 @@ mod tests {
         let snap = shipper.ship_snapshot(0).unwrap();
         let trusted = snap.claimed_root;
 
-        // Fresh joiner installs the snapshot.
-        let joiner = PersistentStore::open_in_memory().unwrap();
-        let mut ledger = joiner.install_snapshot(&snap, &trusted).unwrap();
-        assert_eq!(ledger.root(), full_replay_root(&shipper));
-
-        // The joiner's durable state now reconstructs the same ledger from its
-        // installed checkpoint ⊕ the overlay installed into its cell index.
-        let (cp_h, cp_ledger2) = joiner.load_latest_ledger_checkpoint().unwrap().unwrap();
-        assert_eq!(cp_h, 2);
-        let mut joiner_rebuilt = cp_ledger2;
-        // install_snapshot put the overlay in the joiner's cell-by-id index
-        // (the joiner has no commit log; the cell index IS its overlay).
-        for c in joiner.installed_overlay_cells().unwrap() {
-            upsert_cell(&mut joiner_rebuilt, c);
+        // Fresh joiner installs the snapshot into a reopenable durable store.
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("joiner.redb");
+        {
+            let joiner = PersistentStore::open(&path).unwrap();
+            let mut ledger = joiner
+                .install_snapshot(&snap, &trusted, &snap.head)
+                .unwrap();
+            assert_eq!(ledger.root(), full_replay_root(&shipper));
         }
-        assert_eq!(joiner_rebuilt.root(), full_replay_root(&shipper));
+
+        // A physical reopen reconstructs only from the canonical recovery authorities:
+        // latest checkpoint plus commit-log overlay. Secondary cell indexes do not count.
+        let reopened = PersistentStore::open(&path).unwrap();
+        let (cp_h, mut recovered) = reopened
+            .load_latest_ledger_checkpoint()
+            .unwrap()
+            .expect("installed head checkpoint");
+        for op in reopened.cell_overlay_since(cp_h).unwrap() {
+            apply_overlay_op(&mut recovered, &op);
+        }
+        assert_eq!(recovered.root(), trusted);
+        assert_eq!(reopened.recovered_ledger_root().unwrap(), Some(trusted));
+        assert_eq!(
+            reopened.recovered_block_cursor().unwrap(),
+            snap.head.block_executed_up_to
+        );
+        assert_eq!(reopened.commit_cursor().unwrap(), snap.head.commit_cursor);
+        assert_eq!(
+            reopened.commit_compacted_floor().unwrap(),
+            snap.head.commit_cursor
+        );
+        let mut restored_turn_ids = reopened.commit_log_block_ids().unwrap();
+        restored_turn_ids.sort_unstable();
+        assert_eq!(restored_turn_ids, snap.head.applied_turn_block_ids);
+
+        // Continuation appends at the shipped cursor; the baseline remains the checkpoint and the
+        // new live record becomes the recovery head.
+        let next_cell = cell(0x55, 1_234);
+        upsert_cell(&mut recovered, next_cell.clone());
+        let next_root = recovered.root();
+        let next = CommitRecord {
+            ordinal: snap.head.commit_cursor,
+            height: snap.head.height + 1,
+            block_id: [0x55; 32],
+            block_executed_up_to: snap.head.block_executed_up_to + 1,
+            turn_hash: [0x56; 32],
+            creator: [0x57; 32],
+            receipt_hash: [0x58; 32],
+            ledger_root: next_root,
+            touched_cells: vec![next_cell],
+            removed: Vec::new(),
+        };
+        reopened
+            .commit_finalized_turn(snap.head.commit_cursor, &next)
+            .unwrap();
+        assert_eq!(reopened.recovered_ledger_root().unwrap(), Some(next_root));
+        assert_eq!(
+            reopened.recovered_block_cursor().unwrap(),
+            next.block_executed_up_to
+        );
+        let applied_ids = reopened.commit_log_block_ids().unwrap();
+        assert_eq!(applied_ids.len() as u64, reopened.commit_cursor().unwrap());
+        assert!(applied_ids.contains(&next.block_id));
+        assert!(reopened.verify_index_agrees_with_log().unwrap().ok());
     }
 }

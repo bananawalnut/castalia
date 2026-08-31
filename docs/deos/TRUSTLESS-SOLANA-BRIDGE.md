@@ -139,7 +139,7 @@ off-chain, and never carry it in every dregg verifier.
 
 1. **Now (shipped):** trusted-oracle threshold attestation (`SolanaLockAttestation`).
 2. **Interim hardening (cheap, build next): watchtower fraud-challenge.** Mirror
-   the `midnight_gateway::Watchtower` pattern (`bridge/src/midnight_gateway.rs`):
+   the `midnight_gateway::Watchtower` pattern (from the now-retired `midnight_gateway.rs`):
    make relaying permissionless and let *anyone* run a watcher that independently
    checks the lock against Solana and publishes a fraud-proof if the oracle signed
    a lock that did not happen. This turns "trust ≥2/3 of the oracle set" into

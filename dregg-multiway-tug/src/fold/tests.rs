@@ -242,12 +242,17 @@ fn mint_custom_leg_wide_geometry_is_coherent_fast() {
              custom producer's row width again.",
         );
 
-    // The dispatch S2+E1-COMPACTED the custom member (the point of the cutover): the producer row is
-    // far narrower than the un-compacted wide custom width (host 1627 + 960 appendix + 48 gentian).
+    // The dispatch S2+E1-COMPACTED the custom member (the point of the cutover). The producer
+    // intentionally stops before the 48-column gentian refuse-aux block, which is filled only at
+    // prove time; pin that exact relationship to the committed descriptor instead of a stale
+    // approximate host-width range.
     let producer_w = trace[0].len();
-    assert!(
-        (1400..1700).contains(&producer_w),
-        "the wide custom producer row must be S2+E1-compacted to the host band (got {producer_w})"
+    assert_eq!(
+        producer_w + 48,
+        desc.trace_width,
+        "the compacted producer must stop exactly before the 48-column gentian block: \
+         producer {producer_w}, descriptor {}",
+        desc.trace_width
     );
     // The PI vector matches the committed descriptor exactly.
     assert_eq!(
@@ -255,11 +260,13 @@ fn mint_custom_leg_wide_geometry_is_coherent_fast() {
         desc.public_input_count,
         "custom leg PI count must match the committed descriptor"
     );
-    // The published 8-felt commitment rides PI 46..54 (the leg's binding anchor).
+    // The published commitment rides the canonical proof-binding PI slice.
     assert_eq!(
-        &dpis[46..54],
+        &dpis[CUSTOM_COMMIT_PI_LO..CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN],
         &commit[..],
-        "the leg publishes the commitment at PI 46..53"
+        "the leg publishes the {CUSTOM_COMMIT_LEN}-felt commitment at PI \
+         {CUSTOM_COMMIT_PI_LO}..{}",
+        CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN - 1
     );
 
     // THE COHERENCE THE PANIC BROKE: the prove-time gentian refuse fill grows the producer row to

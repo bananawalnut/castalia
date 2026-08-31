@@ -1036,6 +1036,8 @@ pub struct CellListEntry {
     pub nonce: u64,
     pub capability_count: usize,
     pub has_delegate: bool,
+    /// Whether the cell carries the separate scoped delegation record.
+    pub has_delegation: bool,
     pub has_program: bool,
     pub found: bool,
 }
@@ -1051,6 +1053,10 @@ pub struct CellDetailResponse {
     /// Alias for JS inspector compat (cell.js + Starbridge Remote expect num_capabilities in some paths).
     pub num_capabilities: usize,
     pub has_delegate: bool,
+    /// Separate from the legacy `delegate` owner pointer. Security-sensitive
+    /// consumers must require both indicators to be false when delegation is
+    /// forbidden by their contract.
+    pub has_delegation: bool,
     pub delegate: Option<String>,
     pub has_program: bool,
     pub public_key: String,
@@ -2532,7 +2538,11 @@ pub fn router_with_cors(
                     post_set_passphrase(connect_info, headers, state, body, limiter)
                 }
             }),
-        );
+        )
+        // Permissionless Castalia membership: the Member Key's signature is
+        // the request authorization. This deliberately sits outside the node
+        // operator bearer-auth layer.
+        .merge(crate::castalia_membership::routes());
 
     // Faucet endpoint (only available in devnet mode).
     if enable_faucet {
@@ -6336,6 +6346,7 @@ async fn get_all_cells(
             nonce: cell.state.nonce(),
             capability_count: cell.capabilities.len(),
             has_delegate: cell.delegate.is_some(),
+            has_delegation: cell.delegation.is_some(),
             has_program: !matches!(cell.program, dregg_cell::CellProgram::None),
             found: true,
         })
@@ -6394,6 +6405,7 @@ fn cell_detail_response(
             capability_count: cell.capabilities.len(),
             num_capabilities: cell.capabilities.len(),
             has_delegate: cell.delegate.is_some(),
+            has_delegation: cell.delegation.is_some(),
             delegate: cell.delegate.as_ref().map(|d| hex_encode(&d.0)),
             has_program: !matches!(cell.program, dregg_cell::CellProgram::None),
             public_key: hex_encode(cell.public_key()),
@@ -6421,6 +6433,7 @@ fn cell_detail_response(
             capability_count: 0,
             num_capabilities: 0,
             has_delegate: false,
+            has_delegation: false,
             delegate: None,
             has_program: false,
             public_key: String::new(),
@@ -9146,8 +9159,7 @@ pub(crate) fn faucet_public_key() -> [u8; 32] {
 pub struct FaucetRequest {
     /// Hex-encoded 32-byte recipient cell ID.
     pub recipient: String,
-    /// Amount of computrons to transfer (max 10000 per request). Use 0 to
-    /// materialize a hosted devnet cell without claiming faucet funds.
+    /// Amount of computrons to transfer (1..=10000 per request).
     pub amount: u64,
     /// Optional hex-encoded Ed25519 public key for the recipient. When set,
     /// the node verifies `recipient == CellId::derive_raw(public_key, default_token_id)`
@@ -9216,11 +9228,8 @@ impl FaucetRateLimiter {
 ///
 /// Only enabled when `--enable-faucet` is set. Rate limited TWICE:
 /// * per recipient cell (1/min) — the original anti-drain bucket; and
-/// * per client IP (proxy-aware, F-1) — covering BOTH the funded and the
-///   `amount == 0` materialization paths. Without the per-IP gate, an attacker
-///   minting a fresh recipient id per request gets a fresh per-cell bucket every
-///   time (unbounded faucet drain), and the zero-amount path inserted unbounded
-///   stub cells into the ledger with NO limit at all.
+/// * per client IP (proxy-aware, F-1), preventing an attacker from minting a
+///   fresh recipient id per request to obtain a fresh per-cell bucket.
 ///
 /// Maximum 10000 computrons per request.
 async fn post_faucet(
@@ -9237,15 +9246,16 @@ async fn post_faucet(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Validate amount. A zero amount is allowed as a devnet materialization
-    // path for hosted cells; it does not consume the per-cell faucet limit.
-    if req.amount > 10_000 {
+    // A zero-amount "materialization" used to mutate the authoritative ledger
+    // without a finalized turn. Active blocklace is the sole writer, including
+    // committee size one, so reject that non-consensus shortcut fail-closed.
+    if req.amount == 0 || req.amount > 10_000 {
         return Ok(Json(FaucetResponse {
             success: false,
             tx_hash: None,
             turn_hash: None,
             amount: 0,
-            error: Some("amount must be between 0 and 10000".to_string()),
+            error: Some("amount must be between 1 and 10000".to_string()),
         }));
     }
 
@@ -11202,7 +11212,12 @@ mod tests {
         // the visible rotation is fine ONLY BECAUSE the panel is communal and
         // unattributed. If anything attributable is ever hung off this panel,
         // the rotation must leave this surface.
+        // Castalia permissionless membership is deliberately public: the join route accepts only
+        // a v2 owner-key proof-of-possession and returns the immutable public membership cell. It
+        // exposes no PoA instance, secret, wallet key, bearer session, or list endpoint; malformed
+        // and unsigned requests fail before issuance.
         let expected = [
+            "castalia_membership",
             "poa_galley_api",
             "poa_holding_api",
             "poa_records_api",
@@ -11790,7 +11805,7 @@ mod tests {
     //      any arm of the producer — or re-introducing a hand-rolled twin in the
     //      gate — flips that variant's observed class and reds this test by name.
     //
-    // Cross-check worth stating: the 29 / 5 / 3 split below is EXACTLY the
+    // Cross-check worth stating: the 29 / 5 / 4 split below is EXACTLY the
     // Descriptor / NamedResidual / RefusedResidual split of
     // `circuit/tests/effect_enum_descriptor_residual_gate.rs`, arrived at from the
     // other end (that gate reads descriptor rungs; this one runs the projector). A
@@ -12140,7 +12155,7 @@ mod tests {
             },
         },
 
-        // ── The 2 RefusedResiduals: the PQ identity authority plane has no AIR row.
+        // ── The 4 RefusedResiduals: the PQ-identity and shielding authority planes have no AIR rows.
         // The payloads are ARBITRARY BYTES, not a real ML-DSA keypair, and that is
         // safe here because the refusal is decided on the VARIANT before any
         // primitive is touched — minting a real key would drag `dregg-pq`'s
@@ -12237,13 +12252,13 @@ mod tests {
             mismatched.len(),
             mismatched.join("\n  ")
         );
-        // The 29/5/3 split mirrors the Descriptor/NamedResidual/RefusedResidual split
+        // The 29/5/4 split mirrors the Descriptor/NamedResidual/RefusedResidual split
         // of `circuit/tests/effect_enum_descriptor_residual_gate.rs`. Pinning it here
         // makes a verb SILENTLY changing posture (a residual quietly gaining or losing
         // a producer arm) red rather than invisible.
         assert_eq!(
             counts,
-            (29, 5, 3),
+            (29, 5, 4),
             "attestable / no-actor-transition / refused split moved; reconcile against \
              effect_enum_descriptor_residual_gate.rs before editing the pin"
         );
@@ -12938,6 +12953,7 @@ mod tests {
             nonce: 1,
             capability_count: 2,
             has_delegate: false,
+            has_delegation: false,
             has_program: true,
             found: true,
         })

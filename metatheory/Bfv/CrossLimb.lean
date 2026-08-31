@@ -1,7 +1,7 @@
 /-
 # Bfv.CrossLimb — the cross-limb hole for ct×ct, STATED and EXHIBITED.
 
-**The lane this closes a step of.** `docs/VERDICTS.md` §7 item 5 and `docs/SELVAGE.md` §7 carry
+**The lane this closes a step of.** The retired *VERDICTS* design note §7 item 5 and retired *SELVAGE* design note §7 carry
 "**cross-limb binding** for ct×ct" as the vFHE #1 named soundness hole, described as: *the verifier
 sees per-limb equations; nothing binds the limbs of one ciphertext together, so a prover could
 satisfy each limb's relation with limbs from different ciphertexts.* **A hole nobody has exhibited

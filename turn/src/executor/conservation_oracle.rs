@@ -117,21 +117,20 @@ pub fn require_verified_conservation_gate() -> bool {
 
 /// Whether THIS build expects a Lean-backed conservation oracle to be installed.
 ///
-/// `true` on **native** (full-Lean) builds — the deployed node links `libdregg_lean.a` via
+/// `true` on **native release** builds — the deployed node links `libdregg_lean.a` via
 /// `dregg-exec-lean` and MUST route the per-asset `Σδ=0` decision through the verified Lean
-/// `conservesFFI`. `false` on the **wasm32 / zkVM guest**, which cannot link the archive and
-/// legitimately decides with the labeled Rust fallback in [`super::atomic`].
+/// `conservesFFI`. An explicit `DREGG_REQUIRE_LEAN=1` promotes a native debug build to the same
+/// policy. `false` on ordinary native debug builds and on the **wasm32 / zkVM guest**, where the
+/// labeled Rust fallback in [`super::atomic`] is deliberately compiled.
 ///
-/// "Native" is `any(unix, windows)` — the SAME discrimination
-/// [`super::atomic::TurnExecutor::check_per_asset_conservation_by_asset`] fails closed on, and the
-/// one `dregg-deploy::refine` already used. This deliberately replaces the older
-/// `not(target_arch = "wasm32")`, which mis-classified the SP1 zkVM guest (a `riscv32`, `target_os =
-/// "zkvm"` target that is not wasm32) as native and would have demanded an archive it cannot link.
-/// The two predicates must agree or the startup check and the decision path disagree about what a
-/// deployed node is.
+/// This is the SAME profile/platform discrimination used by
+/// [`super::atomic::TurnExecutor::check_per_asset_conservation_by_asset`]. Keeping the startup and
+/// decision predicates aligned matters: the previous `any(unix, windows)`-only check panicked
+/// before every archive-less debug node command, even though the debug executor intentionally
+/// compiled and tested the labeled fallback.
 #[inline]
-pub const fn native_build_requires_oracle() -> bool {
-    cfg!(any(unix, windows))
+pub fn native_build_requires_oracle() -> bool {
+    cfg!(all(any(unix, windows), not(debug_assertions))) || require_verified_conservation_gate()
 }
 
 /// FAIL-CLOSED startup check: on a native full-Lean build the conservation oracle MUST be
@@ -146,8 +145,9 @@ pub const fn native_build_requires_oracle() -> bool {
 /// A native node that calls this at startup (see `dregg-exec-lean`) can no longer boot in that
 /// state, so the twin can never run on a deployed node.
 ///
-/// On the wasm32 / zkVM guest (no archive, no Lean) this is a **no-op** `Ok(())`: the labeled Rust
-/// fallback is that build's legitimate, documented no-Lean path.
+/// On an ordinary native debug build and on the wasm32 / zkVM guest this is a **no-op** `Ok(())`:
+/// the labeled Rust fallback is compiled for those build modes. `DREGG_REQUIRE_LEAN=1` promotes
+/// the debug case back to the hard refusal.
 pub fn ensure_conservation_oracle_installed() -> Result<(), &'static str> {
     if native_build_requires_oracle() && !conservation_oracle_installed() {
         return Err(
@@ -171,13 +171,11 @@ pub fn assert_conservation_oracle_installed() {
 mod tests {
     use super::*;
 
-    /// #2 fail-closed reality gate: on a **native** build with NO oracle installed the executor
-    /// must REFUSE (here: the startup check errors), never silently accept via the drifting Rust
-    /// twin. `dregg-turn`'s own test binary can never link the Lean archive, so it never installs
-    /// an oracle — making this the exact "missing Lean archive" state on a native build. On the
-    /// wasm32 / zkVM guest the fallback is legitimate and the check is a no-op.
+    /// The startup check must use the same profile/platform policy as the decision path. Release
+    /// and explicitly Lean-required builds refuse a missing oracle; ordinary debug and guest
+    /// builds keep the labeled fallback available for local testing.
     #[test]
-    fn native_no_oracle_fails_closed() {
+    fn missing_oracle_matches_the_build_mode_policy() {
         if native_build_requires_oracle() {
             // No Lean backend is (or can be) installed in this test binary.
             assert!(
@@ -186,10 +184,10 @@ mod tests {
             );
             assert!(
                 ensure_conservation_oracle_installed().is_err(),
-                "native build with no oracle MUST fail closed, not run the unverified twin"
+                "a release or explicitly Lean-required build must fail closed without its oracle"
             );
         } else {
-            // Guest build: the labeled Rust fallback is the legitimate no-Lean path.
+            // Ordinary debug and guest builds deliberately retain the labeled fallback.
             assert!(ensure_conservation_oracle_installed().is_ok());
         }
     }

@@ -13,6 +13,11 @@ description = "WebAssembly playground for dregg token primitives"
 # and drive its `#[wasm_bindgen]` surface under `wasm-pack test`.
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Forwarded only by the in-browser integration-test command. dregg-pq additionally requires a
+# wasm32 debug build before it accepts this input, so release bundles remain fail-closed.
+wasm-test-unaudited-pq = ["dregg-pq/wasm-test-unaudited-pq"]
+
 [dependencies]
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }

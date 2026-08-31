@@ -47,8 +47,8 @@
 #   dropped. The `#!` counts below are rewritten to match, so a regen always shows in a diff.
 #
 # crate	feature	tier	why
-#!EXPECT_PAIRS=226
-#!EXPECT_T1=136
+#!EXPECT_PAIRS=228
+#!EXPECT_T1=138
 #!EXPECT_T2=3
 #!EXPECT_T3=78
 #!EXPECT_T4=9
@@ -138,6 +138,7 @@ dregg-node-target	default	T1	default@.
 dregg-node-target	http	T1	default@.
 dregg-persist	default	T1	default@.
 dregg-persist	test-support	T3	compile-only restart-audit fixtures for deliberately malformed historical rows
+dregg-pq	wasm-test-unaudited-pq	T1	ci.yml:395 wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq → dregg-wasm/wasm-test-unaudited-pq → dregg-pq/wasm-test-unaudited-pq
 dregg-preflight	default	T1	default@.
 dregg-sdk	default	T1	default@.
 dregg-sdk	dev	T3	the SDK's development-only helpers
@@ -178,6 +179,7 @@ dregg-token	zkvm	T3	the proof-carrying token helpers
 dregg-turn	default	T1	default@.
 dregg-turn	threshold-sig	T1	default@.
 dregg-verifier	default	T1	default@.
+dregg-wasm	wasm-test-unaudited-pq	T1	ci.yml:395 wasm-pack test --headless --chrome . --features wasm-test-unaudited-pq
 dregg-verifier	no-lean-link	T3	EMPTY TIER as of 2026-08-05: it selects no code. The prover-free rotated VERIFY surface (rotated_replay) is now unconditional and this crate links no prover at all, so Lean-freedom and prover-freedom are both STRUCTURAL. Kept only as the name `sel4/Makefile`'s verify-isolation gate builds under.
 dreggnet-catalog	default	T1	default@.
 dreggnet-catalog	private-bazaar-live	T3	the hosted journey for the private/proven Dark Bazaar to exact game consequence

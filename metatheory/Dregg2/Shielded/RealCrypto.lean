@@ -181,7 +181,7 @@ theorem demo_hidden_conservation_pedersen :
 
 /-! ### §1.2 — the in-AIR RANGE GADGET's meaning: field conservation + range ⇒ INTEGER conservation.
 
-The circuit realization (`circuit-prove/src/shielded_ring_clearing_air.rs`, clause (c)) enforces the
+The historical circuit realization (the now-retired `shielded_ring_clearing_air.rs`, clause (c)) enforced the
 conservation `Σ value_in − Σ value_out = 0` as a BabyBear FIELD gate. A field equation ALONE is NOT
 integer conservation: a value-minting ring can satisfy `Σ value_in ≡ Σ value_out (mod p)` by
 WRAPAROUND (an output committed to `p − k`, a "wrapped negative"), minting real value while the field
@@ -244,7 +244,7 @@ theorem inAir_conservation_refines_pedersen [CryptoPrimitives Digest]
 The PQ cutover (`docs/deos/PQ-SHIELDED-COMMITMENT.md`, Option A) retires the DLog Pedersen
 value-commitment as the AUTHORITATIVE shielded value-binding. The authoritative commitment is now the
 in-AIR Poseidon2 `value_binding = hash_fact(value, [asset_type, randomness, 0])` (the spend circuit's
-C7 PI, `circuit-prove/src/shielded/spend_circuit.rs`). Its binding rests on Poseidon2
+C7 PI in the now-retired `spend_circuit.rs`). Its binding rests on Poseidon2
 collision-resistance (`HashCR`) — a QUANTUM-SAFE floor (Grover only halves CR) — NOT discrete-log.
 
 This section names that floor, exactly as §2 names the Poseidon2 TREE root-binding: an

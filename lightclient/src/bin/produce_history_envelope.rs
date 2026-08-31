@@ -12,6 +12,10 @@
 //! cheap verify is in the tab.
 //!
 //! Run: `cargo run -p dregg-lightclient --bin produce_history_envelope --features prover -- [k] [step]`
+//!
+//! To refresh the checked-in real-proof fixtures from the same aggregate, pass
+//! `--fixture-root <repository-root>`. This writes the raw proof, its independently held anchor,
+//! and both browser JSON copies only after the fold has proved and light-verified successfully.
 
 #![cfg(feature = "prover")]
 #![forbid(unsafe_code)]
@@ -21,6 +25,7 @@ use dregg_circuit_prove::ivc_turn_chain::FinalizedTurn;
 use dregg_circuit_prove::joint_turn_aggregation::DescriptorParticipant;
 use dregg_lightclient::{ExternalHistoryEnvelope, fold_and_attest};
 use dregg_turn_prover::rotation_witness::mint_rotated_participant_leg;
+use std::path::{Path, PathBuf};
 
 fn open_permissions() -> dregg_cell::Permissions {
     use dregg_cell::AuthRequired;
@@ -107,10 +112,39 @@ fn b64(bytes: &[u8]) -> String {
     out
 }
 
+fn write_fixture(root: &Path, relative: &str, bytes: &[u8]) {
+    let path = root.join(relative);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap_or_else(|error| {
+            panic!("create fixture directory {}: {error}", parent.display())
+        });
+    }
+    std::fs::write(&path, bytes)
+        .unwrap_or_else(|error| panic!("write fixture {}: {error}", path.display()));
+    eprintln!("wrote {} ({} bytes)", path.display(), bytes.len());
+}
+
 fn main() {
+    let mut positional = Vec::new();
+    let mut fixture_root: Option<PathBuf> = None;
     let mut args = std::env::args().skip(1);
-    let k: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(3);
-    let step: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(7);
+    while let Some(arg) = args.next() {
+        if arg == "--fixture-root" {
+            let root = args
+                .next()
+                .expect("--fixture-root requires a repository-root path");
+            assert!(fixture_root.is_none(), "--fixture-root supplied twice");
+            fixture_root = Some(PathBuf::from(root));
+        } else {
+            positional.push(arg);
+        }
+    }
+    assert!(
+        positional.len() <= 2,
+        "usage: produce_history_envelope [k] [step] [--fixture-root REPOSITORY_ROOT]"
+    );
+    let k: usize = positional.first().and_then(|s| s.parse().ok()).unwrap_or(3);
+    let step: u64 = positional.get(1).and_then(|s| s.parse().ok()).unwrap_or(7);
 
     eprintln!("producing a real {k}-turn whole-history aggregate (the heavy fold)\u{2026}");
     let turns = make_chain(1_000, step, k);
@@ -123,7 +157,8 @@ fn main() {
     // inspection only, and the place the four now-deleted carried publics were emitted
     // from. It now builds the real `ExternalHistoryEnvelope` and serializes it, so a
     // change to the wire format cannot leave this producer behind.
-    let envelope = ExternalHistoryEnvelope::new(anchor_hex.clone(), b64(&agg.to_bytes()));
+    let proof_bytes = agg.to_bytes();
+    let envelope = ExternalHistoryEnvelope::new(anchor_hex.clone(), b64(&proof_bytes));
 
     // `anchor_hex` sits OUTSIDE the envelope on purpose: it is what a verifier is
     // supposed to hold as CONFIG. Shipping it in the same file as the proof means this
@@ -137,10 +172,28 @@ fn main() {
                               verify against it is a consistency check, not a trust decision.",
         "envelope": envelope,
     });
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&baked).expect("the baked artifact serializes")
-    );
+    let baked_json =
+        serde_json::to_string_pretty(&baked).expect("the baked artifact serializes") + "\n";
+    print!("{baked_json}");
+
+    if let Some(root) = fixture_root {
+        write_fixture(
+            &root,
+            "ugc-dregg/tests/fixtures/whole_history_proof.bin",
+            &proof_bytes,
+        );
+        write_fixture(
+            &root,
+            "ugc-dregg/tests/fixtures/whole_history_anchor.hex",
+            format!("{anchor_hex}\n").as_bytes(),
+        );
+        write_fixture(
+            &root,
+            "site/light-client/history.json",
+            baked_json.as_bytes(),
+        );
+        write_fixture(&root, "portal/dist/history.json", baked_json.as_bytes());
+    }
     eprintln!(
         "done: k={} anchor={anchor_hex} (envelope v{})",
         agg.num_turns,

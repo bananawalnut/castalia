@@ -12,6 +12,7 @@
 
 pub mod api;
 pub mod blocklace_sync;
+pub mod castalia_membership;
 pub mod catchup;
 pub mod channels_service;
 pub mod committee_replay;
@@ -418,6 +419,11 @@ pub enum Command {
         /// Data directory to initialize.
         #[arg(long, default_value = "~/.dregg")]
         data_dir: String,
+
+        /// Also write a production committee-of-one genesis descriptor with
+        /// no faucet, demo balances, agents, or Starbridge seed cells.
+        #[arg(long)]
+        solo_genesis: bool,
     },
 
     /// Install the one authenticated Lean-emitted Path of Angels Signal head.
@@ -1310,6 +1316,16 @@ pub async fn run(cli: Cli) {
         )
         .init();
 
+    // Install the verified PQ authorities once in the shared process preamble so
+    // every operational subcommand has them before it can mint or use key
+    // material. In particular, `init --solo-genesis` derives the committee's
+    // long-lived ML-DSA identity while writing genesis; keeping this only in
+    // `run_node` left a freshly built production binary unable to initialize its
+    // own data directory under the fail-closed PQ policy. The standalone
+    // `poa-verify-slot-reveal` path returns above and intentionally remains a
+    // document verifier with no node-startup dependency.
+    install_verified_pq_cores();
+
     match cli.command {
         Command::Run {
             port,
@@ -1366,7 +1382,19 @@ pub async fn run(cli: Cli) {
             )
             .await
         }
-        Command::Init { data_dir } => init::init_node(&data_dir),
+        Command::Init {
+            data_dir,
+            solo_genesis,
+        } => {
+            if solo_genesis {
+                if let Err(error) = init::init_solo_node(&data_dir) {
+                    eprintln!("error: could not initialize production solo node: {error}");
+                    std::process::exit(1);
+                }
+            } else {
+                init::init_node(&data_dir);
+            }
+        }
         Command::InitPoaSignal {
             data_dir,
             deployment_manifest,
@@ -2310,7 +2338,16 @@ async fn run_node(
                                 "genesis.json does not carry a valid explicit consensus-time-v1 policy"
                             ),
                         }
+                        let castalia_membership_authority =
+                            match castalia_membership::authority_from_genesis(&genesis) {
+                                Ok(authority) => authority,
+                                Err(error) => {
+                                    error!(error = %error, "invalid Castalia membership genesis authority; refusing startup");
+                                    std::process::exit(1);
+                                }
+                            };
                         let mut s = node_state.write().await;
+                        s.castalia_membership_authority = castalia_membership_authority;
                         // Set committee_epoch BEFORE loading keys so the
                         // first federation_id derivation uses the correct
                         // epoch.

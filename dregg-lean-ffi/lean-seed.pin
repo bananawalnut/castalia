@@ -29,6 +29,6 @@
 TAG=lean-seed
 LEAN_TOOLCHAIN=leanprover/lean4:v4.30.0
 MATHLIB_REV=1c2b90b13009c65b090d95a83c98e248deafb6f1
-DREGG_CLOSURE_HASH=42469985f260e27ce26eb04a30c2dc73aa048054
-GENERATED_UTC=2026-08-23T07:00:09Z
-NOTE=Linux x86-64 seed published from protected Castalia bootstrap workflow run 32618400655. Assets under this tag are CONTENT-KEYED (see scripts/lean-seed-key.sh), so TAG is stable and this provenance is a reference snapshot for the drift warning only — fetch-lean-seed.sh always resolves the asset from YOUR checkout's key, not from these values.
+DREGG_CLOSURE_HASH=3ff6efcbd92d181373f1a2bd28e61bb6b2faad2f
+GENERATED_UTC=2026-08-30T04:57:07Z
+NOTE=Linux x86-64 seed published from protected Castalia bootstrap tag castalia-bootstrap-v0.1.0-rc.1 and workflow run 33283563597 as immutable content-keyed asset libdregg_lean-Linux-x86_64-v4.30.0-55c2d229de854123.a.zst. Assets under this tag are CONTENT-KEYED (see scripts/lean-seed-key.sh), so TAG is stable and this provenance is a reference snapshot for the drift warning only — fetch-lean-seed.sh always resolves the asset from YOUR checkout's key, not from these values.

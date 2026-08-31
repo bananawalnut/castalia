@@ -194,6 +194,14 @@ pub enum NodeEvent {
 #[derive(Clone)]
 pub struct NodeState {
     inner: Arc<RwLock<NodeStateInner>>,
+    /// Serializes the permissionless Castalia membership check-and-issue path.
+    ///
+    /// The deterministic cell ID prevents duplicate ledger state, but without
+    /// this gate two concurrent requests can both observe an absent cell and
+    /// both report `created: true` while finalization is still in flight. Keep
+    /// the gate outside `NodeStateInner` so it can be held across finalization
+    /// without holding the node's global state lock.
+    castalia_membership_join_gate: Arc<tokio::sync::Mutex<()>>,
     /// Broadcast channel for real-time events (WebSocket push).
     events_tx: broadcast::Sender<NodeEvent>,
     /// Optional gossip handle (set after federation sync starts).
@@ -535,6 +543,10 @@ pub struct NodeStateInner {
     /// Maps verification key hashes to deployed CellPrograms. Used by the executor
     /// to verify proof-carrying turns against custom programs.
     pub program_registry: ProgramRegistry,
+    /// Optional Castalia institutional authority pinned by genesis. Every
+    /// production executor reconstructs its exact membership factory; boot never
+    /// creates a member cell.
+    pub castalia_membership_authority: Option<[u8; 32]>,
 
     // ─── Stingray Budget Coordination ─────────────────────────────────────────
     /// Per-agent budget coordinators for bounded-counter resource metering.
@@ -1141,6 +1153,12 @@ pub struct CipherclerkStatus {
 }
 
 impl NodeState {
+    pub(crate) async fn lock_castalia_membership_join(&self) -> tokio::sync::OwnedMutexGuard<()> {
+        Arc::clone(&self.castalia_membership_join_gate)
+            .lock_owned()
+            .await
+    }
+
     /// Create a new NodeState from a data directory path and peer list.
     ///
     /// Uses the default key file name "node.key" in the data directory.
@@ -1316,6 +1334,7 @@ impl NodeState {
             }
             Ok(None) => {
                 tracing::info!("no ledger checkpoint found, starting with empty ledger");
+
                 (Ledger::new(), 0)
             }
             Err(e) => {
@@ -1459,6 +1478,7 @@ impl NodeState {
                 pir_index_cache: None,
                 discharge_gateway: None,
                 program_registry,
+                castalia_membership_authority: None,
                 budget_coordinators: HashMap::new(),
                 fast_unlock_manager: None,
                 silo_id,
@@ -1504,6 +1524,7 @@ impl NodeState {
                 // None when mirroring is off. See `NodeStateInner::mirror_committed_record`.
                 pg_mirror: None,
             })),
+            castalia_membership_join_gate: Arc::new(tokio::sync::Mutex::new(())),
             events_tx,
             gossip: Arc::new(RwLock::new(None)),
             prove_pool: Arc::new(RwLock::new(None)),
@@ -1657,6 +1678,7 @@ impl NodeState {
                 pir_index_cache: None,
                 discharge_gateway: None,
                 program_registry,
+                castalia_membership_authority: None,
                 budget_coordinators: HashMap::new(),
                 fast_unlock_manager: None,
                 silo_id,
@@ -1702,6 +1724,7 @@ impl NodeState {
                 // None when mirroring is off. See `NodeStateInner::mirror_committed_record`.
                 pg_mirror: None,
             })),
+            castalia_membership_join_gate: Arc::new(tokio::sync::Mutex::new(())),
             events_tx,
             gossip: Arc::new(RwLock::new(None)),
             prove_pool: Arc::new(RwLock::new(None)),
@@ -1816,6 +1839,7 @@ impl NodeState {
             }
         };
         let recovered_root = crate::blocklace_sync::canonical_ledger_root(&s.ledger);
+
         if recovered_root == expected {
             tracing::info!(
                 cells = s.ledger.len(),

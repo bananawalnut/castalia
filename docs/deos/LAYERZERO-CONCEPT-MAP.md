@@ -44,7 +44,7 @@ hidden.
   (fixed-VK per entry point, no general verification primitive), so the bridge
   there is optimistic + a **1-of-N watchtower fraud proof** — strictly stronger
   than X-of-Y (one honest watcher suffices, because the objective evidence is a
-  circuit proof). `bridge/src/midnight_verified.rs`.
+  circuit proof). This was implemented by the now-retired `midnight_verified.rs` watchtower.
 - **Inbound (reading other chains):** "be a full client of the other chain" is
   the design stance, and the verified cores exist: `eth-lightclient/` verifies
   the Altair sync-committee BLS12-381 aggregate signature and the SSZ

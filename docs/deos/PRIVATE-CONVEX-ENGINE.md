@@ -372,7 +372,7 @@ checked against dregg's actual `A` before the constant is relied on.
 | the certificate (feasibility + duality gap, linear) | `exact_clears_iff` (Σ-balance = clearability) generalizes to KKT/gap residual ≤ ε | `metatheory/Market/Clearing.lean` |
 | conserve-over-commitments, decrypt nothing | `created_value_conservation`; `shielded_ring_clears` | `Dregg2/Exec/ShieldedValue.lean`; `metatheory/Market/ShieldedClearing.lean` |
 | STARK over the T-step trace (the apex) | `joint_turn_aggregation` / `Accumulator::finalize` — T iterations fold like T turns | `circuit-prove/src/joint_turn_aggregation.rs`, `.../accumulator.rs` |
-| the T-leg ring solve (existing partial-fill trace) | N-leg variable-cycle + partial-fill-inequality AIR (12/12 teeth) | `circuit-prove/src/shielded_ring_clearing_nleg_air.rs` |
+| the T-leg ring solve (historical partial-fill trace) | N-leg variable-cycle + partial-fill-inequality AIR (12/12 teeth) | retired `shielded_ring_clearing_nleg_air.rs` |
 | shielded positions; conserving settlement | shielded pool + stealth; `settle_ring_verified` | `circuit-prove/src/shielded/pool.rs`; `intent/src/verified_settle.rs` |
 
 **The engine is not a new build — it is fhEgg's decomposition, iterated.** `toBal_mul` is the matvec
@@ -626,6 +626,6 @@ the compute, dregg has the proof; nobody has yet shipped both. That is the priva
 - `Dregg2/Exec/ShieldedValue.lean` — `created_value_conservation` (conserve on commitments).
 - `cell-crypto/src/value_commitment.rs` — the homomorphic 𝔸. `circuit-prove/src/accumulator.rs`,
   `.../joint_turn_aggregation.rs` — the STARK-over-the-fold apex (T iterations fold like T turns).
-- `circuit-prove/src/shielded_ring_clearing_nleg_air.rs` — N-leg partial-fill trace (the ring solve).
+- Retired `shielded_ring_clearing_nleg_air.rs` — N-leg partial-fill trace (the ring solve).
 - `docs/deos/DREX-DESIGN.md`, `PQ-SHIELDED-COMMITMENT.md`, `project-verified-layout-optimizer` (memory)
   — the exchange, the PQ-binding residual, and the translation-validation pattern the certificate reuses.

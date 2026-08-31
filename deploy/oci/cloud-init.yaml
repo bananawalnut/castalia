@@ -1,0 +1,37 @@
+#cloud-config
+# Base image: Ubuntu 24.04 AArch64 on OCI Always Free Ampere A1.
+# This prepares the runtime host only. It deliberately does not create node
+# identity, copy source, compile code, or start Dregg; install.sh consumes the
+# protected release bundle after the public hostname is known.
+package_update: true
+package_upgrade: false
+
+packages:
+  - age
+  - caddy
+  - curl
+  - jq
+  - shellcheck
+  - ufw
+
+write_files:
+  - path: /etc/sysctl.d/60-dregg-network.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      net.ipv4.tcp_syncookies = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+
+runcmd:
+  - [ufw, default, deny, incoming]
+  - [ufw, default, allow, outgoing]
+  - [ufw, allow, OpenSSH]
+  - [ufw, allow, 80/tcp]
+  - [ufw, allow, 443/tcp]
+  - [ufw, --force, enable]
+  - [sysctl, --system]
+
+final_message: "Castalia OCI base host is ready; cloud-init completed in $UPTIME seconds."

@@ -447,23 +447,49 @@ mod tests {
         assert_eq!(restored.record_json(), world.record_json());
     }
 
-    /// Drive the shortest run that BANKS a relic: delve, slay the floor-1 guardian, probe the
-    /// relic slots until the one lying on floor 1 loots (a refusal preserves the journal, so
-    /// probing is sound), then flee — flee banks the carried relic and settlement mints its note.
+    /// Drive the shortest run that BANKS a relic: select a deterministic drawn map that actually
+    /// has a floor-1 relic, delve, slay that map's floor-1 guardian, loot the known slot, climb to
+    /// the surface, then flee.
+    /// The test used to pin seed 22 and assume its draw forever; the day-family mapping changed and
+    /// left that seed with no floor-1 relic, making a wire test fail before it reached the wire.
     fn world_with_a_banked_note() -> NativeDescentWorld {
-        let mut world = NativeDescentWorld::try_new(22).expect("native world opens");
+        let offering = NativeDescentOffering::new();
+        let (seed, drawn) = (0..251u64)
+            .find_map(|seed| {
+                let drawn = offering.day_world_for_seed(seed).ok()?;
+                drawn.homes.contains(&1).then_some((seed, drawn))
+            })
+            .expect("the verified day family contains a map with a floor-1 relic");
+        let relic = drawn
+            .homes
+            .iter()
+            .position(|&floor| floor == 1)
+            .expect("the selected map has a floor-1 relic");
+        let mut world = NativeDescentWorld::try_new(seed).expect("native world opens");
         assert_eq!(
             value(&world.advance("delve".to_string(), 0, "alice".to_string()))["ok"],
             true
         );
+        for _ in 0..drawn.guard_hp(1) {
+            assert_eq!(
+                value(&world.advance("smite".to_string(), 0, "alice".to_string()))["ok"],
+                true
+            );
+        }
         assert_eq!(
-            value(&world.advance("smite".to_string(), 0, "alice".to_string()))["ok"],
-            true
+            value(&world.advance(
+                "loot".to_string(),
+                i32::try_from(relic).expect("the fixed relic set fits the action wire"),
+                "alice".to_string(),
+            ))["ok"],
+            true,
+            "the selected floor-1 relic loots after its drawn guardian falls"
         );
-        let looted = (0..8).any(|relic| {
-            value(&world.advance("loot".to_string(), relic, "alice".to_string()))["ok"] == true
-        });
-        assert!(looted, "some relic lies on floor 1");
+        assert_eq!(
+            value(&world.advance("ascend".to_string(), 0, "alice".to_string()))["ok"],
+            true,
+            "flee is terminal only at the surface, so the run must climb home first"
+        );
         assert_eq!(
             value(&world.advance("flee".to_string(), 0, "alice".to_string()))["ok"],
             true

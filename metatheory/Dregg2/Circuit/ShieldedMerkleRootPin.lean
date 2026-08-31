@@ -10,7 +10,7 @@ PROVER-SUPPLIED root and checks membership against **that** root:
     the root is a wire field of the transfer payload;
   * `verify_stark_with_wide_bindings(&transfer, …)` (`apply.rs:1753`) proves each input note is a
     member of the tree at `payload.merkle_root` — the shielded-spend uni-STARK
-    (`circuit-prove/src/shielded/spend_circuit.rs`) folds `parent = hash_fact(current,[sib0,sib1,sib2,pos])`
+    (the now-retired `spend_circuit.rs`) folds `parent = hash_fact(current,[sib0,sib1,sib2,pos])`
     up the 4-ary path and pins the last row's `current` to the `merkle_root` PI
     (`transfer.rs:91` `public_inputs`, `pis[MERKLE_ROOT] = merkle_root`);
   * **nowhere** is `payload.merkle_root` compared to any COMMITTED accumulator root — the state

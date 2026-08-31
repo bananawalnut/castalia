@@ -3,7 +3,7 @@
 //! Validates the `emit-from-Lean` pattern on the `note_spending` family: the descriptor whose
 //! constraint SEMANTICS are now authored in `metatheory/Dregg2/Circuit/Emit/NoteSpendingLeafEmit.lean`
 //! (`noteSpendLeafDesc`) and byte-pinned there (`emitVmJson2` `#guard`). This test READS those EXACT
-//! bytes ([`GOLDEN_JSON`]) and:
+//! bytes ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode EQUALS the PRODUCTION Rust
 //!      lowering [`note_spend_to_descriptor2`] — the independently-built descriptor `circuit-prove`
@@ -56,7 +56,8 @@ use dregg_circuit_prove::note_spend_leaf_adapter::{
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/note-spend-leaf.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/note-spend-leaf.json");
 
 // Mint-extension columns (from `note_spend_leaf_adapter`): the 3 columns appended past the source
 // width, then the per-site chip lanes.
@@ -146,7 +147,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 /// lowering (Lean emit ≡ Rust semantics), with the expected shape.
 #[test]
 fn note_spend_emit_decodes_to_production_lowering() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let production =
         note_spend_to_descriptor2().expect("the production note-spend lowering builds");
     assert_eq!(
@@ -184,7 +186,7 @@ fn note_spend_emit_decodes_to_production_lowering() {
 /// and re-verifies against its 7-slot claim tuple.
 #[test]
 fn honest_note_spend_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let w = make_witness(0x10);
     let (trace, pis) = honest_base_trace(&w);
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
@@ -197,7 +199,7 @@ fn honest_note_spend_proves_and_verifies() {
 /// `PiBinding{First, col::NULLIFIER, pi0}` is violated → UNSAT. The nullifier is bound to the spend.
 #[test]
 fn forged_nullifier_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let w = make_witness(0x21);
     let (trace, pis) = honest_base_trace(&w);
     assert!(
@@ -216,7 +218,7 @@ fn forged_nullifier_pi_refuses() {
 /// `PiBinding{Last, CURRENT, pi1}` (and the MINT_ROOT pin at pi1) is violated → UNSAT.
 #[test]
 fn forged_merkle_root_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let w = make_witness(0x32);
     let (trace, pis) = honest_base_trace(&w);
     assert!(
@@ -235,7 +237,7 @@ fn forged_merkle_root_pi_refuses() {
 /// `PiBinding{First, MINT_HASH_COL, pi6}` over the in-AIR-recomputed identity is violated → UNSAT.
 #[test]
 fn forged_mint_hash_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let w = make_witness(0x43);
     let (trace, pis) = honest_base_trace(&w);
     assert!(
@@ -256,7 +258,7 @@ fn forged_mint_hash_pi_refuses() {
 /// the tampered inputs serves → UNSAT. A forged co-path is refused (the membership tooth).
 #[test]
 fn tampered_merkle_sibling_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let w = make_witness(0x54);
     let (mut trace, pis) = honest_base_trace(&w);
     assert!(

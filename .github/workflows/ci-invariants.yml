@@ -189,7 +189,10 @@ jobs:
   falsifiers:
     name: Invariant 2 — EVERY FALSIFIER RUNS AND PASSES
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # A cold hosted runner needs roughly 90 minutes just to compile and execute
+    # the current registry. Keep a hard ceiling, but leave enough room for every
+    # row to produce a verdict instead of cancelling the tail of the registry.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
         with:
@@ -206,5 +209,10 @@ jobs:
         with:
           toolchain: nightly-2026-06-21
       - uses: Swatinem/rust-cache@v2
+      # Several registered falsifiers exercise verified round-advance,
+      # descriptor-wire, shared-budget, and ML-DSA exports. Without the exact
+      # content-keyed seed those tests fail closed on a missing capability, so
+      # an unarmed run is not a verdict on the falsifier registry.
+      - uses: ./.github/actions/lean-seed
       - name: ci-invariants.sh falsifiers
         run: bash scripts/ci-invariants.sh falsifiers

@@ -2,7 +2,7 @@
 //!
 //! The descriptor is AUTHORED in Lean (`metatheory/Dregg2/Circuit/Emit/TemporalPredicateEmit.lean`,
 //! `temporalPredicateDesc`) and its wire string is byte-pinned there (`emitVmJson2` `#guard`). This
-//! test READS those EXACT bytes ([`GOLDEN_JSON`]) and:
+//! test READS those EXACT bytes ([`EMITTED_DESCRIPTOR_JSON`]) and:
 //!
 //!   1. DECODES it via [`parse_vm_descriptor2`] and asserts the decode equals an independently
 //!      hand-built `EffectVmDescriptor2` (Lean emit ≡ Rust builder — a byte drift on either side
@@ -31,8 +31,6 @@
 //! bindings are exactly the audit-`ce1e2def #3` anti-forge surface — no more (the interior
 //! state-root gap is preserved, not laundered).
 
-use std::panic::AssertUnwindSafe;
-
 use dregg_circuit::descriptor_ir2::{
     EffectVmDescriptor2, MemBoundaryWitness, VmConstraint2, WindowExpr, WindowGateSpec,
     parse_vm_descriptor2, prove_vm_descriptor2, verify_vm_descriptor2,
@@ -53,7 +51,8 @@ use dregg_circuit::refusal::{Outcome, classify};
 /// that set again — the fix is to have no copy. `check-emit-gate-weld.py` still gates
 /// the literals that remain (the descriptors with no checked-in artifact to name), and
 /// `check-descriptor-drift.sh` gates this file against its Lean author.
-const GOLDEN_JSON: &str = include_str!("../../circuit/descriptors/by-name/temporal-predicate.json");
+const EMITTED_DESCRIPTOR_JSON: &str =
+    include_str!("../../circuit/descriptors/by-name/temporal-predicate.json");
 
 // --- Trace column layout (must match `TemporalPredicateEmit.lean` §1). ---
 const VALUE: usize = 0;
@@ -115,12 +114,16 @@ fn hand_built_desc() -> EffectVmDescriptor2 {
             LeanExpr::Var(THRESHOLD),
         ),
     )));
-    // C2[i]: bit · (bit − 1), i in 0..30.
+    // C2[i]: bit · (bit − 1), i in 0..30, in the canonical Lean normal form
+    // `1 * (bit * bit) + (-1) * bit`.
     for i in 0..NUM_DIFF_BITS {
         let b = DIFF_BITS_START + i;
-        constraints.push(gate(LeanExpr::mul(
-            LeanExpr::Var(b),
-            LeanExpr::add(LeanExpr::Var(b), LeanExpr::Const(-1)),
+        constraints.push(gate(LeanExpr::add(
+            LeanExpr::mul(
+                LeanExpr::Const(1),
+                LeanExpr::mul(LeanExpr::Var(b), LeanExpr::Var(b)),
+            ),
+            LeanExpr::mul(LeanExpr::Const(-1), LeanExpr::Var(b)),
         )));
     }
     // C3: Σ 2^i·bit_i − diff.
@@ -293,7 +296,8 @@ fn rejects(desc: &EffectVmDescriptor2, trace: &[Vec<BabyBear>], pis: &[BabyBear]
 
 #[test]
 fn temporal_predicate_emit_decodes_to_hand_built() {
-    let decoded = parse_vm_descriptor2(GOLDEN_JSON).expect("the Lean-emitted golden JSON decodes");
+    let decoded = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON)
+        .expect("the Lean-emitted descriptor JSON decodes");
     let hand = hand_built_desc();
     assert_eq!(
         decoded, hand,
@@ -327,7 +331,7 @@ fn temporal_predicate_emit_decodes_to_hand_built() {
 
 #[test]
 fn honest_temporal_run_proves_and_verifies() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_trace();
     let proof = prove_vm_descriptor2(&desc, &trace, &pis, &MemBoundaryWitness::default(), &[])
         .expect("the honest GTE run must prove (all values ≥ threshold, counters + bindings hold)");
@@ -344,7 +348,7 @@ fn honest_temporal_run_proves_and_verifies() {
 /// high bit, so C3 (recompose) and C4 (high bit) are UNSAT. THE non-negativity / predicate tooth.
 #[test]
 fn below_threshold_value_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_trace();
     // sanity: the honest trace is ACCEPTED (non-vacuity of the negative below).
     assert!(
@@ -367,7 +371,7 @@ fn below_threshold_value_refuses() {
 /// `PiBinding` (`local[THRESHOLD] == pi[1]`) is UNSAT.
 #[test]
 fn forged_threshold_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, mut pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     pis[PI_THRESHOLD] = BabyBear::new(51); // claim a different threshold than the trace carries
@@ -381,7 +385,7 @@ fn forged_threshold_pi_refuses() {
 /// STATE_ROOT `PiBinding` (`local[STATE_ROOT] == pi[3]`) is UNSAT.
 #[test]
 fn forged_final_state_root_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, mut pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     pis[PI_FINAL_STATE_ROOT] = BabyBear::new(99999);
@@ -395,7 +399,7 @@ fn forged_final_state_root_pi_refuses() {
 /// `PiBinding` (`local[ACCUMULATOR] == pi[0]`) is UNSAT (the real trace's last accumulator is 4).
 #[test]
 fn forged_padded_len_pi_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, mut pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     pis[PI_PADDED_LEN] = BabyBear::new(8); // claim 8 steps over a 4-row trace
@@ -410,7 +414,7 @@ fn forged_padded_len_pi_refuses() {
 /// are UNSAT.
 #[test]
 fn broken_accumulator_counter_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     let mut bad = trace.clone();
@@ -426,7 +430,7 @@ fn broken_accumulator_counter_refuses() {
 /// transition (`next.threshold − local.threshold`) is UNSAT.
 #[test]
 fn mutated_last_row_threshold_refuses() {
-    let desc = parse_vm_descriptor2(GOLDEN_JSON).expect("decode");
+    let desc = parse_vm_descriptor2(EMITTED_DESCRIPTOR_JSON).expect("decode");
     let (trace, pis) = honest_trace();
     assert!(!rejects(&desc, &trace, &pis), "honest anchor");
     let mut bad = trace.clone();

@@ -26,6 +26,8 @@ This is NOT part of `lake build` (it lives under scripts/, outside the globbed
 libs). Regenerate with, from the metatheory/ directory:
 
     lake env lean --run scripts/gen_fri_fold_template.lean
+
+Set `DREGG_GNARK_EMITTED_DIR` to redirect output for CI drift comparison.
 -/
 import Dregg2.Circuit.Emit.GnarkVerifier.FriFoldEmit
 import Dregg2.Circuit.Emit.GnarkVerifier.EmitJson
@@ -64,11 +66,13 @@ def renderWitness (l : List Fr) : String :=
   "[" ++ String.intercalate "," (l.map (fun x => toString x.val)) ++ "]"
 
 def main : IO Unit := do
+  let dir := (← IO.getEnv "DREGG_GNARK_EMITTED_DIR").getD "../chain/gnark/emitted"
+  IO.FS.createDirAll dir
   let json := emitGnarkJson (friFoldData foldS0 foldS1 katBeta0 foldClaimed foldBits)
-  let tplPath := "../chain/gnark/emitted/fri_fold_template.json"
+  let tplPath := s!"{dir}/fri_fold_template.json"
   IO.FS.writeFile tplPath json
   IO.println s!"template: wrote {json.length} bytes to {tplPath}"
   let wit := renderWitness honestAssigns
-  let witPath := "../chain/gnark/emitted/fri_fold_witness.json"
+  let witPath := s!"{dir}/fri_fold_witness.json"
   IO.FS.writeFile witPath wit
   IO.println s!"witness: wrote {honestAssigns.length} honest values to {witPath}"

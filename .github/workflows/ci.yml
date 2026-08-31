@@ -104,7 +104,13 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # The workspace/all-targets check plus its explicitly recovered feature
+    # surfaces already consumes ~24 minutes on a cold hosted runner. The
+    # verified-PQ Polis leg then builds for another ~15 minutes before running
+    # its seam tests. A 45-minute job timeout killed that test process and
+    # skipped the two feature legs below without producing a verdict. Keep a
+    # hard bound, but give the complete documented surface enough room to run.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,7 +170,12 @@ jobs:
           echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.elan/bin:$PATH"
           bash scripts/fetch-lean-seed.sh
-      - run: cargo test --locked -p starbridge-polis --features deos
+      # The DEOS seam tests share the process-global verified-PQ authority.
+      # Running several libtest workers against it concurrently stalled four
+      # named tests until the old job timeout cancelled the lane. Serial
+      # libtest execution preserves every target and assertion while making
+      # ownership of the verified core deterministic and the verdict bounded.
+      - run: cargo test --locked -p starbridge-polis --features deos -- --test-threads=1
         env:
           DREGG_TEST_REQUIRE_LEAN: "1"
       # dregg-doc has NO `default` key in [features], so — exactly like dregg-chain
@@ -356,18 +367,41 @@ jobs:
 
       # THE GATE. The ~78 `#[test]`s (68 in src/, 10 in tests/) are ordinary
       # native tests — they are the ones the manifest bug hid, and they run here.
-      - name: cargo test (the ~78 native tests the manifest bug hid)
+      #
+      # This standalone workspace deliberately enables `no-lean-link`: the
+      # browser graph cannot link libdregg_lean.a. Two host tests exercise the
+      # hybrid-finality transcript with real ML-DSA keys, so they must explicitly
+      # accept the crate backend in THIS TEST PROCESS. Keep the declaration on
+      # this step, never at job/workflow scope: the production wasm32 bundle
+      # above must build with the fail-closed default, and the protected node
+      # release independently requires and runtime-asserts the verified cores.
+      - name: cargo test (native logic; explicit unverified PQ test backend)
         working-directory: wasm
+        env:
+          DREGG_ALLOW_UNAUDITED_PQ: "1"
         run: cargo test
 
       # The 8 `#[wasm_bindgen_test]`s are a different population: two files carry
       # `wasm_bindgen_test_configure!(run_in_browser)`, so they need a real
       # browser, not node. ubuntu-latest ships Chrome; wasm-pack drives it
       # headless. This is the only place the in-browser surface (the card-in-the-
-      # tab loop, the light-client-in-the-tab) is exercised at all.
-      - name: wasm-pack test (the in-browser wasm_bindgen_test surface)
+      # tab loop, the light-client-in-the-tab) is exercised at all. A browser has
+      # no process environment, so the native step's DREGG_ALLOW_UNAUDITED_PQ
+      # cannot reach it. The named feature below is test-only in mechanism, not
+      # convention: dregg-pq also requires wasm32 + debug_assertions. The release
+      # bundle built above cannot take the bypass even if the feature is forwarded.
+      - name: wasm-pack test (explicit archive-less PQ test backend)
         working-directory: wasm
-        run: wasm-pack test --headless --chrome
+        env:
+          # Browser tests link the complete proof/light-client surface. A debug
+          # module is too large for Chrome to instantiate reliably, while the
+          # test-only PQ backend deliberately requires debug_assertions. Build
+          # optimized release code but retain that assertion gate.
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
+          RUSTFLAGS: "-C link-arg=-zstack-size=33554432"
+        run: >-
+          wasm-pack test --release --headless --chrome .
+          --features wasm-test-unaudited-pq
 
 
   # EXCLUDED-WORKSPACES GATE (2026-07-17, CI-meaningfulness audit Track A2).
@@ -518,11 +552,19 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    # macOS is a supplemental platform-compile + marshal-safe runtime lane. Linux
+    # is intentionally fanned out by `linux-nextest-shard` below and is the complete
+    # verified-Lean suite. No Darwin-arm64 seed is published, so executing a test
+    # binary that deliberately installs dregg-pq-testkit must fail closed before its
+    # first PQ operation. The reviewed manifest + metadata classifier below compiles
+    # every package but executes only the packages which do not take that test edge.
+    # It fails on exclusion drift, so a new PQ test dependency cannot silently narrow
+    # this lane. See scripts/ci-macos-marshal-packages.py.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [macos-latest]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -578,6 +620,7 @@ jobs:
       # ONLY sanctioned way to stay unarmed WITH a pinned seed is to commit
       # `LEAN_GATE_INTENTIONALLY_UNARMED=1` to the pin — visible in review, never silent.
       - name: Fetch the CI-published Lean seed (arms the test gate below)
+        if: runner.os == 'Linux'
         id: seed
         continue-on-error: true
         env:
@@ -595,6 +638,7 @@ jobs:
           bash scripts/fetch-lean-seed.sh
 
       - name: Arm the Lean test gate, or declare the lane unarmed (no silent vacuous green)
+        if: runner.os == 'Linux'
         id: arm
         run: |
           set -euo pipefail
@@ -637,7 +681,7 @@ jobs:
       # a headless runner does not have, a starbridge-tussle spin loop). That first
       # workspace run needed an external watchdog to complete at all. `.config/
       # nextest.toml` now gives every profile a `terminate-after`, so a hang is a
-      # named TIMEOUT failure instead of a job that burns its 150 minutes and tells
+      # named TIMEOUT failure instead of a job that burns its wall-clock budget and tells
       # you nothing. ⚠ Those root causes are owned work and a timeout is NOT their
       # fix — see THE TIMEOUT DOCTRINE in that file.
       #
@@ -653,39 +697,24 @@ jobs:
       #
       # ⚠ nextest DOES NOT RUN DOCTESTS — it cannot, there is no libtest harness for
       # them. That is 210 doctest targets here, carrying 54 passing and 4 REAL
-      # FAILING doc examples in the reference run. They are recovered by the
-      # `cargo test --doc` step below, which is NOT optional and must stay adjacent
-      # to this one.
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
-      # macOS links the full workspace (incl. deos-zed's windowed gpui editor) via
-      # ld64 — green, so keep it whole.
+      # FAILING doc examples in the reference run. They are recovered by each
+      # `macos-marshal-shard` job's adjacent `cargo test --doc` invocation below;
+      # that recovery is mandatory and its package union is exact.
       - if: runner.os == 'macOS'
-        name: Test workspace (nextest, process-per-test)
+        name: Compile every macOS target (including verified-PQ test packages)
         env:
-          DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo nextest run --profile full --workspace --no-fail-fast
-      # THE DOCTEST LEG — nextest runs no doctests, so without this the migration
-      # above would silently drop 210 targets. `--doc` implies the lib targets only,
-      # and it is the ONLY thing in this file that executes a doc example.
-      - if: runner.os == 'macOS'
-        name: Doctests (the 210 targets nextest structurally cannot run)
-        env:
-          DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo test --workspace --doc
-      # Linux SIGBUS root cause: it is NOT one heavy crate. The full debug-build
-      # `target/` of the WHOLE workspace overruns the hosted runner's small disk,
-      # and whichever link steps are running when / hits zero ALL die at once as
-      # `collect2: ld terminated with signal 7 [Bus error]` — a write into GNU ld's
-      # mmap'd output faults when the file can't be extended (disk full). The proof:
-      # the crash hits SIMULTANEOUSLY across unrelated, LIGHT protocol crates
-      # (starbridge-agent-orchestration / starbridge-tool-access-delegation — no
-      # gpui/servo in their graph), and a sibling run surfaces the identical root
-      # cause as a plain `No space left on device (os error 28)`. Fixed at the root
-      # WITHOUT dropping any crate: (1) the disk-reclaim step above, and (2) build
-      # the tests with debuginfo OFF (CARGO_PROFILE_*_DEBUG=0), which slashes both
-      # the on-disk object footprint AND GNU ld's link-time memory so the link fits.
-      # Every crate — incl. all starbridge-apps — still LINKS and TESTS here.
+          DREGG_TEST_REQUIRE_LEAN: "0"
+        run: cargo check --locked --workspace --all-targets
+      # Linux SIGBUS root cause: it is NOT one heavy crate. Even serialized links
+      # with debuginfo disabled eventually retain too many artifacts in one full
+      # workspace target tree; rust-lld then faults while mmap-writing an ordinary
+      # protocol test binary. The hosted runner started with 116 GB free, so runner
+      # cleanup alone is not a durable fix. Build the exact same package roots in
+      # three deterministic shards and `cargo clean` between them. This bounds the
+      # target tree while preserving every generic package exactly once, every
+      # doctest, nextest's process-per-test attribution, and the full all() profile.
+      # `scripts/ci-nextest-shard.py` fails closed if the three documented split
+      # targets drift, and its unit test proves the generic package union is exact.
       #
       # deos-zed alone stays off this gate (the vendored full Zed/IDE fork: its
       # windowed gpui screenshot targets link the entire desktop/accessibility
@@ -742,29 +771,58 @@ jobs:
       # (check does not link), and all four are still LINKED AND RUN by the whole macOS
       # `cargo test --workspace` above.
       - if: runner.os == 'Linux'
-        name: Test workspace (nextest; debuginfo off; deos-zed + the two ELF-unlinkable cdylibs split out)
+        name: Test workspace in bounded shards (nextest + doctests; exact package union)
         env:
-          # Four unrelated rust-lld processes reached ENOSPC together on the
-          # hosted runner. Two concurrent links then made ld.lld die with SIGBUS
-          # while linking the large deos-view test graph. Serialize links so the
-          # full suite stays within both the runner's disk and memory-map limits.
+          # Serialize links inside each bounded target tree as a second guard
+          # against transient linker memory and mmap pressure.
           CARGO_BUILD_JOBS: "1"
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
           DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
         run: |
+          set -euo pipefail
           df -h /
-          cargo nextest run --profile full --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --no-fail-fast
-      # THE DOCTEST LEG — see the block above the macOS step. nextest structurally
-      # cannot run doctests; this is the only step on this runner that does. It
-      # carries the same excludes for the same ELF-link reason.
-      - if: runner.os == 'Linux'
-        name: Doctests (the 210 targets nextest structurally cannot run)
-        env:
-          CARGO_PROFILE_DEV_DEBUG: "0"
-          CARGO_PROFILE_TEST_DEBUG: "0"
-          DREGG_TEST_REQUIRE_LEAN: ${{ steps.arm.outputs.armed }}
-        run: cargo test --workspace --exclude deos-zed --exclude grain-verify-wasm --exclude starbridge-web --doc
+          metadata="$RUNNER_TEMP/cargo-metadata.json"
+          cargo metadata --locked --no-deps --format-version 1 > "$metadata"
+          status=0
+          for shard in 0 1 2; do
+            package_file="$RUNNER_TEMP/nextest-packages-$shard.txt"
+            config_file="$RUNNER_TEMP/nextest-$shard.toml"
+            python3 scripts/ci-nextest-shard.py \
+              --metadata "$metadata" \
+              --shard-index "$shard" \
+              --shard-count 3 \
+              --packages-output "$package_file" \
+              --config-output "$config_file"
+
+            mapfile -t package_names < "$package_file"
+            package_args=()
+            for package in "${package_names[@]}"; do
+              package_args+=(--package "$package")
+            done
+
+            if ! cargo nextest run --locked \
+              --config-file "$config_file" \
+              --profile full \
+              "${package_args[@]}" \
+              --no-fail-fast; then
+              status=1
+            fi
+            # nextest structurally cannot run doctests, so each shard recovers
+            # its own doc targets before its bounded target tree is removed.
+            if ! cargo test --locked "${package_args[@]}" --doc; then
+              status=1
+            fi
+
+            # Clean only between shards. Keeping the final bounded tree lets
+            # the two explicit recovery legs below reuse shared dependencies
+            # without rebuilding the entire node/circuit spine a fourth time.
+            if [ "$shard" -lt 2 ]; then
+              cargo clean
+            fi
+            df -h /
+          done
+          exit "$status"
       # THE RECOVERY STEP — this is what makes the exclusion above cost zero tests rather
       # than nine. It must stay adjacent to it: an exclusion whose recovery drifts away is
       # the silent narrowing this repo keeps paying for.
@@ -796,6 +854,291 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo test -p deos-zed --no-default-features --features firmament
+
+  # The platform-wide macOS compile gate above completes in about 23 minutes,
+  # but executing all 15,425 marshal-safe tests in one nextest invocation made
+  # the hosted runner lose communication after 2,865 verdicts. Keep compilation
+  # and execution as separate evidence: every target still compiles once in the
+  # required `Test (macos-latest)` check, while these deterministic package-root
+  # shards execute the exact marshal-safe union. Two test processes per runner
+  # bound CPU and memory pressure without narrowing tests or doctests.
+  macos-marshal-shard:
+    name: macOS marshal-safe shard ${{ matrix.label }}/8
+    needs: [test]
+    runs-on: macos-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: 0, label: "01" }
+          - { shard: 1, label: "02" }
+          - { shard: 2, label: "03" }
+          - { shard: 3, label: "04" }
+          - { shard: 4, label: "05" }
+          - { shard: 5, label: "06" }
+          - { shard: 6, label: "07" }
+          - { shard: 7, label: "08" }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-marshal-source-deps
+          cache-targets: "false"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Materialize the exact marshal-safe package shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_COUNT: "8"
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts.tests.test_ci_macos_marshal_packages
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/cargo-metadata.json"
+          python3 scripts/ci-macos-marshal-packages.py \
+            --metadata "$RUNNER_TEMP/cargo-metadata.json" \
+            --exclusions .github/macos-marshal-test-exclusions.txt \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count "$SHARD_COUNT" \
+            --packages-output "$RUNNER_TEMP/macos-marshal-packages.txt" \
+            --excluded-output "$RUNNER_TEMP/macos-verified-pq-compile-only.txt" \
+            --config-output "$RUNNER_TEMP/macos-nextest.toml"
+          cat "$RUNNER_TEMP/macos-marshal-packages.txt"
+          echo "Verified-PQ packages compiled by the platform gate but not executed without a Darwin Lean seed:"
+          cat "$RUNNER_TEMP/macos-verified-pq-compile-only.txt"
+
+      - name: Test complete marshal-safe shard (nextest + doctests)
+        env:
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          DREGG_TEST_REQUIRE_LEAN: "0"
+        run: |
+          set -euo pipefail
+          package_args=()
+          while IFS= read -r package; do
+            package_args+=(--package "$package")
+          done < "$RUNNER_TEMP/macos-marshal-packages.txt"
+
+          status=0
+          cargo nextest run --locked \
+            --config-file "$RUNNER_TEMP/macos-nextest.toml" \
+            --profile full \
+            --test-threads 2 \
+            "${package_args[@]}" \
+            --no-fail-fast || status=1
+          cargo test --locked "${package_args[@]}" --doc -- --test-threads=2 || status=1
+          exit "$status"
+
+  # The complete Linux suite is fanned out, but it is still a verified-Lean suite.
+  # The previous three-shard job armed DREGG_TEST_REQUIRE_LEAN for the entire
+  # workspace: its first shard selected 76 package roots, expanded to 6,224 nextest
+  # processes, and was cancelled at GitHub's six-hour wall after only 336 verdicts.
+  # That was not a reason to disarm the suite: ordinary package tests include real
+  # admission-oracle and verified-PQ assertions which correctly fail closed without
+  # the archive. Sixteen shards bound the target/test population while each shard
+  # downloads the same content-keyed, provenance-checked seed used by the dedicated
+  # verified lanes.
+  #
+  # These jobs run the exact `full` profile (`all()`), every generic package exactly
+  # once, and the corresponding doctests with DREGG_REQUIRE_LEAN=1. The independent
+  # `lean-marshal-gate`, its 53-assertion runtime-probe floor, the PQ committee
+  # lifecycle, and the protected bootstrap workflow's production
+  # issuance/retry/restart smoke remain separate defense-in-depth gates.
+  linux-nextest-shard:
+    name: Linux full-suite shard ${{ matrix.label }}/16
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: 0, label: "01" }
+          - { shard: 1, label: "02" }
+          - { shard: 2, label: "03" }
+          - { shard: 3, label: "04" }
+          - { shard: 4, label: "05" }
+          - { shard: 5, label: "06" }
+          - { shard: 6, label: "07" }
+          - { shard: 7, label: "08" }
+          - { shard: 8, label: "09" }
+          - { shard: 9, label: "10" }
+          - { shard: 10, label: "11" }
+          - { shard: 11, label: "12" }
+          - { shard: 12, label: "13" }
+          - { shard: 13, label: "14" }
+          - { shard: 14, label: "15" }
+          - { shard: 15, label: "16" }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Generic package shards compile crates whose include_str! inputs are
+          # the staged descriptor registries tracked through Git LFS.
+          lfs: true
+
+      - name: Install native test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev zstd
+          curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Reclaim runner disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/powershell /usr/share/swift \
+            /usr/local/share/vcpkg /usr/share/miniconda \
+            /opt/az /opt/microsoft /opt/pipx \
+            /usr/local/share/chromium
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-06-21
+
+      # Share registry/git inputs, not sixteen multi-gigabyte target trees. Each
+      # target tree is deliberately bounded and disposable; caching all of them
+      # would evict more valuable content while making the disk bound opaque.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-full-suite-source-deps
+          cache-targets: "false"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Fetch and require the pinned verified Lean seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-lean-seed.sh
+          test -s dregg-lean-ffi/libdregg_lean.a
+          test -s dregg-lean-ffi/libdregg_lean.a.provenance
+
+      - name: Materialize the exact package shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_COUNT: "16"
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/cargo-metadata.json"
+          python3 scripts/ci-nextest-shard.py \
+            --metadata "$RUNNER_TEMP/cargo-metadata.json" \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count "$SHARD_COUNT" \
+            --packages-output "$RUNNER_TEMP/nextest-packages.txt" \
+            --config-output "$RUNNER_TEMP/nextest.toml"
+          cat "$RUNNER_TEMP/nextest-packages.txt"
+
+      - name: Test complete shard (nextest + doctests)
+        env:
+          CARGO_BUILD_JOBS: "1"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
+        run: |
+          set -euo pipefail
+          mapfile -t package_names < "$RUNNER_TEMP/nextest-packages.txt"
+          package_args=()
+          for package in "${package_names[@]}"; do
+            package_args+=(--package "$package")
+          done
+
+          status=0
+          cargo nextest run --locked \
+            --config-file "$RUNNER_TEMP/nextest.toml" \
+            --profile full \
+            "${package_args[@]}" \
+            --no-fail-fast || status=1
+          cargo test --locked "${package_args[@]}" --doc || status=1
+          df -h /
+          exit "$status"
+
+  # The three package roots excluded from generic package partitioning retain
+  # their exact recovery coverage. This small lane can afford the verified Lean
+  # archive without multiplying its startup cost across the entire workspace.
+  linux-test-recovery:
+    name: Linux split-target recovery
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native and Lean prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libfontconfig1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libgl1-mesa-dev libegl-dev libgles-dev libharfbuzz-dev libfreetype-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libx11-dev libxext-dev libxrandr-dev libxi-dev libxcursor-dev libxinerama-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gperf libunwind-dev zstd
+          curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-split-target-recovery
+
+      - name: Fetch and require the pinned Lean seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bash scripts/fetch-lean-seed.sh
+          test -s dregg-lean-ffi/libdregg_lean.a
+
+      - name: Test both native cdylib packages as executable lib targets
+        env:
+          CARGO_BUILD_JOBS: "1"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
+        run: cargo test --locked -p grain-verify-wasm -p starbridge-web --lib
+
+      - name: Test the deos-zed gpui-free firmament core
+        if: ${{ !cancelled() }}
+        env:
+          CARGO_BUILD_JOBS: "1"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          DREGG_REQUIRE_LEAN: "1"
+          DREGG_TEST_REQUIRE_LEAN: "1"
+        run: cargo test --locked -p deos-zed --no-default-features --features firmament
+
+  # Keep the historical required-check name stable while making absence of any
+  # matrix verdict fail closed. GitHub aggregates all 16 matrix children into the
+  # `needs.linux-nextest-shard.result` value consumed here.
+  linux-test-verdict:
+    name: Test (ubuntu-latest)
+    if: ${{ always() }}
+    needs: [linux-nextest-shard, linux-test-recovery]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every Linux test verdict
+        env:
+          SHARDS_RESULT: ${{ needs.linux-nextest-shard.result }}
+          RECOVERY_RESULT: ${{ needs.linux-test-recovery.result }}
+        run: |
+          set -euo pipefail
+          printf 'full-suite shards: %s\n' "$SHARDS_RESULT"
+          printf 'split-target recovery: %s\n' "$RECOVERY_RESULT"
+          test "$SHARDS_RESULT" = success
+          test "$RECOVERY_RESULT" = success
 
   # ════════════════════════════════════════════════════════════════════════════════════
   # THE EXECUTION GATE — the one job that can tell "the tests passed" from "the tests
@@ -1234,7 +1577,13 @@ jobs:
   lean-marshal-gate:
     name: Lean marshal gate
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Exact-head run 32784751289 reached the armed probe binaries only after
+    # 53m47s of cold checkout/toolchain/Lean-linked compilation, then GitHub
+    # cancelled `overspend_probe` at the old 60-minute job limit. The seed had
+    # matched provenance and the build had succeeded, but neither that probe nor
+    # the 53-assertion runtime floor and distributed lifecycle below could reach
+    # a verdict. This is a cold-lane budget, not a coverage exception.
+    timeout-minutes: 180
     # THE FAITHFULNESS GATE, ARMED. This job used to be a checkmark that could not be red: with no
     # libdregg_lean.a on a hosted runner, check-lean-marshal.sh exited 0 having compared the Rust
     # executor against nothing at all. It is now armed by FETCHING a seed.
@@ -2094,6 +2443,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+          # The taxonomy tail classifies this candidate against its real base.
+          # A depth-one PR checkout contains only the synthetic merge commit and
+          # cannot resolve github.event.pull_request.base.sha.
+          fetch-depth: 2
 
       # ══════════════════════════════════════════════════════════════════════════════════════
       # ⚑ THE TWO STATIC GATES RUN FIRST, AND THEY NEED NO LEAN (2026-08-08).
@@ -2171,6 +2524,18 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/ci-mathlib-cache.sh
 
+      # The protected bootstrap workflow produces this content-addressed final
+      # emitter checkpoint from the same pinned Lean graph. Reuse it here when
+      # available so the ordinary drift gate reaches a verdict well inside the
+      # hosted-runner wall. A miss is not accepted as proof and is not hidden:
+      # `check-descriptor-drift.sh` still performs the complete cold derivation.
+      - name: Restore the complete verified emitter checkpoint when available
+        if: ${{ !cancelled() && steps.mathlib.outcome == 'success' }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: metatheory/.lake/build
+          key: castalia-lean-emitter-d-${{ runner.os }}-${{ hashFiles('metatheory/lean-toolchain', 'metatheory/lake-manifest.json', 'metatheory/lakefile.toml', 'metatheory/Dregg2/**/*.lean', 'metatheory/Market/**/*.lean', 'scripts/emit_descriptors.py', 'scripts/build-descriptor-emitter-checkpoint-serial.sh') }}
+
       # The emit installs three WHOLE Lean-authored Rust modules
       # (circuit/src/effect_vm/*_generated.rs) and normalizes them through rustfmt, so the
       # generator's bytes equal what the pre-commit hook and `cargo fmt --all -- --check`
@@ -2194,7 +2559,26 @@ jobs:
       # taken over) — so a green from either absence would be a lie in a different direction.
       - name: Descriptor drift gate
         if: ${{ !cancelled() && steps.mathlib.outcome == 'success' && steps.rustfmt.outcome == 'success' }}
-        run: bash scripts/check-descriptor-drift.sh
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="${PR_BASE_SHA:-${PUSH_BASE_SHA:-}}"
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$BASE_SHA^{commit}"
+          DRIFT_TAXONOMY_BASE_REF="$BASE_SHA" bash scripts/check-descriptor-drift.sh
+
+      # The Go settlement wrap consumes a second family of Lean-emitted JSON artifacts.
+      # Several tests once landed while their generated Merkle/fold/selector files remained
+      # ignored and uncommitted, so the first clean CI checkout failed at runtime. Re-emit into
+      # an empty directory: comparing both names and bytes catches missing, obsolete, and drifted
+      # outputs without modifying the checkout being graded.
+      - name: Gnark replay artifacts Lean↔JSON drift gate
+        if: ${{ !cancelled() && steps.mathlib.outcome == 'success' }}
+        run: bash scripts/check-gnark-emitted-drift.sh
 
   # ══════════════════════════════════════════════════════════════════════════════════════════
   # ⚑ THE ABSENCE OF A VERDICT IS NOT A PASS (2026-08-08).

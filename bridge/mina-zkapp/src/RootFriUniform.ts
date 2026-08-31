@@ -53,22 +53,22 @@ import {
 // ⚑ THE OBSERVATION THIS IS BUILT ON WAS ALREADY WRITTEN DOWN, AS A CONTRAST.
 // `RootAirChain`'s header explains why the AIR needs a verification key per
 // slice and says, in passing, that a FRI chain does not — "their chains are ONE
-// circuit invoked N times, BECAUSE 19 QUERY WALKS ARE THE SAME SHAPE". Nothing
+// circuit invoked N times, BECAUSE 38 QUERY WALKS ARE THE SAME SHAPE". Nothing
 // drew the consequence, and the deployed walk compiles one `ZkProgram` per slice
 // index anyway: `friSliceProgramName(si, …)` bakes `si` into the name,
 // `friSliceShape(si)` makes the widths a function of `si`, and `AIR_SLICES + si`
-// enters the boundary as a compile-time constant. 839 slices, 839 compiles,
-// 839 verification keys.
+// enters the boundary as a compile-time constant. 1,785 slices, 1,785 compiles,
+// 1,785 verification keys.
 //
 // ⚑ THE HOMOGENEITY IS EXACT, AND IT IS CHECKED HERE RATHER THAN ASSUMED.
 // `assertHomogeneous` compares the segment list of every query against query 0
 // FIELD BY FIELD, and the lane reads after the per-query shift. Measured at the
-// root's real geometry: 36 head segments (22 duplex + 14 permBind), then 19
-// blocks of 593 segments that are structurally IDENTICAL and carry the same
-// 1,593,956.5 modelled rows each. Zero mismatches. A geometry change that broke
+// root's real geometry: 41 head segments, then 38 blocks of 571 segments that
+// are structurally IDENTICAL and carry the same 1,532,969 modelled rows each.
+// Zero mismatches. A geometry change that broke
 // that would fail loudly here instead of quietly producing a wrong chain.
 //
-// ⚑ WHAT MAKES ONE CIRCUIT SERVABLE AT NINETEEN POSITIONS, AND WHAT PINS IT.
+// ⚑ WHAT MAKES ONE CIRCUIT SERVABLE AT THE REPEATED POSITIONS, AND WHAT PINS IT.
 // Three things become witnesses, and each is forced:
 //
 //   * the STEP INDEX `k`. The head's slices carry it as a compile-time constant
@@ -80,7 +80,7 @@ import {
 //   * the QUERY INDEX `q`. It is NOT independently witnessed-and-hoped: the
 //     circuit asserts `k == AIR_SLICES + headSlices + q·blockSlices + pos` with
 //     `pos` a compile-time constant, so `q` is a function of `k`, and the
-//     one-hot over the 19 queries range-checks it. Double-count and skip are
+//     one-hot over the 38 queries range-checks it. Double-count and skip are
 //     therefore impossible for the same reason they are impossible in the
 //     deployed chain: `k` is pinned inductively and the terminal seal pins the
 //     length.
@@ -300,13 +300,13 @@ export function assertHomogeneous(
 // ===========================================================================
 
 /**
- * The deployed table packs the 19 opened-row blocks back to back, so a query's
+ * The deployed table packs the 38 opened-row blocks back to back, so a query's
  * lanes straddle chunk boundaries differently for every query and the chunk a
  * slice reads is a function of `q`. Padding each query's block to a whole number
  * of chunks makes the chunk index `qChunkBase + q·chunksPerQuery + rel`, which
  * is a SHIFT — and a shift is what a witnessed `q` can carry.
  *
- * ⚑ THE PRICE IS NAMED: 33,062 lanes become 35,328 and 130 chunks become 138 at
+ * ⚑ THE PRICE IS NAMED: 63,631 lanes become 64,768 and 249 chunks become 253 at
  * the root's geometry. The padding lanes are zero and are covered by the same
  * digests, so they cost carry and nothing else.
  */
@@ -1280,4 +1280,3 @@ export function auxOf(ctx: UniformCtx, twin: WalkTwin, sp: UniformSpec, q: numbe
   for (let k = gFrom; k < gTo; k++) out.push(...twin.aux[k]);
   return out;
 }
-

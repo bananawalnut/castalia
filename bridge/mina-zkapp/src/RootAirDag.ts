@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ---------------------------------------------------------------------------
-// THE ROOT'S OWN AIR — `C_i` for all 1,093 constraints of dregg's seven root
+// THE ROOT'S OWN AIR — `C_i` for all 1,129 constraints of dregg's seven root
 // tables, as a DAG this circuit interprets.
 //
 // ⚑ WHAT THIS CLOSES, AND IT IS THE LAST NAMED GAP ON THIS SIDE.
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 // `constraints` argument, a 3-column AIR with FOUR constraints. Every figure
 // downstream of that is a FLOOR because of it — the 2.75e7-row projection, and
 // §3.21's 591-step schedule over that projection. §3.17 counted the real number
-// (`N = 1,093`) and §3.18 built the DAG source language that makes it affordable
+// (`N = 1,129`) and §3.18 built the DAG source language that makes it affordable
 // (2,433 multiplies against 1,529,889 flat, 629x). Neither ever reached the
 // o1js side. This module is the reach.
 //
@@ -26,8 +26,8 @@ import { fileURLToPath } from 'node:url';
 //   * the AIRs are p3's (`plonky3-recursion@0a4a554`), not ours and not
 //     re-authored here;
 //   * the NUMBERING is `to_dag`/`to_dag_full`'s, a Rust extractor, and it is a
-//     SEAM — checked differentially against p3's own evaluation over all 901
-//     base constraints (`dag_extractor_agrees_with_p3_evaluation`) and all 192
+//     SEAM — checked differentially against p3's own evaluation over all 913
+//     base constraints (`dag_extractor_agrees_with_p3_evaluation`) and all 216
 //     extension ones (`ext_dag_agrees_with_p3_evaluation`), which is a
 //     confession, not a proof;
 //   * the LOWERING of a node list to Kimchi rows is proved in Lean, at an
@@ -127,7 +127,7 @@ let CACHE: RootAirDag | undefined;
 /**
  * The emitted root AIR. ⚑ A MISSING ARTIFACT IS A FAILURE, NOT A SKIP — the
  * whole point of this module is that the fixture's four constraints stop
- * standing in for the root's 1,093, and a module that silently fell back to
+ * standing in for the root's 1,129, and a module that silently fell back to
  * something smaller would restore exactly the defect it exists to remove.
  */
 export function rootAirDag(): RootAirDag {
@@ -413,7 +413,7 @@ export function checkKat(d: RootAirDag = rootAirDag()): { checked: number; failu
  * assumed:
  *
  *  * `elideVarCopies` — a `var` node is a copy of an input, and
- *    `KimchiDag` §11.2 already names it elidable. 1,282 of the root's 10,417
+ *    `KimchiDag` §11.2 already names it elidable. 1,342 of the root's 10,689
  *    nodes are copies.
  *  * `constScale` — `mul` with a `cst` operand is a scale by a base-field
  *    CONSTANT, which is 4 coefficient multiplies rather than the 16-multiply
@@ -521,7 +521,7 @@ export function foldRootsP3(alpha: BbExt, roots: BbExt[]): BbExt {
 }
 
 /**
- * The WHOLE root: every table's DAG walked and every one of the 1,093
+ * The WHOLE root: every table's DAG walked and every one of the 1,129
  * constraints folded into ONE accumulator, base-then-ext within a table and
  * tables in the root's own instance order.
  *

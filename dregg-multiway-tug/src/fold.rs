@@ -57,6 +57,7 @@ use dregg_circuit_prove::ivc_turn_chain::{
 use dregg_circuit_prove::joint_turn_aggregation::{
     CustomWitnessBundle, DescriptorParticipant, DescriptorStateLeafSource, RotatedParticipantLeg,
 };
+use dregg_circuit_prove::joint_turn_recursive::{CUSTOM_COMMIT_LEN, CUSTOM_COMMIT_PI_LO};
 use dregg_turn::rotation_witness as rw;
 use game_turn_slice::compiler::{
     LoweredMembership, MembershipLevel, MerkleMembershipWitness, lower_witnessed_merkle_membership,
@@ -333,7 +334,8 @@ fn cell_state_with_committed_fields(before_cell: &Cell, after_cell: &Cell) -> Ce
 /// that publishes `[old8 ‖ new8]` = these anchors at PI[0..16] binds, via the deployed custom
 /// state-binding node, to the transition the installed `CellProgram` teeth already gated (e.g.
 /// multiway-tug's `score`-method win implication). `commit` is the published
-/// `custom_proof_commitment` (IR2 PI 46..53); `bundle` is the retained re-provable sub-proof.
+/// `custom_proof_commitment` (the canonical `CUSTOM_COMMIT_PI_LO` slice); `bundle` is the
+/// retained re-provable sub-proof.
 /// **THE FAST HALF of [`cell_custom_leg`] — the wide dispatch WITHOUT the STARK prove.** Build the
 /// `customVmDescriptor2R24` leg's committed DESCRIPTOR + producer TRACE + PI vector for
 /// `before_cell -> after_cell` at `commit`, threading the cell's real field octet exactly as
@@ -427,7 +429,8 @@ pub fn plain_nonce_leg_wide_desc_trace(
 ///
 /// This leg rides the fold's plain-segment arm (`carrier_witness: None`) LEGITIMATELY. A custom leg
 /// cannot: `customVmDescriptor2R24` declares a `DescriptorIR2.ProofBind`, publishing an 8-felt
-/// commitment at IR2 PI 46..53 that the deployed evaluator does NOT constrain (`Ir2Air::Main` has no
+/// commitment at the canonical `CUSTOM_COMMIT_PI_LO` slice that the deployed evaluator does NOT
+/// constrain (`Ir2Air::Main` has no
 /// `ProofBind` arm), so the ONLY thing that can make that claim mean anything is the Custom arm's
 /// connect to a re-proven sub-proof leaf — and a tail turn has no sub-proof to connect. Filling the
 /// commitment with a literal and dropping the witness would ship a prover-chosen number no proof
@@ -478,13 +481,17 @@ fn cell_custom_leg(
     let (desc, trace, dpis, map_heaps, mb) =
         custom_leg_wide_desc_trace(before_cell, after_cell, commit).expect("custom wide dispatch");
     assert!(
-        dpis.len() >= 54,
-        "custom leg PI vector must carry the 8-felt commitment slice at 46..53"
+        dpis.len() >= CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN,
+        "custom leg PI vector must carry the {CUSTOM_COMMIT_LEN}-felt commitment slice at \
+         {CUSTOM_COMMIT_PI_LO}..{}",
+        CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN - 1
     );
     assert_eq!(
-        &dpis[46..54],
+        &dpis[CUSTOM_COMMIT_PI_LO..CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN],
         &commit[..],
-        "custom leg must publish the claimed 8-felt commitment at PI 46..53"
+        "custom leg must publish the claimed {CUSTOM_COMMIT_LEN}-felt commitment at PI \
+         {CUSTOM_COMMIT_PI_LO}..{}",
+        CUSTOM_COMMIT_PI_LO + CUSTOM_COMMIT_LEN - 1
     );
 
     let config = ir2_leaf_wrap_config();

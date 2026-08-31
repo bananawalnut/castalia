@@ -400,6 +400,19 @@ pub fn configure_turn_executor(
         executor.register_issuer_well(*token_id, *well);
     }
 
+    // Castalia v2: every node exposes the same permissionless, member-owned
+    // factory. It has no institutional key and is therefore composed even when
+    // genesis has no legacy membership authority.
+    crate::castalia_membership::deploy_permissionless_checked(&mut executor.factory_registry_mut())
+        .expect("public Castalia membership factory must compose exactly");
+
+    // Castalia v1 compatibility: when genesis pins an institutional authority,
+    // also reconstruct the legacy application-lifecycle factory.
+    if let Some(authority) = s.castalia_membership_authority {
+        crate::castalia_membership::deploy_checked(authority, &mut executor.factory_registry_mut())
+            .expect("genesis-pinned Castalia membership factory must compose exactly");
+    }
+
     let base = attested_block_height(s);
     let height = match height_mode {
         BlockHeightMode::Current => base,
@@ -836,6 +849,37 @@ mod tests {
                 .and_then(|c| c.state.get_field(3).copied()),
             Some([0xcd; 32]),
             "the effect must be on the authoritative ledger, not merely accepted"
+        );
+    }
+
+    #[tokio::test]
+    async fn canonical_executors_reconstruct_castalia_factory_without_birth() {
+        const AUTHORITY: [u8; 32] = [0x41; 32];
+        let dir = tempfile::tempdir().expect("temporary node state");
+        let state = crate::state::NodeState::new(dir.path(), Vec::new()).expect("node state");
+        let mut s = state.write().await;
+        s.castalia_membership_authority = Some(AUTHORITY);
+        let cells_before = s.ledger.len();
+        let factory = starbridge_castalia_membership::castalia_membership_factory(AUTHORITY)
+            .expect("canonical factory");
+        let expected_program =
+            starbridge_castalia_membership::castalia_membership_program(AUTHORITY);
+
+        for mut executor in [new_submit_executor(&s), new_verify_executor(&s)] {
+            let registry = executor.factory_registry_mut();
+            assert_eq!(
+                registry.get(&factory.factory_vk()),
+                Some(factory.descriptor())
+            );
+            assert_eq!(
+                registry.full_child_program(&factory.factory_vk()),
+                Some(&expected_program)
+            );
+        }
+        assert_eq!(
+            s.ledger.len(),
+            cells_before,
+            "node composition must never birth a member cell"
         );
     }
 }

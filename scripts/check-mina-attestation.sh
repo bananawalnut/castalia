@@ -483,15 +483,15 @@ run_mconstr()   { ( cd "$1" && npm run --silent merkle-constraints ); }
 #
 #   tier 1  the default 4-slice budget. 7 of 8 falsifiers attributed; `one
 #           Merkle sibling bent` is reported NOT ATTRIBUTABLE WITHIN BUDGET,
-#           because no cut below 11 closes a round its own siblings feed. That is
+#           because no cut below 13 closes a round its own siblings feed. That is
 #           the outcome, stated, not a pass.
-#   tier 2  FRIBRAID_LIMIT=12, which reaches cut 11 — the first cut in the whole
-#           839-slice plan that can attribute a bent sibling — and the floor goes
-#           to 8, so the eighth falsifier cannot silently stop firing. Costs
-#           about twice tier 1's braid, which is nothing in a tier measured in
-#           hours.
+#   tier 2  FRIBRAID_LIMIT=14, which reaches cut 13 — the first cut in the whole
+#           1,785-slice plan that can attribute a bent sibling — and the floor
+#           goes to 8, so the eighth falsifier cannot silently stop firing. Costs
+#           about three times tier 1's braid, which is still a bounded sample in
+#           a tier measured in hours.
 #
-# 330 of the plan's 839 cuts can attribute that bend; 489 carry a sibling. The
+# 609 of the plan's 1,785 cuts can attribute that bend; 934 carry a sibling. The
 # leg's `[2c]` censuses that at tier 0 in milliseconds.
 # ⚑ THE BRAID AT TIER 0, FOR THE ONE INJECTION AIMED AT ITS CUT-RULE CENSUS. The
 # self-test forces MINA_TIER=2 so that a fault in code a cheap run never reaches
@@ -502,7 +502,7 @@ run_mconstr()   { ( cd "$1" && npm run --silent merkle-constraints ); }
 run_braid_cut() { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" MINA_TIER=0 npm run --silent root-fri-braid ); }
 run_braid() {
   if [ "${MINA_TIER:-0}" -ge 2 ]; then
-    ( cd "$1" && DREGG_REPO_ROOT="$ROOT" FRIBRAID_LIMIT=12 FRIBRAID_MIN_ATTRIBUTED=8 \
+    ( cd "$1" && DREGG_REPO_ROOT="$ROOT" FRIBRAID_LIMIT=14 FRIBRAID_MIN_ATTRIBUTED=8 \
         npm run --silent root-fri-braid )
   else
     ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-fri-braid )
@@ -531,6 +531,43 @@ run_uniform()   { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-fri
 run_preamble()  { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-fri-preamble ); }
 run_consume()   { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-consume-differential ); }
 run_consume_rows() { ( cd "$1" && DREGG_REPO_ROOT="$ROOT" npm run --silent root-consume-rows ); }
+
+# The tier-0 readers consume two current-head instances under `.fullchain/`, which is
+# intentionally gitignored. A clean checkout therefore has to derive them before the first
+# reader runs; relying on a developer's previous full-chain run made this gate impossible to
+# pass in CI. These are p3-authenticated inputs, not cached verdicts: each dumper verifies the
+# committed root proof and emits the exact object the TypeScript twins inspect.
+hydrate_real_root_instances() {
+  local work="$APP/.fullchain"
+  local air="$work/real-root-air.json"
+  local fri="$work/real-root-fri.json"
+  [ -f "$air" ] && [ -f "$fri" ] && return 0
+
+  mkdir -p "$work"
+  # These two dumpers verify and replay the committed p3 proof using only Rust/P3 code; neither
+  # calls a Lean export. `dregg-circuit-prove` nevertheless has a production Lean dependency for
+  # other entrypoints, and native release builds correctly fail closed by default. Opt out for this
+  # one package build only, or a clean CI runner would need a 190 MB verified-executor archive to
+  # produce two non-Lean JSON inputs. The protected bootstrap-node workflow never takes this path
+  # and still builds with DREGG_REQUIRE_LEAN=1.
+  ( cd "$ROOT" && DREGG_REQUIRE_LEAN=0 \
+      cargo build --locked -p dregg-circuit-prove --release \
+      --bin root_air_instance --bin root_fri_instance ) \
+    || die "the current-head root-instance dumpers did not build"
+
+  if [ ! -f "$air" ]; then
+    "$ROOT/target/release/root_air_instance" > "$air.tmp" \
+      || die "the AIR root-instance dumper failed"
+    mv "$air.tmp" "$air"
+  fi
+  if [ ! -f "$fri" ]; then
+    "$ROOT/target/release/root_fri_instance" "$fri.tmp" \
+      || die "the FRI root-instance dumper failed"
+    mv "$fri.tmp" "$fri"
+  fi
+  [ -s "$air" ] && [ -s "$fri" ] \
+    || die "the current-head root-instance hydration produced an empty artifact"
+}
 
 # ── the headline run ──────────────────────────────────────────────────────────
 if [ "$MODE" = "headline" ]; then
@@ -613,6 +650,19 @@ if [ "$MODE" = "headline" ]; then
   [ "$n_pin" -ge 20 ] || die "only $n_pin recorded figures pinned; expected >= 20 (the reader is broken)"
   echo "  ✓ all $n_pin recorded figures are as recorded, and every RECORDED_* in the tree is pinned"
   n_t0=$((n_t0+1))
+
+  hydrate_real_root_instances
+
+  # The tier-2 braid checks the terminal AIR proof emitted by the full-chain
+  # leg. On a clean runner that proof does not exist yet, so produce it before
+  # the braid instead of accidentally relying on a developer's gitignored
+  # `.fullchain/` cache. The complete assertions remain with the full-chain
+  # gate below; a producer failure is fatal here before any consumer runs.
+  if leg_at_tier air-fullchain; then
+    fchn_out="$(run_air_fullchain "$APP" 2>&1)"; rc=$?
+    printf '%s\n' "$fchn_out"
+    [ "$rc" -eq 0 ] || die "the root-air-fullchain leg exited $rc"
+  fi
 
   echo
   echo "── tier 0: the out-of-circuit differentials ───────────────────────────"
@@ -706,7 +756,7 @@ if [ "$MODE" = "headline" ]; then
     n_con="$(printf '%s' "$con_out" | grep -c '✓')"; n_t0=$((n_t0+n_con))
     grep -q 'reproduce the commitments p3 emitted' <<<"$con_out" \
       || die "the four-round input phase was never put to the committed proof's own commitments"
-    grep -q "REFUSED at all 76 openings: a FLAT depth-22 path" <<<"$con_out" \
+    grep -Eq "REFUSED at all [0-9,]+ openings: a FLAT depth-[0-9]+ path" <<<"$con_out" \
       || die "the flat-path bend was not refused — the mixed-height injection is not being tested"
     grep -q 'equal p3' <<<"$con_out" \
       || die "the four-round DEEP quotient was never compared against p3's reduced openings"
@@ -1229,9 +1279,6 @@ if [ "$MODE" = "headline" ]; then
 
   if leg_at_tier air-fullchain; then
   # ── the FULL chain, one process per slice ──────────────────────────────────
-  fchn_out="$(run_air_fullchain "$APP" 2>&1)"; rc=$?
-  printf '%s\n' "$fchn_out"
-  [ "$rc" -eq 0 ] || die "the root-air-fullchain leg exited $rc"
   n_fchain="$(printf '%s' "$fchn_out" | grep -c '✓')"
   [ "$n_fchain" -ge 14 ] || die "only $n_fchain full-chain checks passed; expected >= 14"
   grep -q 'covering ALL' <<<"$fchn_out" \

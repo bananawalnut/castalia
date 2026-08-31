@@ -36,6 +36,9 @@ metatheory/ directory:
 
     lake env lean --run scripts/gen_gnark_emitted_templates.lean
 
+Set `DREGG_GNARK_EMITTED_DIR` to emit into a clean comparison directory instead of
+mutating the committed artifact directory (used by CI's exact drift gate).
+
 With no arguments it emits everything (and prints the structure counts). Pass one or
 more NAME PREFIXES to emit only those — the batch templates are the expensive ones, so
 `… scripts/gen_gnark_emitted_templates.lean selectors verifier_full` re-mints just the
@@ -52,24 +55,26 @@ open Dregg2.Circuit.Emit.GnarkVerifier.InputOpenBatch
 
 /-- Write one emitted artifact and print its byte pins (length + FNV-1a). The body is a
 THUNK so a filtered run never forces the multi-MB strings it is skipping. -/
-def emitOne (sel : String → Bool) (name : String) (json : Unit → String) : IO Unit := do
+def emitOne (dir : String) (sel : String → Bool) (name : String) (json : Unit → String) : IO Unit := do
   if sel name then
     let s := json ()
-    let path := s!"../chain/gnark/emitted/{name}"
+    let path := s!"{dir}/{name}"
     IO.FS.writeFile path s
     IO.println s!"{name}: {s.length} bytes  fnv1a={fnv1a s}"
 
 def main (args : List String) : IO Unit := do
+  let dir := (← IO.getEnv "DREGG_GNARK_EMITTED_DIR").getD "../chain/gnark/emitted"
+  IO.FS.createDirAll dir
   let sel (name : String) : Bool := args.isEmpty || args.any (fun a => name.startsWith a)
-  emitOne sel "leafhash_template.json" (fun _ => leafHashTemplateJson)
-  emitOne sel "inputopen_batch_template.json" (fun _ => batchTemplateJson)
-  emitOne sel "inputopen_batch_r0.json" (fun _ => batchTemplateR0Json)
-  emitOne sel "inputopen_batch_r2.json" (fun _ => batchTemplateR2Json)
-  emitOne sel "inputopen_batch_r3.json" (fun _ => batchTemplateR3Json)
-  emitOne sel "verifier_full.json" (fun _ => verifierFullJson)
+  emitOne dir sel "leafhash_template.json" (fun _ => leafHashTemplateJson)
+  emitOne dir sel "inputopen_batch_template.json" (fun _ => batchTemplateJson)
+  emitOne dir sel "inputopen_batch_r0.json" (fun _ => batchTemplateR0Json)
+  emitOne dir sel "inputopen_batch_r2.json" (fun _ => batchTemplateR2Json)
+  emitOne dir sel "inputopen_batch_r3.json" (fun _ => batchTemplateR3Json)
+  emitOne dir sel "verifier_full.json" (fun _ => verifierFullJson)
   -- One selector template per DISTINCT degree bits the shrink uses, in fixture order.
   for db in apexShrinkShape.degreeBits.eraseDups do
-    emitOne sel s!"selectors_db{db}.json" (fun _ => Selector.selectorsDbJson db)
+    emitOne dir sel s!"selectors_db{db}.json" (fun _ => Selector.selectorsDbJson db)
   if !args.isEmpty then return
   IO.println ""
   IO.println s!"commitMerkleDepths apexShrinkShape = {commitMerkleDepths apexShrinkShape}"

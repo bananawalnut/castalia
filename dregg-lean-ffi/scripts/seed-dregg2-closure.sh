@@ -31,7 +31,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 META="$ROOT/metatheory"
 ARCH="$ROOT/dregg-lean-ffi/libdregg_lean.a"
 OBJDIR="${TMPDIR:-/tmp}/dregg2_seed_objs"
-NCPU="$(sysctl -n hw.logicalcpu 2>/dev/null || nproc)"
+NCPU="${DREGG_LEANC_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || nproc 2>/dev/null || echo 1)}"
 
 command -v lake >/dev/null 2>&1 || { echo "FATAL: lake not on PATH (install elan; ./scripts/bootstrap.sh teaches the fix)"; exit 1; }
 
@@ -78,7 +78,7 @@ mkdir -p "$OBJDIR"
 
 compile_c() {
   local ir="$1" c="$2"
-  local rel="${c#$ir/}"
+  local rel="${c#"$ir"/}"
   local base="${rel%.c}"
   local obj="${base//\//_}.o"
   local out="$OBJDIR/$obj"

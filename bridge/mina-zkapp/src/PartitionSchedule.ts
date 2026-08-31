@@ -154,7 +154,7 @@ export type AtomKind =
   | 'fold-path' //      one level of one commit-phase Merkle path
   | 'final-poly' //     the closing evaluation of `final_poly`
   | 'air-node' //       one node of the ROOT's constraint DAG (leg 13)
-  | 'air-fold'; //      one `acc = acc*alpha + C_i` step, all 1,093 of them
+  | 'air-fold'; //      one `acc = acc*alpha + C_i` step, all 1,129 of them
 
 /** An indivisible unit of verifier work. A cut may be placed between any two
  *  atoms and nowhere else — which is what makes a schedule a placement over a
@@ -264,13 +264,13 @@ export type Program = {
  * flat-depth model. §3.28 measured the root off its own committed proof and
  * both halves of that are wrong:
  *
- *   * the census is **2,630**, not 2,286, and it is wrong in TWO DIRECTIONS
+ *   * the census is **2,746**, not 2,286, and it is wrong in TWO DIRECTIONS
  *     THAT DO NOT CANCEL. The old form omits the permutation round entirely
- *     (64 extension columns x 4 x 2 = 512 terms) and charges 168 terms the proof
+ *     (72 extension columns x 4 x 2 = 576 terms) and charges 276 terms the proof
  *     does not have, because `Const`, `Public`, `recompose` and `expose_claim`
  *     reference no next-row main or preprocessed value and their matrices are
  *     opened at ζ alone;
- *   * the heights are **[22, 21, 16, 9, 6]**, not flat 22. `MerkleTreeMmcs
+ *   * the heights are **[20, 19, 13, 7, 3]**, not flat 22. `MerkleTreeMmcs
  *     ::verify_batch` walks ONE path per round at the tallest height and
  *     compresses each shorter matrix's own row digest in at the level its
  *     height names. A flat model pays four full-depth paths per query where the
@@ -327,13 +327,14 @@ export function deployedShapeOf(base: DreggProofShape, width: number): DreggProo
  * The deployed root's opened-column census.
  *
  * ⚠ THIS IS A COLUMN COUNT, NOT A TERM COUNT, and conflating the two is how the
- * 2,286 got in. `940 + 175` is the main and preprocessed BASE COLUMN width,
- * which is MEASURED and still right; the number of DEEP TERMS those columns
- * produce is `CostModel.MEASURED_ROOT_GEOMETRY.censusPerQuery` and is 2,630,
- * because the permutation round contributes 512 and 168 of the main/preprocessed
- * columns are opened at one point rather than two.
+ * The retired 2,286 got in. `972 + 195` is the main and preprocessed BASE COLUMN width,
+ * measured from the current proof; the number of DEEP TERMS those columns
+ * produce is `CostModel.MEASURED_ROOT_GEOMETRY.censusPerQuery` and is 2,746,
+ * because the permutation round contributes 576 and 276 main/preprocessed
+ * terms are absent when those matrices are opened at one point rather than two.
  */
-export const DEPLOYED_COLS = 940 + 175;
+export const DEPLOYED_COLS =
+  MEASURED_ROOT_GEOMETRY.baseColsByRound.main + MEASURED_ROOT_GEOMETRY.baseColsByRound.preprocessed;
 
 /**
  * §3.19's MEASURED marginals, which are the only thing this model is allowed to
@@ -785,7 +786,7 @@ export function bestSchedule(
 //    circuit has never been emitted. 591 is a schedule over a measured MODEL,
 //    not over an emitted row list."
 //   "2.75 x 10^7 is itself a FLOOR (the AIR term in it is the fixture's four
-//    constraints, not the root's 1,093). A floor scheduled is still a floor."
+//    constraints, not the root's 1,129). A floor scheduled is still a floor."
 //
 // Both are closed here, and neither by argument:
 //
@@ -795,8 +796,8 @@ export function bestSchedule(
 //    IN-CONTEXT MARGINAL on the deployed program itself (rows at 16 layers
 //    against 15 against 14; at input depth 22 against 21), so every figure below
 //    is a difference of two emitted circuits.
-//  * the AIR term is leg 13's emission of the root's own 1,093 constraints over
-//    10,417 DAG nodes, not the fixture's four.
+//  * the AIR term is leg 13's emission of the root's own 1,129 constraints over
+//    10,689 DAG nodes, not the fixture's four.
 //
 // ⚑ THE LARGEST ATOM MOVED AND THAT IS THE INTERESTING PART. The model's
 // `perArith` is 3,221 rows — its "largest indivisible atom, 6.5% of a step",
@@ -926,7 +927,7 @@ export function emittedProgram(
           reads: kind === 'free' ? [openChunkOf(Math.min(c, cols - 1))] : ['pub'],
           ownLanes: kind === 'free' ? lanesPerCol : 0,
           // ⚑ The live set is a MEASURED property of the DAG, not a guess:
-          // `RootAirDag.liveness` bounds the cut width at 102 across all 10,417
+          // `RootAirDag.liveness` bounds the cut width at 102 across all 10,689
           // nodes. 102 extension values is 408 lanes; the mean is 65.1.
           liveAfter: 4 * 102,
         });

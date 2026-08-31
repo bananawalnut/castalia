@@ -178,7 +178,7 @@ original statement left open — the constraint tying `node.offerAsset`/`offerAm
 note's `asset`/`value` — is welded at both altitudes. In Lean: `LegFused` + `shielded_ring_fused_clears`
 (`metatheory/Market/LedgerRealizationExt.lean:279`, `:302`) — every fused leg's committed offer IS a
 fresh member-spend note, so the matcher clears the real note, not a `MatchNode` beside it. In circuit:
-`circuit-prove/src/shielded_ring_clearing_air.rs` (2-leg, tight cycle) and
+the now-retired `shielded_ring_clearing_air.rs` (2-leg, tight cycle) and
 `shielded_ring_clearing_nleg_air.rs` (N-leg, variable-length cycle + the partial-fill
 `offer ≥ want_min` inequality in-circuit), registered at `circuit-prove/src/lib.rs:52-53`. Both fold
 `prove_shielded_spend_leaf_with_claim` leaves into a clearing descriptor that enforces the fusion
@@ -382,6 +382,6 @@ remaining builds are in-circuit price selection and the ledger-realization weld.
 *Sources: DREX-DESIGN.md, DREGGFI-VISION.md, DREGG-LAUNCHPAD-DESIGN.md; `Market/ShieldedClearing.lean`,
 `Market/LedgerRealizationExt.lean`, `Market/Optimality.lean`, `Market/Fairness.lean`,
 `Dregg2/Intent/SealedAuction.lean`, `circuit-prove/src/shielded/pool.rs`,
-`circuit-prove/src/shielded_ring_clearing_air.rs`, `circuit-prove/src/shielded_ring_clearing_nleg_air.rs`,
+retired `shielded_ring_clearing_air.rs`, retired `shielded_ring_clearing_nleg_air.rs`,
 `intent/src/trustless.rs`. External: Budish–Cramton–Shim QJE 2015; Vickrey 1961; CoW Protocol docs;
 Shutter Network; Cryptobazaar (NDSS 2026); zkHawk; Penumbra ZSwap; arxiv 2606.14939.*

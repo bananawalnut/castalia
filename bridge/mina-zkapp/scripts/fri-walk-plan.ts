@@ -1,7 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DEPLOYED_KNOBS } from '../src/FriChallenger.js';
-
 import {
   airColumnIndex,
   deepTermCensus,
@@ -38,9 +36,9 @@ function main() {
 
   console.log('\n=== THE ROOT FRI WALK, PLANNED (leg 18) ===\n');
   console.log(
-    `[1] geometry: |D^0| = 2^${DEPLOYED_KNOBS.logGlobalMaxHeight}  log_blowup ` +
-      `${DEPLOYED_KNOBS.logBlowup}  ${DEPLOYED_KNOBS.numQueries} queries  ` +
-      `${DEPLOYED_KNOBS.layers} fold layers  query_pow ${DEPLOYED_KNOBS.queryPowBits}`,
+    `[1] geometry: |D^0| = 2^${shape.knobs.logGlobalMaxHeight}  log_blowup ` +
+      `${shape.knobs.logBlowup}  ${shape.knobs.numQueries} queries  ` +
+      `${shape.knobs.layers} fold layers  query_pow ${shape.knobs.queryPowBits}`,
   );
   console.log(`    vk ${real.vkFingerprint.slice(0, 16)}...  degree_bits [${real.degreeBits}]`);
   console.log(`    committed matrix heights, descending: [${shape.heights.join(', ')}]`);
@@ -83,10 +81,10 @@ function main() {
   const plan = planFriWalk(w, op, ft, { usableRows: BUDGET, chunkLanes: CHUNK });
   console.log(
     `\n[4] the FRI-side lane table is ${fmt(ft.nLanes)} lanes: the challenger state entering FRI, ` +
-      `the ${DEPLOYED_KNOBS.layers} commit-phase roots, the ${shape.rounds.length} input-round ` +
+      `the ${shape.knobs.layers} commit-phase roots, the ${shape.rounds.length} input-round ` +
       `roots, the final polynomial, the query PoW witness, every out-of-domain point, the ` +
       `${fmt(op.nFri)} opened values the AIR never reads, and all ${fmt(ft.perQueryRowLanes)} ` +
-      `opened row lanes of each of the ${DEPLOYED_KNOBS.numQueries} queries`,
+      `opened row lanes of each of the ${shape.knobs.numQueries} queries`,
   );
   console.log(`\n[5] the cut list at a ${fmt(BUDGET)}-row budget, chunk ${CHUNK} lanes`);
   console.log(
@@ -114,7 +112,7 @@ function main() {
   }
 
   // Where the slices fall, per query — the object the extrapolation is over.
-  const perQuery: number[] = new Array(DEPLOYED_KNOBS.numQueries).fill(0);
+  const perQuery: number[] = new Array(shape.knobs.numQueries).fill(0);
   for (const s of plan.slices) {
     const seg = w.segs[s.from] as any;
     if (typeof seg.q === 'number') perQuery[seg.q]++;
