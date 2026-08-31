@@ -19,7 +19,9 @@ export here.
 - Reserved public IPv4 address:
 - `dregg.zenith-research.ca` A target:
 - `castalia.zenith-research.ca` CNAME target:
-- Wallet commit and production package SHA-256:
+- Wallet commit:
+- Wallet hosted workflow run and artifact name:
+- Wallet production package content-tree SHA-256:
 - Web commit:
 
 ## Membership and runtime acceptance

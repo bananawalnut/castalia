@@ -164,11 +164,24 @@ sudo deploy/oci/soak-membership.sh \
   1800
 ```
 
-Then package the Wallet with only the production endpoint:
+After the Wallet PR is merged, dispatch its hosted `Verify` workflow on
+`main` and confirm the run's `headSha` is the exact reviewed Wallet revision.
+Download the retained `castalia-wallet-production-<sha>` artifact, which
+contains both the unpacked extension and
+`castalia-wallet-production.contents.sha256`. The hosted workflow has already
+built and independently inspected it with only the production endpoint:
 
 ```bash
-npm run package:production-extension -- https://dregg.zenith-research.ca
+gh workflow run verify.yml --repo bananawalnut/castalia-wallet --ref main
+gh run download RUN_ID \
+  --repo bananawalnut/castalia-wallet \
+  --name castalia-wallet-production-EXACT_RUN_SHA \
+  --dir ./castalia-wallet-acceptance
 ```
+
+Do not compile the Wallet on the OCI node or on the shared development Mac.
+Load `castalia-wallet-acceptance/castalia-wallet-production` as the unpacked
+Chrome extension after verifying its content-tree sidecar.
 
 In a clean Chrome profile, complete the owner acceptance checklist for wallet
 creation, `.castalia-recovery` export/import, issuance, idempotent retry,
