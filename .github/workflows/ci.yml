@@ -697,51 +697,14 @@ jobs:
       #
       # ⚠ nextest DOES NOT RUN DOCTESTS — it cannot, there is no libtest harness for
       # them. That is 210 doctest targets here, carrying 54 passing and 4 REAL
-      # FAILING doc examples in the reference run. They are recovered by the
-      # `cargo test --doc` step below, which is NOT optional and must stay adjacent
-      # to this one.
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
+      # FAILING doc examples in the reference run. They are recovered by each
+      # `macos-marshal-shard` job's adjacent `cargo test --doc` invocation below;
+      # that recovery is mandatory and its package union is exact.
       - if: runner.os == 'macOS'
         name: Compile every macOS target (including verified-PQ test packages)
         env:
           DREGG_TEST_REQUIRE_LEAN: "0"
         run: cargo check --locked --workspace --all-targets
-
-      - if: runner.os == 'macOS'
-        name: Test the reviewed macOS marshal-safe package set
-        env:
-          DREGG_TEST_REQUIRE_LEAN: "0"
-        run: |
-          set -euo pipefail
-          python3 -m unittest scripts.tests.test_ci_macos_marshal_packages
-          metadata="$RUNNER_TEMP/cargo-metadata.json"
-          packages="$RUNNER_TEMP/macos-marshal-packages.txt"
-          excluded="$RUNNER_TEMP/macos-verified-pq-compile-only.txt"
-          config="$RUNNER_TEMP/macos-nextest.toml"
-          cargo metadata --locked --no-deps --format-version 1 > "$metadata"
-          python3 scripts/ci-macos-marshal-packages.py \
-            --metadata "$metadata" \
-            --exclusions .github/macos-marshal-test-exclusions.txt \
-            --packages-output "$packages" \
-            --excluded-output "$excluded" \
-            --config-output "$config"
-
-          echo "Verified-PQ packages compiled but not executed without a Darwin Lean seed:"
-          cat "$excluded"
-          package_args=()
-          while IFS= read -r package; do
-            package_args+=(--package "$package")
-          done < "$packages"
-
-          cargo nextest run --locked \
-            --config-file "$config" \
-            --profile full \
-            "${package_args[@]}" \
-            --no-fail-fast
-          # nextest structurally cannot run doctests, so recover every doc target
-          # belonging to the same explicit marshal-safe package set.
-          cargo test --locked "${package_args[@]}" --doc
       # Linux SIGBUS root cause: it is NOT one heavy crate. Even serialized links
       # with debuginfo disabled eventually retain too many artifacts in one full
       # workspace target tree; rust-lld then faults while mmap-writing an ordinary
@@ -891,6 +854,90 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: "0"
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo test -p deos-zed --no-default-features --features firmament
+
+  # The platform-wide macOS compile gate above completes in about 23 minutes,
+  # but executing all 15,425 marshal-safe tests in one nextest invocation made
+  # the hosted runner lose communication after 2,865 verdicts. Keep compilation
+  # and execution as separate evidence: every target still compiles once in the
+  # required `Test (macos-latest)` check, while these deterministic package-root
+  # shards execute the exact marshal-safe union. Two test processes per runner
+  # bound CPU and memory pressure without narrowing tests or doctests.
+  macos-marshal-shard:
+    name: macOS marshal-safe shard ${{ matrix.label }}/8
+    needs: [test]
+    runs-on: macos-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: 0, label: "01" }
+          - { shard: 1, label: "02" }
+          - { shard: 2, label: "03" }
+          - { shard: 3, label: "04" }
+          - { shard: 4, label: "05" }
+          - { shard: 5, label: "06" }
+          - { shard: 6, label: "07" }
+          - { shard: 7, label: "08" }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-06-21
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-marshal-source-deps
+          cache-targets: "false"
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Materialize the exact marshal-safe package shard
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_COUNT: "8"
+        run: |
+          set -euo pipefail
+          python3 -m unittest scripts.tests.test_ci_macos_marshal_packages
+          cargo metadata --locked --no-deps --format-version 1 > "$RUNNER_TEMP/cargo-metadata.json"
+          python3 scripts/ci-macos-marshal-packages.py \
+            --metadata "$RUNNER_TEMP/cargo-metadata.json" \
+            --exclusions .github/macos-marshal-test-exclusions.txt \
+            --shard-index "$SHARD_INDEX" \
+            --shard-count "$SHARD_COUNT" \
+            --packages-output "$RUNNER_TEMP/macos-marshal-packages.txt" \
+            --excluded-output "$RUNNER_TEMP/macos-verified-pq-compile-only.txt" \
+            --config-output "$RUNNER_TEMP/macos-nextest.toml"
+          cat "$RUNNER_TEMP/macos-marshal-packages.txt"
+          echo "Verified-PQ packages compiled by the platform gate but not executed without a Darwin Lean seed:"
+          cat "$RUNNER_TEMP/macos-verified-pq-compile-only.txt"
+
+      - name: Test complete marshal-safe shard (nextest + doctests)
+        env:
+          CARGO_BUILD_JOBS: "2"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+          DREGG_TEST_REQUIRE_LEAN: "0"
+        run: |
+          set -euo pipefail
+          package_args=()
+          while IFS= read -r package; do
+            package_args+=(--package "$package")
+          done < "$RUNNER_TEMP/macos-marshal-packages.txt"
+
+          status=0
+          cargo nextest run --locked \
+            --config-file "$RUNNER_TEMP/macos-nextest.toml" \
+            --profile full \
+            --test-threads 2 \
+            "${package_args[@]}" \
+            --no-fail-fast || status=1
+          cargo test --locked "${package_args[@]}" --doc -- --test-threads=2 || status=1
+          exit "$status"
 
   # The complete Linux suite is fanned out, but it is still a verified-Lean suite.
   # The previous three-shard job armed DREGG_TEST_REQUIRE_LEAN for the entire

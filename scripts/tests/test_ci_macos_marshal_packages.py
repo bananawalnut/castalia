@@ -45,6 +45,17 @@ class MacosMarshalPackagesTests(unittest.TestCase):
                 self.metadata("normal"), {"bravo", marshal.TESTKIT}
             )
 
+    def test_package_shards_form_an_exact_union(self) -> None:
+        names = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"]
+        shards = [marshal.package_shard(names, index, 3) for index in range(3)]
+        flattened = [name for shard in shards for name in shard]
+        self.assertEqual(sorted(flattened), names)
+        self.assertEqual(len(flattened), len(set(flattened)))
+
+    def test_invalid_shard_index_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ValueError, "0 <= index < count"):
+            marshal.package_shard(["alpha"], 1, 1)
+
     def test_generated_config_keeps_full_profile_and_resolvable_override(self) -> None:
         config = marshal.render_nextest_config(["alpha", "servo-render"])
         self.assertIn("default-filter = 'all()'", config)
