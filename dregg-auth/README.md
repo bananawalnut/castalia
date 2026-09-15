@@ -157,6 +157,131 @@ and the `mcp::OfflineGate` gate built on it) remains in the library for
 back-compat; the `policy` surface above is the product, and it is the proven
 one.
 
+## Strict live authority (opt-in, per presentation)
+
+`Verifier::admit_resource_bound` is the separate live-only profile. Supply a
+fresh `dga1_` presentation, one exact operation/resource, an explicit trusted
+clock, and a verifier configured with the selected trusted issuer public key.
+This function performs no issuer discovery. A future lifecycle provider must
+resolve an active issuer from its immutable registry snapshot before calling it.
+
+```rust
+use dregg_auth::{credential::{Caveat, Pred, RootKey}, policy::{Call, Verifier}};
+
+let root = RootKey::generate();
+let token = root.mint([
+    Caveat::FirstParty(Pred::AttrEq { key: "subject".into(), value: "example-holder".into() }),
+    Caveat::FirstParty(Pred::AttrEq { key: "operation".into(), value: "gallery.card.read".into() }),
+    Caveat::FirstParty(Pred::AttrEq { key: "resource".into(), value: "dregg://gallery/cards/example".into() }),
+    Caveat::FirstParty(Pred::Within { not_before: 900, not_after: 1_100 }),
+]).encode();
+let gate = Verifier::new(root.public().to_hex());
+let call = Call::tool("gallery.card.read").resource("dregg://gallery/cards/example").at(1_000);
+let authority = gate.admit_resource_bound(&token, &call).expect("valid example authority");
+assert_eq!(authority.subject(), "example-holder");
+assert_eq!(authority.resource(), "dregg://gallery/cards/example");
+```
+
+### Exact accepted language
+
+- Operations are 1–128 ASCII bytes: dot-separated `[a-z][a-z0-9_]{0,31}`
+  segments. There are no aliases or case folding.
+- Exact resources are `dregg://<world>/<namespace>/<path...>`, at most 4,096
+  bytes. Every segment is `[a-z0-9][a-z0-9._-]{0,127}`. Empty/dot segments,
+  repeated separators, trailing slashes, percent encoding, queries, fragments,
+  whitespace, control characters and non-ASCII segments reject.
+- Resource-prefix caveats use that same grammar with exactly one trailing `/`.
+  Each prefix must admit the exact requested resource. The result retains only
+  that exact resource; it is never a reusable prefix grant.
+- Issuer block zero must have exactly one direct, positive, nonempty
+  `subject` equality. Later subject equalities must match it. Request arguments
+  cannot supply or override the subject, resource, operation or clock.
+- At least one `operation`/`tool` equality and at least one `resource`
+  equality/prefix are required. Every atom in every block must admit the request.
+  Nonempty `AllOf` can group permitted atoms; `True`, `False`, empty `AllOf`,
+  `AnyOf`, `Not`, third-party caveats and unknown attribute keys reject.
+- Positive `NotBefore`, `NotAfter` and `Within` bounds intersect. The lower
+  bound defaults to zero; a finite upper bound is mandatory. Bounds are inclusive
+  (a singleton interval is valid). Contradictions, expiration, future validity,
+  integer overflow and a final `u64::MAX` upper-bound sentinel reject.
+
+`VerifiedLiveAuthority` has private fields and read-only accessors for the
+credential-derived subject, exact operation/resource, tight interval, verification
+time, exact issuer public key, issuer fingerprint and `Credential::tail()`.
+It has no public constructor, `Default`, `Deserialize`, `Serialize`, raw-token
+accessor or conversion from a request/receipt. Its fixed success code is
+`verified_live_authority`. Its `Debug` output is
+`VerifiedLiveAuthority(verified_live_authority)`.
+
+`issuer_key_digest()` is bare BLAKE3 of the issuer's 32 public-key bytes. It is
+**not** the parent contract's world-scoped registry issuer identifier. Likewise,
+`credential_tail()` is the core chain commitment, not a world-scoped digest.
+The accepted registry/audience/kind domain separation belongs to the downstream
+provider/receiver contract. These public digests are not confidentiality or
+anonymity mechanisms.
+
+### Decode bounds and failure privacy
+
+| Limit | Inclusive maximum |
+| --- | ---: |
+| Encoded capability, including `dga1_` | 65,536 bytes |
+| Actual decoded bytes | 49,148 bytes |
+| Blocks / total caveats | 32 / 256 |
+| Predicate depth / total nodes | 16 / 512 |
+| Any decoded string | 4,096 UTF-8 bytes |
+| Conservative decode allocation budget | 1 MiB |
+| Third-party discharges | 0 |
+
+A nonallocating schema preflight checks counters, lengths, UTF-8, shortest
+varints, fixed signature sizes and complete input consumption before postcard
+builds a credential tree. Trailing bytes, whitespace trimming, padded/noncanonical
+base64url and alternate varint encodings are refused. Vector storage, strings,
+wire/credential overlap and raw/digest scratch are charged with a fourfold
+capacity allowance. The stricter encoded/node/caveat limits also constrain the
+reachable allocation envelope; the budget is not a process-wide memory limit or
+an allocator-metadata/RSS guarantee.
+
+Every refusal has the fixed Display/JSON value `live_authority_refused`, Debug
+`LiveAuthorityError`, and no source error. Strict verification calls neither the
+legacy `Receipt`/explanation renderers nor tracing/logging. Panic formatting of
+its public result/error is redacted; malformed presentations are refused, not
+panicked. Dependency allocation failure/process abort is not a recoverable denial.
+
+Owned raw base64 output (including partially decoded failures), the decoded
+proof seed, decoded predicate strings, analysis strings and result strings are
+overwritten before normal release using safe `fill(0)` plus `black_box`.
+This is best-effort overwrite, not guaranteed cryptographic erasure. Remaining
+copies are bounded and explicit:
+
+- The caller owns the borrowed encoded token and `Call` buffers; transport must
+  avoid logging/persisting them and manage their lifetime.
+- Serde/postcard and compiler stack temporaries have no erasure hook here. Each
+  decoded field/tree is limited by the table. Dalek internally copies a 32-byte
+  proof seed; the existing enabled `zeroize` feature owns its key-drop behavior.
+- Signature verification serializes one block's caveats at a time in the existing
+  chain implementation: less than the 49,148-byte input per serialization,
+  subject to dependency vector capacity growth. Its private scratch cannot be
+  overwritten through the current API.
+- The existing `Context` privately copies four attributes: subject and resource
+  up to 4,096 bytes each, and operation/tool up to 128 bytes each, plus 28 bytes
+  of fixed keys and bounded map storage. It provides no mutable erasure API.
+
+### Compatibility and integration limits
+
+Legacy `Verifier::admit`, `Credential::decode`, credential encoding/signatures,
+`eb2_`/`dgd1_` handling and explanatory receipts remain unchanged. Legacy tokens
+using tool disjunctions may still pass `admit` and correctly fail the strict
+profile. Legacy decode also retains its prior whitespace/non-shortest-varint
+compatibility. The new bounds and redaction do **not** retrofit those APIs.
+Never fall back to a legacy verifier when a strict presentation is refused.
+
+A successful result proves this presentation at the supplied clock and exact
+request. It does not prove continued bearer possession on a later request or
+create durable authority. It establishes no node state, revocation registry,
+issuer lifecycle status, source signing, secS transport, cache migration,
+Gallery ownership, deployment or completed authorization workflow. A1 review,
+owner-approved merge and post-merge CI remain separate from implementation.
+
 ## Honest residuals
 
 - **Rate limiting is advisory**: verification is stateless and offline, so it

@@ -1,8 +1,7 @@
-//! RED contract for the opt-in strict live `dga1_` authority profile.
+//! Contract for the opt-in strict live `dga1_` authority profile.
 //!
 //! The generic credential language remains intentionally broader. These tests
-//! define the separate resource-bound verifier path that later C02-C04 commits
-//! must implement without changing `Verifier::admit`.
+//! verify the separate resource-bound path without changing `Verifier::admit`.
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use dregg_auth::{
@@ -753,4 +752,163 @@ fn braced_item(source: &str) -> &str {
         }
     }
     panic!("item has a closing brace");
+}
+
+#[test]
+fn legacy_tool_grants_remain_compatible_and_strict_refusal_has_no_fallback() {
+    use dregg_auth::policy::{Grant, Policy};
+    let policy = Policy::generate();
+    let token = policy
+        .issue(
+            Grant::to("legacy-holder")
+                .tools(["read", "write"])
+                .until(VALID_UNTIL),
+        )
+        .unwrap()
+        .encode();
+    let gate = Verifier::new(policy.public_key_hex());
+    let call = Call::tool("read").resource(RESOURCE).at(NOW);
+    assert!(gate.admit(&token, &call).admitted());
+    assert!(gate.admit_resource_bound(&token, &call).is_err());
+    assert!(gate.admit(&format!(" {token}\n"), &call).admitted());
+    assert!(
+        gate.admit_resource_bound(&format!(" {token}\n"), &call)
+            .is_err()
+    );
+    assert!(!gate.admit(&token, &Call::tool("delete").at(NOW)).admitted());
+}
+
+#[test]
+fn request_arguments_are_advisory_and_every_live_verification_rebinds_time() {
+    let root = RootKey::from_seed([60; 32]);
+    let token = exact_profile(&root).encode();
+    let gate = Verifier::new(root.public().to_hex());
+    let call = exact_call()
+        .arg("subject", "caller-claim")
+        .arg("operation", "delete")
+        .arg("resource", "caller-resource")
+        .arg("clock", "0");
+    let authority = gate.admit_resource_bound(&token, &call).unwrap();
+    assert_eq!(authority.subject(), "alice");
+    assert_eq!(authority.operation(), OPERATION);
+    assert_eq!(authority.resource(), RESOURCE);
+    assert!(
+        gate.admit_resource_bound(&token, &exact_call().at(VALID_FROM))
+            .is_ok()
+    );
+    assert!(
+        gate.admit_resource_bound(&token, &exact_call().at(VALID_UNTIL))
+            .is_ok()
+    );
+    assert!(
+        gate.admit_resource_bound(&token, &exact_call().at(VALID_UNTIL + 1))
+            .is_err()
+    );
+    let missing_resource = Call::tool(OPERATION).at(NOW).arg("resource", RESOURCE);
+    assert!(
+        gate.admit_resource_bound(&token, &missing_resource)
+            .is_err()
+    );
+}
+
+#[test]
+fn canonical_request_grammar_never_normalizes_aliases() {
+    let root = RootKey::from_seed([61; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+    for operation in [
+        "Gallery.card.read",
+        "gallery..read",
+        ".read",
+        "read.",
+        "gallery/card/read",
+        "1gallery.card.read",
+        "gallery.card-read",
+        "gallery.card.read ",
+    ] {
+        let token = root
+            .mint([
+                attr("subject", "alice"),
+                attr("operation", operation),
+                attr("resource", RESOURCE),
+                first_party(Pred::NotAfter { at: VALID_UNTIL }),
+            ])
+            .encode();
+        assert!(
+            gate.admit_resource_bound(&token, &Call::tool(operation).resource(RESOURCE).at(NOW))
+                .is_err()
+        );
+    }
+    for resource in [
+        "DREGG://gallery/cards/alice/profile",
+        "dregg://Gallery/cards/alice/profile",
+        "dregg://gallery/cards/./alice/profile",
+        "dregg://gallery/cards/../alice/profile",
+        "dregg://gallery//cards/alice/profile",
+        "dregg://gallery/cards/alice/profile/",
+        "dregg://gallery/cards/alice/%70rofile",
+        "dregg://gallery/cards/alice/profile?q=1",
+        "dregg://gallery/cards/alice/profile#part",
+        "dregg://gallery/cards/alice/πrofile",
+        "dregg://gallery/cards/alice/profile\n",
+        "dregg://gallery/cards",
+    ] {
+        let token = root
+            .mint([
+                attr("subject", "alice"),
+                attr("operation", OPERATION),
+                attr("resource", resource),
+                first_party(Pred::NotAfter { at: VALID_UNTIL }),
+            ])
+            .encode();
+        assert!(
+            gate.admit_resource_bound(&token, &exact_call().resource(resource))
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn canonical_operation_and_resource_byte_limits_are_inclusive() {
+    let root = RootKey::from_seed([62; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+    let operation = format!("{}.{}", vec!["a".repeat(32); 3].join("."), "a".repeat(29));
+    let resource = format!(
+        "dregg://w/n/{}/{}",
+        vec!["a".repeat(127); 31].join("/"),
+        "a".repeat(116)
+    );
+    assert_eq!(operation.len(), 128);
+    assert_eq!(resource.len(), 4_096);
+    let sign = |op: &str, res: &str| {
+        root.mint([
+            attr("subject", "alice"),
+            attr("operation", op),
+            attr("resource", res),
+            first_party(Pred::NotAfter { at: VALID_UNTIL }),
+        ])
+        .encode()
+    };
+    assert!(
+        gate.admit_resource_bound(
+            &sign(&operation, &resource),
+            &Call::tool(&operation).resource(&resource).at(NOW)
+        )
+        .is_ok()
+    );
+    let over_operation = format!("{operation}a");
+    assert!(
+        gate.admit_resource_bound(
+            &sign(&over_operation, &resource),
+            &Call::tool(&over_operation).resource(&resource).at(NOW)
+        )
+        .is_err()
+    );
+    let over_resource = format!("{resource}a");
+    assert!(
+        gate.admit_resource_bound(
+            &sign(&operation, &over_resource),
+            &Call::tool(&operation).resource(&over_resource).at(NOW)
+        )
+        .is_err()
+    );
 }
