@@ -295,33 +295,9 @@ impl Credential {
     /// gateway-signed [`Discharge`] whose own conditions hold. Fail-closed
     /// throughout; the refusal names the first violated requirement.
     pub fn verify(&self, root: &PublicKey, ctx: &Context) -> Result<(), Refusal> {
-        // 1. Proof of possession: the carried tail key matches the last
-        //    block's next_pub. Without this, a recipient could strip trailing
-        //    blocks and present the wider prefix.
-        let last = self.blocks.last().expect("a credential has a root block");
-        if self.proof.verifying_key().to_bytes() != last.next_pub {
-            return Err(Refusal::ProofMismatch);
-        }
+        self.verify_chain(root)?;
 
-        // 2. The signature chain, from the root key down (BiscuitGraph: each
-        //    block verifies under its parent's vkey).
-        let mut vkey =
-            VerifyingKey::from_bytes(&root.0).map_err(|_| Refusal::MalformedKey { block: 0 })?;
-        let mut prev: Option<[u8; 64]> = None;
-        for (i, block) in self.blocks.iter().enumerate() {
-            let msg = match prev {
-                None => block_digest(&self.nonce, &block.caveats, &block.next_pub),
-                Some(ps) => block_digest(&ps, &block.caveats, &block.next_pub),
-            };
-            let sig = Signature::from_bytes(&block.sig);
-            vkey.verify(&msg, &sig)
-                .map_err(|_| Refusal::BadSignature { block: i })?;
-            vkey = VerifyingKey::from_bytes(&block.next_pub)
-                .map_err(|_| Refusal::MalformedKey { block: i })?;
-            prev = Some(block.sig);
-        }
-
-        // 3. The meet of all caveats (Token.admits) — fail-closed.
+        // The meet of all caveats (Token.admits) — fail-closed.
         let tail = self.tail();
         for (block, caveat) in self.caveats() {
             match caveat {
@@ -348,6 +324,54 @@ impl Credential {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Verify the signature chain and positive first-party caveat meet without
+    /// constructing raw-value refusal text. Used only by the strict live
+    /// authority path, whose profile analyzer rejects third-party caveats.
+    pub(crate) fn verify_first_party_redacted(
+        &self,
+        root: &PublicKey,
+        ctx: &Context,
+    ) -> Result<(), ()> {
+        self.verify_chain(root).map_err(|_| ())?;
+        for (_, caveat) in self.caveats() {
+            match caveat {
+                Caveat::FirstParty(predicate) if predicate.eval(ctx) == Ok(true) => {}
+                Caveat::FirstParty(_) | Caveat::ThirdParty { .. } => return Err(()),
+            }
+        }
+        Ok(())
+    }
+
+    fn verify_chain(&self, root: &PublicKey) -> Result<(), Refusal> {
+        // 1. Proof of possession: the carried tail key matches the last
+        //    block's next_pub. Without this, a recipient could strip trailing
+        //    blocks and present the wider prefix.
+        let last = self.blocks.last().expect("a credential has a root block");
+        if self.proof.verifying_key().to_bytes() != last.next_pub {
+            return Err(Refusal::ProofMismatch);
+        }
+
+        // 2. The signature chain, from the root key down (BiscuitGraph: each
+        //    block verifies under its parent's vkey).
+        let mut vkey =
+            VerifyingKey::from_bytes(&root.0).map_err(|_| Refusal::MalformedKey { block: 0 })?;
+        let mut prev: Option<[u8; 64]> = None;
+        for (i, block) in self.blocks.iter().enumerate() {
+            let msg = match prev {
+                None => block_digest(&self.nonce, &block.caveats, &block.next_pub),
+                Some(ps) => block_digest(&ps, &block.caveats, &block.next_pub),
+            };
+            let sig = Signature::from_bytes(&block.sig);
+            vkey.verify(&msg, &sig)
+                .map_err(|_| Refusal::BadSignature { block: i })?;
+            vkey = VerifyingKey::from_bytes(&block.next_pub)
+                .map_err(|_| Refusal::MalformedKey { block: i })?;
+            prev = Some(block.sig);
+        }
+
         Ok(())
     }
 
