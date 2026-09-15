@@ -6,7 +6,7 @@
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use dregg_auth::{
-    credential::{CREDENTIAL_PREFIX, Caveat, GatewayKey, Pred, RootKey},
+    credential::{CREDENTIAL_PREFIX, Caveat, Credential, GatewayKey, Pred, RootKey},
     policy::{Call, Verifier},
 };
 
@@ -42,6 +42,25 @@ fn exact_profile(root: &RootKey) -> dregg_auth::credential::Credential {
 
 fn exact_call() -> Call {
     Call::tool(OPERATION).resource(RESOURCE).at(NOW)
+}
+
+fn bounded_profile(root: &RootKey, extra: impl IntoIterator<Item = Caveat>) -> String {
+    let mut caveats = vec![
+        attr("subject", "alice"),
+        attr("operation", OPERATION),
+        attr("resource", RESOURCE),
+        first_party(Pred::NotAfter { at: VALID_UNTIL }),
+    ];
+    caveats.extend(extra);
+    root.mint(caveats).encode()
+}
+
+fn nested_all_of(depth: usize) -> Pred {
+    let mut predicate = Pred::NotAfter { at: VALID_UNTIL };
+    for _ in 1..depth {
+        predicate = Pred::AllOf(vec![predicate]);
+    }
+    predicate
 }
 
 #[test]
@@ -333,8 +352,7 @@ fn malformed_wrong_issuer_contradictory_and_overflow_profiles_reject() {
 
     let refusal = Verifier::new(other_root.public().to_hex())
         .admit_resource_bound(&token, &exact_call())
-        .err()
-        .expect("wrong issuer refuses");
+        .expect_err("wrong issuer refuses");
     assert_eq!(refusal.to_string(), "live_authority_refused");
     assert_eq!(format!("{refusal:?}"), "LiveAuthorityError");
 
@@ -361,6 +379,316 @@ fn malformed_wrong_issuer_contradictory_and_overflow_profiles_reject() {
                 .is_err(),
             "contradictory or sentinel-overflow validity must reject"
         );
+    }
+}
+
+#[test]
+fn strict_decode_enforces_block_and_caveat_boundaries() {
+    let root = RootKey::from_seed([51; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+
+    let mut thirty_two_blocks = exact_profile(&root);
+    for _ in 1..32 {
+        thirty_two_blocks = thirty_two_blocks.attenuate([]);
+    }
+    assert!(
+        gate.admit_resource_bound(&thirty_two_blocks.encode(), &exact_call())
+            .is_ok(),
+        "32 blocks is the inclusive strict boundary"
+    );
+    let thirty_three_blocks = thirty_two_blocks.attenuate([]);
+    assert!(
+        gate.admit_resource_bound(&thirty_three_blocks.encode(), &exact_call())
+            .is_err(),
+        "33 blocks must reject before authority analysis"
+    );
+
+    let required = [
+        attr("subject", "alice"),
+        attr("operation", OPERATION),
+        attr("resource", RESOURCE),
+        first_party(Pred::NotAfter { at: VALID_UNTIL }),
+    ];
+    let mut at_limit = required.to_vec();
+    at_limit.extend(
+        std::iter::repeat_with(|| first_party(Pred::NotAfter { at: VALID_UNTIL }))
+            .take(256 - required.len()),
+    );
+    assert!(
+        gate.admit_resource_bound(&root.mint(at_limit.clone()).encode(), &exact_call())
+            .is_ok(),
+        "256 caveats is the inclusive strict boundary"
+    );
+    at_limit.push(first_party(Pred::NotAfter { at: VALID_UNTIL }));
+    assert!(
+        gate.admit_resource_bound(&root.mint(at_limit).encode(), &exact_call())
+            .is_err(),
+        "257 caveats must reject"
+    );
+}
+
+#[test]
+fn strict_decode_enforces_predicate_depth_and_node_boundaries() {
+    let root = RootKey::from_seed([52; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+
+    let depth_sixteen = bounded_profile(&root, [first_party(nested_all_of(16))]);
+    assert!(
+        gate.admit_resource_bound(&depth_sixteen, &exact_call())
+            .is_ok(),
+        "predicate depth 16 is the inclusive strict boundary"
+    );
+    let depth_seventeen = bounded_profile(&root, [first_party(nested_all_of(17))]);
+    assert!(
+        gate.admit_resource_bound(&depth_seventeen, &exact_call())
+            .is_err(),
+        "predicate depth 17 must reject"
+    );
+
+    // Four required predicate roots plus one AllOf root and 507/508 leaves.
+    let nodes_512 = bounded_profile(
+        &root,
+        [first_party(Pred::AllOf(
+            std::iter::repeat_n(Pred::NotAfter { at: VALID_UNTIL }, 507).collect(),
+        ))],
+    );
+    assert!(
+        gate.admit_resource_bound(&nodes_512, &exact_call()).is_ok(),
+        "512 predicate nodes is the inclusive strict boundary"
+    );
+    let nodes_513 = bounded_profile(
+        &root,
+        [first_party(Pred::AllOf(
+            std::iter::repeat_n(Pred::NotAfter { at: VALID_UNTIL }, 508).collect(),
+        ))],
+    );
+    assert!(
+        gate.admit_resource_bound(&nodes_513, &exact_call())
+            .is_err(),
+        "513 predicate nodes must reject"
+    );
+}
+
+#[test]
+fn strict_decode_enforces_string_and_encoded_boundaries_without_trimming() {
+    let root = RootKey::from_seed([53; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+
+    let subject_4096 = "a".repeat(4_096);
+    let token_4096 = root
+        .mint([
+            attr("subject", &subject_4096),
+            attr("operation", OPERATION),
+            attr("resource", RESOURCE),
+            first_party(Pred::NotAfter { at: VALID_UNTIL }),
+        ])
+        .encode();
+    assert!(
+        gate.admit_resource_bound(&token_4096, &exact_call())
+            .is_ok(),
+        "a 4,096-byte string is the inclusive strict boundary"
+    );
+
+    let subject_4097 = "a".repeat(4_097);
+    let token_4097 = root
+        .mint([
+            attr("subject", &subject_4097),
+            attr("operation", OPERATION),
+            attr("resource", RESOURCE),
+            first_party(Pred::NotAfter { at: VALID_UNTIL }),
+        ])
+        .encode();
+    assert!(
+        gate.admit_resource_bound(&token_4097, &exact_call())
+            .is_err(),
+        "a 4,097-byte string must reject"
+    );
+
+    let token = exact_profile(&root).encode();
+    assert!(gate.admit_resource_bound(&token, &exact_call()).is_ok());
+    assert!(
+        gate.admit_resource_bound(&format!("{token}\n"), &exact_call())
+            .is_err(),
+        "the strict path must not trim into a duplicate accepted boundary form"
+    );
+
+    for encoded_len in [65_536, 65_537] {
+        let hostile = format!("{CREDENTIAL_PREFIX}{}", "A".repeat(encoded_len - 5));
+        assert_eq!(hostile.len(), encoded_len);
+        assert!(gate.admit_resource_bound(&hostile, &exact_call()).is_err());
+    }
+}
+
+#[test]
+fn strict_decode_rejects_noncanonical_duplicate_wire_forms_without_changing_legacy_decode() {
+    let root = RootKey::from_seed([55; 32]);
+    let token = exact_profile(&root).encode();
+    let mut raw = URL_SAFE_NO_PAD
+        .decode(token.strip_prefix(CREDENTIAL_PREFIX).expect("v1 token"))
+        .expect("canonical body");
+    assert_eq!(raw[32], 1, "the fixture has one credential block");
+    raw.splice(32..33, [0x81, 0x00]);
+    let duplicate_varint = format!("{CREDENTIAL_PREFIX}{}", URL_SAFE_NO_PAD.encode(raw));
+
+    assert!(
+        Credential::decode(&duplicate_varint).is_ok(),
+        "legacy structural decode remains byte-compatible"
+    );
+    assert!(
+        Verifier::new(root.public().to_hex())
+            .admit_resource_bound(&duplicate_varint, &exact_call())
+            .is_err(),
+        "strict decode rejects a non-shortest duplicate representation"
+    );
+}
+
+#[test]
+fn strict_failures_are_fixed_and_hostile_values_never_render() {
+    let root = RootKey::from_seed([54; 32]);
+    let marker = "HOSTILE_BEARER_subject_resource_secret_proof_key";
+    let hostile = format!("{CREDENTIAL_PREFIX}{marker}");
+    let refusal =
+        match Verifier::new(root.public().to_hex()).admit_resource_bound(&hostile, &exact_call()) {
+            Ok(_) => panic!("hostile malformed input must refuse"),
+            Err(refusal) => refusal,
+        };
+
+    let display = refusal.to_string();
+    let debug = format!("{refusal:?}");
+    let json = serde_json::to_string(&refusal).expect("fixed error JSON is total");
+    assert_eq!(display, "live_authority_refused");
+    assert_eq!(debug, "LiveAuthorityError");
+    assert_eq!(json, "\"live_authority_refused\"");
+    for rendered in [&display, &debug, &json] {
+        assert!(!rendered.contains(marker));
+        assert!(!rendered.contains("alice"));
+        assert!(!rendered.contains(RESOURCE));
+    }
+
+    let panic = std::panic::catch_unwind(|| panic!("{refusal}"))
+        .expect_err("the test intentionally exercises panic formatting");
+    let panic_text = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .expect("panic payload is fixed text");
+    assert_eq!(panic_text, "live_authority_refused");
+    assert!(!panic_text.contains(marker));
+}
+
+fn raw_token(raw: &[u8]) -> String {
+    format!("{CREDENTIAL_PREFIX}{}", URL_SAFE_NO_PAD.encode(raw))
+}
+
+fn assert_fixed_refusal(gate: &Verifier, token: &str) {
+    let result = std::panic::catch_unwind(|| gate.admit_resource_bound(token, &exact_call()));
+    assert!(result.is_ok(), "untrusted input must not panic");
+    let error = result.unwrap().expect_err("malformed input must refuse");
+    assert_eq!(error.to_string(), "live_authority_refused");
+    assert_eq!(format!("{error:?}"), "LiveAuthorityError");
+    assert_eq!(
+        serde_json::to_string(&error).unwrap(),
+        "\"live_authority_refused\""
+    );
+    assert!(std::error::Error::source(&error).is_none());
+}
+
+#[test]
+fn hostile_lengths_overflow_truncation_and_trailing_bytes_refuse_without_panics() {
+    let root = RootKey::from_seed([56; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+    let token = exact_profile(&root).encode();
+    let raw = URL_SAFE_NO_PAD.decode(&token[5..]).unwrap();
+    for end in 0..raw.len() {
+        assert_fixed_refusal(&gate, &raw_token(&raw[..end]));
+    }
+    let mut trailing = raw.clone();
+    trailing.push(0);
+    assert_fixed_refusal(&gate, &raw_token(&trailing));
+
+    // Block count, caveat count, predicate discriminant, then key length.
+    // Huge claimed allocations, overflow and non-shortest varints must be
+    // refused by the allocation-free scan, even when the input is tiny.
+    for offset in [32, 33, 35, 36] {
+        for length in [
+            vec![0xff; 10],
+            vec![0xff; 9].into_iter().chain([2]).collect(),
+            vec![0x80, 0x80, 0x40],
+            vec![0x81, 0],
+        ] {
+            let mut hostile = raw[..offset].to_vec();
+            hostile.extend(length);
+            hostile.extend_from_slice(&raw[offset + 1..]);
+            assert_fixed_refusal(&gate, &raw_token(&hostile));
+        }
+    }
+    let mut invalid_utf8 = raw.clone();
+    invalid_utf8[37] = 0xff;
+    assert_fixed_refusal(&gate, &raw_token(&invalid_utf8));
+    let mut wrong_proof = raw.clone();
+    *wrong_proof.last_mut().unwrap() ^= 1;
+    assert_fixed_refusal(&gate, &raw_token(&wrong_proof));
+    // Partial base64 output followed by invalid input takes the guarded error path.
+    let mut invalid_base64 = token.clone();
+    invalid_base64.push('!');
+    assert_fixed_refusal(&gate, &invalid_base64);
+    assert_fixed_refusal(&gate, &format!("{token}="));
+    assert_fixed_refusal(&gate, &format!(" {token}"));
+    assert_fixed_refusal(&gate, &format!("dgd1_{}", &token[5..]));
+}
+
+#[test]
+fn encoded_limit_is_inclusive_for_a_valid_signed_presentation() {
+    let root = RootKey::from_seed([57; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+    let resource = format!(
+        "dregg://gallery/cards/{}",
+        vec!["a".repeat(120); 32].join("/")
+    );
+    let build = |subject_len| {
+        let mut caveats = vec![
+            attr("subject", &"s".repeat(subject_len)),
+            attr("operation", OPERATION),
+            first_party(Pred::NotAfter { at: VALID_UNTIL }),
+        ];
+        caveats.extend(std::iter::repeat_with(|| attr("resource", &resource)).take(12));
+        root.mint(caveats).encode()
+    };
+    // Adjust only a legal subject string to make raw length exactly 49,148.
+    let sample = build(2_000);
+    let raw_len = URL_SAFE_NO_PAD.decode(&sample[5..]).unwrap().len();
+    let subject_len = 2_000 + 49_148 - raw_len;
+    assert!((128..=4_096).contains(&subject_len));
+    let at_limit = build(subject_len);
+    assert_eq!(at_limit.len(), 65_536);
+    let call = Call::tool(OPERATION).resource(&resource).at(NOW);
+    assert!(gate.admit_resource_bound(&at_limit, &call).is_ok());
+    let over_limit = build(subject_len + 1);
+    assert!(over_limit.len() > 65_536);
+    assert!(gate.admit_resource_bound(&over_limit, &call).is_err());
+}
+
+#[test]
+fn strict_success_and_semantic_failures_render_only_fixed_codes() {
+    let root = RootKey::from_seed([58; 32]);
+    let gate = Verifier::new(root.public().to_hex());
+    let token = exact_profile(&root).encode();
+    let authority = gate.admit_resource_bound(&token, &exact_call()).unwrap();
+    assert_eq!(
+        format!("{authority:?}"),
+        "VerifiedLiveAuthority(verified_live_authority)"
+    );
+    assert_fixed_refusal(
+        &Verifier::new(RootKey::from_seed([59; 32]).public().to_hex()),
+        &token,
+    );
+    assert_fixed_refusal(&Verifier::new("invalid issuer"), &token);
+    for extra in [
+        attr("unknown", "PRIVATE_TEST_MARKER"),
+        first_party(Pred::NotAfter { at: NOW - 1 }),
+        attr("resource", "dregg://gallery/private/marker"),
+    ] {
+        assert_fixed_refusal(&gate, &bounded_profile(&root, [extra]));
     }
 }
 

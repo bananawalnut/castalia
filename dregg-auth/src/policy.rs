@@ -475,14 +475,15 @@ impl Verifier {
     ) -> Result<VerifiedLiveAuthority, LiveAuthorityError> {
         let resource = call.resource.as_deref().ok_or(LiveAuthorityError)?;
         let verified_at = call.now.ok_or(LiveAuthorityError)?;
-        let credential = Credential::decode(token_encoded).map_err(|_| LiveAuthorityError)?;
+        let credential =
+            Credential::decode_live_bounded(token_encoded).map_err(|_| LiveAuthorityError)?;
         let issuer_public_key =
             PublicKey::from_hex(&self.public_key_hex).map_err(|_| LiveAuthorityError)?;
 
         // Profile analysis handles only the representable positive language.
         // Its output remains untrusted until the signed credential verifies
         // below under the configured issuer and exact request context.
-        let profile = analyze_live_authority_profile(&credential, &call.tool, resource)
+        let mut profile = analyze_live_authority_profile(&credential, &call.tool, resource)
             .map_err(|_| LiveAuthorityError)?;
         let valid_until = profile.valid_until.ok_or(LiveAuthorityError)?;
         if verified_at < profile.valid_from || verified_at > valid_until {
@@ -500,9 +501,9 @@ impl Verifier {
             .map_err(|_| LiveAuthorityError)?;
 
         Ok(VerifiedLiveAuthority {
-            subject: profile.subject,
-            operation: profile.operation,
-            resource: profile.resource,
+            subject: std::mem::take(&mut profile.subject),
+            operation: std::mem::take(&mut profile.operation),
+            resource: std::mem::take(&mut profile.resource),
             valid_from: profile.valid_from,
             valid_until,
             issuer_public_key: issuer_public_key.0,
@@ -535,6 +536,26 @@ pub struct VerifiedLiveAuthority {
     credential_tail: [u8; 32],
     verified_at: u64,
     reason_code: &'static str,
+}
+
+fn overwrite_live_string(value: &mut String) {
+    let mut bytes = std::mem::take(value).into_bytes();
+    bytes.fill(0);
+    std::hint::black_box(&mut bytes);
+}
+
+impl Drop for VerifiedLiveAuthority {
+    fn drop(&mut self) {
+        overwrite_live_string(&mut self.subject);
+        overwrite_live_string(&mut self.operation);
+        overwrite_live_string(&mut self.resource);
+    }
+}
+
+impl std::fmt::Debug for VerifiedLiveAuthority {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("VerifiedLiveAuthority(verified_live_authority)")
+    }
 }
 
 impl VerifiedLiveAuthority {
@@ -594,13 +615,30 @@ impl VerifiedLiveAuthority {
 #[error("live_authority_refused")]
 pub struct LiveAuthorityError;
 
-#[derive(Debug, PartialEq, Eq)]
+impl serde::Serialize for LiveAuthorityError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str("live_authority_refused")
+    }
+}
+
+#[derive(PartialEq, Eq)]
 struct LiveAuthorityProfile {
     subject: String,
     operation: String,
     resource: String,
     valid_from: u64,
     valid_until: Option<u64>,
+}
+
+impl Drop for LiveAuthorityProfile {
+    fn drop(&mut self) {
+        overwrite_live_string(&mut self.subject);
+        overwrite_live_string(&mut self.operation);
+        overwrite_live_string(&mut self.resource);
+    }
 }
 
 fn analyze_live_authority_profile(
@@ -640,6 +678,14 @@ struct LiveProfileAnalysis<'a> {
     resource_atoms: usize,
     valid_from: u64,
     valid_until: Option<u64>,
+}
+
+impl Drop for LiveProfileAnalysis<'_> {
+    fn drop(&mut self) {
+        if let Some(subject) = &mut self.root_subject {
+            overwrite_live_string(subject);
+        }
+    }
 }
 
 impl<'a> LiveProfileAnalysis<'a> {
@@ -722,8 +768,7 @@ impl<'a> LiveProfileAnalysis<'a> {
         self.valid_until = Some(self.valid_until.map_or(upper, |current| current.min(upper)));
     }
 
-    fn finish(self) -> Result<LiveAuthorityProfile, ()> {
-        let subject = self.root_subject.ok_or(())?;
+    fn finish(mut self) -> Result<LiveAuthorityProfile, ()> {
         let valid_until = self.valid_until.ok_or(())?;
         if self.operation_atoms == 0
             || self.resource_atoms == 0
@@ -733,7 +778,7 @@ impl<'a> LiveProfileAnalysis<'a> {
             return Err(());
         }
         Ok(LiveAuthorityProfile {
-            subject,
+            subject: self.root_subject.take().ok_or(())?,
             operation: self.request_operation.to_owned(),
             // Prefix authority is projected only onto this already-canonical,
             // exact request. No prefix is retained in the analysis result.
