@@ -9,7 +9,7 @@ mod browser {
         SnapshotView,
         builder::SnapshotBuilder,
         reachable_ids_for_roots_bounded,
-        revisions::{StagedFile, revise_file},
+        revisions::{StagedFile, create_directory, create_file, revise_file},
     };
     use js_sys::{Function, Promise, Reflect, Uint8Array};
     use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
@@ -141,6 +141,18 @@ mod browser {
         finished: bool,
     }
 
+    /// Copy-on-write empty directory addition. The host selects the returned
+    /// root only after an expected-head comparison in its own catalog.
+    #[wasm_bindgen]
+    pub struct BrowserDirectoryRevision {
+        base: String,
+        path: String,
+        modified_ms: u64,
+        get_object: Function,
+        put_object: Function,
+        finished: bool,
+    }
+
     struct CallbackStore<'a> {
         get: &'a Function,
         put: &'a Function,
@@ -155,6 +167,31 @@ mod browser {
     impl ObjectWriter for CallbackStore<'_> {
         async fn put(&self, bytes: &[u8]) -> Result<ContentId, Error> {
             CallbackWriter(self.put).put(bytes).await
+        }
+    }
+
+    impl BrowserFileRevision {
+        async fn finish_revision(&mut self, create_only: bool) -> Result<String, JsValue> {
+            if self.finished {
+                return Err(js_error(Error::Invalid("revision finished")));
+            }
+            self.finished = true;
+            let staged = StagedFile {
+                modified_ms: self.modified_ms,
+                executable: self.executable,
+                chunks: std::mem::take(&mut self.chunks),
+            };
+            let store = CallbackStore {
+                get: &self.get_object,
+                put: &self.put_object,
+            };
+            let base = parse_id(self.base.clone())?;
+            let id = if create_only {
+                create_file(&store, base, &self.path, staged).await
+            } else {
+                revise_file(&store, base, &self.path, staged).await
+            };
+            id.map(String::from).map_err(js_error)
         }
     }
 
@@ -207,23 +244,49 @@ mod browser {
         }
 
         pub async fn finish(&mut self) -> Result<String, JsValue> {
+            self.finish_revision(false).await
+        }
+
+        /// Create-only file addition. Refuses any existing leaf entry.
+        pub async fn finish_new(&mut self) -> Result<String, JsValue> {
+            self.finish_revision(true).await
+        }
+    }
+
+    #[wasm_bindgen]
+    impl BrowserDirectoryRevision {
+        #[wasm_bindgen(constructor)]
+        pub fn new(
+            base: String,
+            path: String,
+            modified_ms: u64,
+            get_object: Function,
+            put_object: Function,
+        ) -> Result<Self, JsValue> {
+            parse_id(base.clone())?;
+            Ok(Self {
+                base,
+                path,
+                modified_ms,
+                get_object,
+                put_object,
+                finished: false,
+            })
+        }
+
+        pub async fn finish(&mut self) -> Result<String, JsValue> {
             if self.finished {
                 return Err(js_error(Error::Invalid("revision finished")));
             }
             self.finished = true;
-            let staged = StagedFile {
-                modified_ms: self.modified_ms,
-                executable: self.executable,
-                chunks: std::mem::take(&mut self.chunks),
-            };
-            revise_file(
+            create_directory(
                 &CallbackStore {
                     get: &self.get_object,
                     put: &self.put_object,
                 },
                 parse_id(self.base.clone())?,
                 &self.path,
-                staged,
+                self.modified_ms,
             )
             .await
             .map(String::from)

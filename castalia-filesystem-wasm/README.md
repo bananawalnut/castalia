@@ -3,7 +3,8 @@
 This standalone crate depends on the portable `castalia-filesystem-core` but
 does not share the Dregg root workspace's broad dependency graph. It exposes
 the existing v1 manifest codec, a bounded generation-zero producer,
-single-file copy-on-write revisions and the root-pinned reader to a browser Worker. No
+copy-on-write file creation/replacement and empty-directory additions, and the
+root-pinned reader to a browser Worker. No
 wire fields or persisted format were changed. Its `get_object(id, max_bytes)`
 callback may return a `Uint8Array` or a Promise of one. The callback **must**
 check storage record size before reading bytes into memory; the bridge checks
