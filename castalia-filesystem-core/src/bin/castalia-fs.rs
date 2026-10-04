@@ -1,4 +1,5 @@
-//! Local-only CLI. No keys, remote uploads or automatic mirrors.
+//! Local-only CLI. Push copies to an explicitly selected local object store;
+//! there are no keys, remote uploads or automatic mirrors.
 #[cfg(all(unix, not(target_arch = "wasm32")))]
 mod cli {
     use castalia_filesystem_core::native::{DiskStore, export_directory, import_directory};
@@ -31,6 +32,20 @@ mod cli {
             #[arg(long)]
             namespace: String,
         },
+        /// Copy a pinned snapshot to another local store and verify every object there.
+        Push {
+            snapshot: String,
+            target_store: PathBuf,
+            /// Maximum logical object writes, including duplicates.
+            #[arg(long)]
+            max_objects: usize,
+            /// Maximum total logical bytes transferred, including duplicates.
+            #[arg(long)]
+            max_bytes: u64,
+            /// Verify the source and budget without opening the target store.
+            #[arg(long)]
+            dry_run: bool,
+        },
         Export {
             snapshot: String,
             destination: PathBuf,
@@ -54,6 +69,19 @@ mod cli {
     }
     fn id(value: String) -> Result<ContentId, Error> {
         ContentId::try_from(value)
+    }
+    struct VerifyOnly;
+    impl ObjectWriter for VerifyOnly {
+        async fn put(&self, bytes: &[u8]) -> Result<ContentId, Error> {
+            Ok(ContentId::for_bytes(bytes))
+        }
+    }
+    async fn verify_snapshot<R: ObjectReader>(
+        reader: &R,
+        snapshot: ContentId,
+        budget: transfer::TransferBudget,
+    ) -> Result<transfer::TransferReport, Error> {
+        transfer::copy_snapshot(reader, &VerifyOnly, snapshot, budget).await
     }
     pub fn run() -> Result<(), Error> {
         let args = Args::parse();
@@ -101,6 +129,57 @@ mod cli {
                     let snapshot = import_directory(&store, &source, id(namespace)?).await?;
                     println!("{}", String::from(snapshot));
                 }
+                Command::Push {
+                    snapshot,
+                    target_store,
+                    max_objects,
+                    max_bytes,
+                    dry_run,
+                } => {
+                    if max_objects == 0 || max_bytes == 0 {
+                        return Err(Error::Invalid("push budget must be positive"));
+                    }
+                    let snapshot = id(snapshot)?;
+                    let budget = transfer::TransferBudget {
+                        max_objects,
+                        max_bytes,
+                    };
+                    // Full preflight catches missing/corrupt source objects and
+                    // budget exhaustion before the destination is touched.
+                    let expected = verify_snapshot(&store, snapshot, budget).await?;
+                    if dry_run {
+                        println!(
+                            "dry run: verified {} objects, {} bytes for root {}; no copy performed",
+                            expected.objects,
+                            expected.bytes,
+                            String::from(snapshot)
+                        );
+                    } else {
+                        let target = DiskStore::open(&target_store)?;
+                        if target.path() == store.path() {
+                            return Err(Error::Invalid(
+                                "push target must differ from source store",
+                            ));
+                        }
+                        let copied =
+                            transfer::copy_snapshot(&store, &target, snapshot, budget).await?;
+                        if copied != expected {
+                            return Err(Error::Integrity);
+                        }
+                        // Success means a full independent read through the
+                        // destination adapter, not merely successful writes.
+                        let readback = verify_snapshot(&target, snapshot, budget).await?;
+                        if readback != expected {
+                            return Err(Error::Integrity);
+                        }
+                        println!(
+                            "verified local push of root {}: {} objects, {} bytes",
+                            String::from(snapshot),
+                            readback.objects,
+                            readback.bytes
+                        );
+                    }
+                }
                 Command::Export {
                     snapshot,
                     destination,
@@ -108,17 +187,8 @@ mod cli {
                 Command::Verify { snapshot } => {
                     let view = SnapshotView::open(&store, id(snapshot)?).await?;
                     let nodes = view.validate_tree().await?;
-                    // Copy through a verification-only writer to inspect every
-                    // chunk too; no writes or remote operations happen here.
-                    struct VerifyOnly;
-                    impl ObjectWriter for VerifyOnly {
-                        async fn put(&self, bytes: &[u8]) -> Result<ContentId, Error> {
-                            Ok(ContentId::for_bytes(bytes))
-                        }
-                    }
-                    let report = transfer::copy_snapshot(
+                    let report = verify_snapshot(
                         &store,
-                        &VerifyOnly,
                         view.id(),
                         transfer::TransferBudget {
                             max_objects: usize::MAX,

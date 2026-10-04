@@ -110,9 +110,10 @@ fn reachable_ids_include_payloads_and_fail_closed() {
 #[test]
 fn retained_roots_share_verified_reads_and_obey_global_budgets() {
     let (mut store, first) = fixture();
-    let first_view = block_on(SnapshotView::open(&store, first)).unwrap();
-    let root = first_view.snapshot().root.clone();
-    drop(first_view);
+    let root = {
+        let first_view = block_on(SnapshotView::open(&store, first)).unwrap();
+        first_view.snapshot().root.clone()
+    };
     let second = store.snapshot(root, Some(first));
     let expected: Vec<_> = store.objects.keys().copied().collect();
     block_on(async {

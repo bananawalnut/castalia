@@ -77,6 +77,77 @@ fn cli_import_verify_read_export_roundtrip() {
         b"public test post"
     );
 }
+
+#[test]
+fn cli_push_preflights_budget_and_reads_back_local_target() {
+    let tmp = tempfile::tempdir().unwrap();
+    let input = tmp.path().join("input");
+    std::fs::create_dir(&input).unwrap();
+    std::fs::write(input.join("post.md"), b"local push fixture").unwrap();
+    let source = tmp.path().join("source-store");
+    let target = tmp.path().join("target-store");
+    let source_store = DiskStore::open(&source).unwrap();
+    let root = block_on(import_directory(
+        &source_store,
+        &input,
+        ContentId::for_bytes(b"push namespace"),
+    ))
+    .unwrap();
+    drop(source_store);
+    let root = String::from(root);
+    let run = |budget: &str, dry_run: bool| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_castalia-fs"));
+        command
+            .arg("--store")
+            .arg(&source)
+            .arg("push")
+            .arg(&root)
+            .arg(&target)
+            .args(["--max-objects", budget, "--max-bytes", "1000000"]);
+        if dry_run {
+            command.arg("--dry-run");
+        }
+        command.output().unwrap()
+    };
+    let insufficient = run("1", false);
+    assert!(!insufficient.status.success());
+    assert!(!target.exists(), "budget failure must not touch target");
+    let preview = run("100", true);
+    assert!(preview.status.success());
+    assert!(String::from_utf8_lossy(&preview.stdout).contains("no copy performed"));
+    assert!(!target.exists(), "dry run must not touch target");
+    let pushed = run("100", false);
+    assert!(
+        pushed.status.success(),
+        "{}",
+        String::from_utf8_lossy(&pushed.stderr)
+    );
+    assert!(String::from_utf8_lossy(&pushed.stdout).contains("verified local push"));
+    let target_store = DiskStore::open(&target).unwrap();
+    let view = block_on(SnapshotView::open(
+        &target_store,
+        ContentId::try_from(root.clone()).unwrap(),
+    ))
+    .unwrap();
+    assert_eq!(
+        block_on(view.read_range("/post.md", 0, 100)).unwrap(),
+        b"local push fixture"
+    );
+    drop(target_store);
+    // A second push is idempotent: immutable records may already exist.
+    assert!(run("100", false).status.success());
+    let same_store = std::process::Command::new(env!("CARGO_BIN_EXE_castalia-fs"))
+        .arg("--store")
+        .arg(&source)
+        .arg("push")
+        .arg(&root)
+        .arg(&source)
+        .args(["--max-objects", "100", "--max-bytes", "1000000"])
+        .output()
+        .unwrap();
+    assert!(!same_store.status.success());
+}
+
 #[test]
 fn durable_reopen_import_export_and_metadata_roundtrip() {
     block_on(async {
