@@ -1,0 +1,16 @@
+# Configure this separate source pipeline for pull requests and main pushes.
+# No Web or Vercel credentials are needed here.
+steps:
+  - label: ":crab: Filesystem core, CLI, and golden fixtures"
+    key: native
+    agents: { queue: "linux-medium" }
+    command: "bash .buildkite/filesystem.sh native"
+  - label: ":globe_with_meridians: Filesystem WASM and golden-fixture parity"
+    key: wasm
+    agents: { queue: "linux-medium" }
+    command: "bash .buildkite/filesystem.sh wasm"
+  - label: ":white_check_mark: Public source ready"
+    key: filesystem-source-ready
+    depends_on: [native, wasm]
+    agents: { queue: "linux-medium" }
+    command: "git diff --exit-code && git diff --cached --exit-code"
